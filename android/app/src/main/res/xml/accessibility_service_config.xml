@@ -12,4 +12,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="500"
-    android:packageNames="com.ss.android.ugc.aweme,com.ss.android.ugc.aweme.lite,com.zhiliaoapp.musically,com.zhiliaoapp.musically.go" />
+    android:packageNames="com.ss.android.ugc.aweme,com.ss.android.ugc.aweme.lite,com.zhiliaoapp.musically,com.tiktok.lite.go" />

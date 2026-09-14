@@ -63,7 +63,14 @@ video id are exact; the rest carry this risk.
 
 Selectors are written against the view ids and UI strings of one build of one
 app. An update can change them, and the failure mode is **empty fields, not an
-error**. Mitigations:
+error**.
+
+The two parsers do not carry equal confidence. TikTok's selectors are
+cross-checked against a collector known to work; **Douyin's are unverified
+hypotheses** and should be assumed wrong until a device says otherwise. Do not
+report Douyin coverage figures from an uncalibrated run.
+
+Mitigations:
 
 - re-verify selectors before and after each collection wave (`SELECTORS.md`);
 - monitor the null rate per field per day — a step change means a broken

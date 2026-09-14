@@ -43,6 +43,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // The parsers touch only AccessibilityNodeInfo's flattened output, so
+    // their logic is testable on the JVM without a device.
+    testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 dependencies {

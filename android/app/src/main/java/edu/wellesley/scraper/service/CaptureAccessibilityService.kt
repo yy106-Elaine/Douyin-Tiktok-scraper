@@ -35,7 +35,7 @@ class CaptureAccessibilityService : AccessibilityService() {
         "com.ss.android.ugc.aweme" to DouyinParser(),
         "com.ss.android.ugc.aweme.lite" to DouyinParser(),
         "com.zhiliaoapp.musically" to TikTokParser(),
-        "com.zhiliaoapp.musically.go" to TikTokParser(),
+        "com.tiktok.lite.go" to TikTokParser(),
     )
 
     private var lastScanAt = 0L
@@ -60,7 +60,11 @@ class CaptureAccessibilityService : AccessibilityService() {
         val nodes = NodeTools.flatten(rootInActiveWindow)
         if (nodes.isEmpty() || parser.shouldSkip(nodes)) return
 
-        parser.parse(nodes)?.let(buffer::observe)
+        // The feed tab belongs to the screen, not to any one post.
+        val feed = parser.feed(nodes)
+        for (segment in NodeTools.segment(nodes, parser::isPostBoundary)) {
+            parser.parse(segment)?.let { buffer.observe(it.copy(feed = feed)) }
+        }
         flush(force = false)
     }
 

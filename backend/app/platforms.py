@@ -12,7 +12,7 @@ PACKAGE_TO_PLATFORM: dict[str, str] = {
     # TikTok (international build)
     "com.zhiliaoapp.musically": "tiktok",
     # TikTok Lite
-    "com.zhiliaoapp.musically.go": "tiktok_lite",
+    "com.tiktok.lite.go": "tiktok_lite",
 }
 
 # Platforms whose structured rows live in the same table.

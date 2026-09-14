@@ -22,11 +22,12 @@ from any other app.
 | Part | State |
 |---|---|
 | Backend | Complete, 24 tests passing |
-| Android data flow, buffering, sync, share capture | Complete, 11 JVM tests passing |
-| Android parser selectors | **Written but unverified against a real device** — see below |
+| Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
+| TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
+| Douyin parser selectors | **Unverified — hypotheses only** |
 
-The parsers are written against the documented shape of each app's UI but have
-not been run against a phone. Verify them before collecting anything:
+No Douyin selector in this repository has been confirmed against a device.
+Dump the tree and correct them before collecting anything:
 [`docs/SELECTORS.md`](docs/SELECTORS.md).
 
 ## Backend quickstart
@@ -69,7 +70,7 @@ curl -H "X-API-Key: $ADMIN_API_KEY" \
 cd android
 ./gradlew assembleDebug -PbackendBaseUrl=https://your-server.example
 adb install app/build/outputs/apk/debug/app-debug.apk
-./gradlew test    # 11 JVM tests, no device needed
+./gradlew test    # 22 JVM tests, no device needed
 ```
 
 Requires Android Studio / the Android SDK; `minSdk` 26.

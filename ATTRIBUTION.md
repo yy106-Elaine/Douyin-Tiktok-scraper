@@ -15,7 +15,15 @@ Specifically, the following design decisions are taken from that work:
 - buffering repeated partial reads of the same post and finalising once it
   settles;
 - a per-participant API key issued against an approved-email whitelist;
-- a platform registry so that adding a platform is a small, local change.
+- a platform registry so that adding a platform is a small, local change;
+- isolating each post at its container view id, rather than parsing a screen
+  as a single post.
+
+The TikTok selector strings in `TikTokParser.kt` (the `Like video. N likes`
+family of content descriptions, the `widget_container` post marker, and the
+`com.tiktok.lite.go` package name) were cross-checked against tracely's
+parser. Those are observable facts about TikTok's own interface rather than
+authored expression, and the implementation around them is this project's.
 
 **No code was copied.** At the time this project was written, neither source
 repository carried a licence file, which means all rights were reserved and

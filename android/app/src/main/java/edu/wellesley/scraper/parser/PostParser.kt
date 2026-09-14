@@ -1,7 +1,7 @@
 package edu.wellesley.scraper.parser
 
 /**
- * Reads one post out of a flattened accessibility tree.
+ * Reads posts out of a flattened accessibility tree.
  *
  * Implementations are inherently version-specific: they are written
  * against the view ids and UI strings of one build of one app, and a
@@ -12,6 +12,13 @@ package edu.wellesley.scraper.parser
 interface PostParser {
     val platform: String
 
+    /** Marks the root node of one post, used to split a screen into posts. */
+    fun isPostBoundary(node: FlatNode): Boolean
+
+    /** Which feed tab is selected. Read from the whole screen, not one post. */
+    fun feed(nodes: List<FlatNode>): String?
+
+    /** Parse one post's nodes, as produced by [NodeTools.segment]. */
     fun parse(nodes: List<FlatNode>): ParsedPost?
 
     /**

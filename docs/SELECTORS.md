@@ -21,15 +21,24 @@ Studio's Layout Inspector shows the same tree interactively.
 Each parser keeps every selector in a `private companion object` at the top of
 the file — that block is the only thing you should need to edit.
 
-| Field | TikTok (English) | Douyin (Chinese) |
+| Field | TikTok (English, checked) | Douyin (Chinese, **unverified**) |
 |---|---|---|
-| author | `content-desc` ending `'s profile` | `@handle` in text |
-| caption | `resource-id` ending `/desc`, else longest undescribed text | same |
+| post boundary | view id contains `widget_container` | view id contains `video_container` |
+| author | `content-desc` matching `X profile`, else view id `/title` | `@handle` in text |
+| caption | view id containing `desc`, else longest undescribed text ≥30 chars | same, ≥8 chars |
 | likes | `Like video. N likes` | `点赞N` / `N次点赞` |
-| comments | `N comments` | `评论N` / `N条评论` |
-| shares | `N shares` | `分享N` / `转发N` |
-| saves | `N favorites` | `收藏N` |
-| feed | `For You` / `Following` | `推荐` / `关注` |
+| comments | `Read or add comments. N comments` | `评论N` / `N条评论` |
+| shares | `Share video. N shares` | `分享N` / `转发N` |
+| saves | first number **nested under** the node described `Favorites` | `收藏N` |
+| music | `Sound: X` | `X创作的原声` |
+| feed | selected tab: `For You` / `Following` | `推荐` / `关注` |
+
+Package names matter and are not guessable: TikTok Lite is
+**`com.tiktok.lite.go`**, not a `.go` suffix on the main package. All four are
+listed in `accessibility_service_config.xml`.
+
+Every TikTok row above is confirmed against a working collector. **No Douyin
+row is.** Treat the Douyin column as a starting hypothesis.
 
 ## Check the guard too
 
@@ -40,10 +49,14 @@ confirming no rows appear.
 
 ## Known-harder cases
 
-**Lite builds** label their action buttons poorly. Rather than guessing by
-on-screen position (fragile, and wrong the moment the layout changes), these
-parsers return null for fields they cannot identify with confidence. Prefer
-the full app on study devices.
+**Lite builds** label their action buttons poorly: on TikTok Lite the four
+counts are bare `TextView`s inside clickable buttons with a shared generic
+icon description, so they cannot be told apart by description at all. A
+working collector resolves them by vertical screen position in TikTok's fixed
+Like / Comment / Favorite / Share order — effective, but it silently mislabels
+every count the moment that order changes. This project instead returns null
+for counts it cannot identify with confidence, so prefer the **full** app on
+study devices, where the descriptions are unambiguous.
 
 **Douyin count ordering** varies between builds — both `点赞12.3万` and
 `12.3万次点赞` appear, which is why `DouyinParser` uses two-alternative
