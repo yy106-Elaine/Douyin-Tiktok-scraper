@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    packageNames is set deliberately: the system then delivers events
+    ONLY for these apps, so the service never observes anything else on
+    the participant's phone. This is both a privacy guarantee we can
+    state in a consent form and a meaningful battery saving.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="500"
+    android:packageNames="com.ss.android.ugc.aweme,com.ss.android.ugc.aweme.lite,com.zhiliaoapp.musically,com.zhiliaoapp.musically.go" />

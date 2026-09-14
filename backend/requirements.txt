@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pydantic[email]==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+# MySQL driver: only needed when DATABASE_URL points at MySQL.
+PyMySQL==1.1.1

@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Video Capture</string>
+    <string name="share_target_label">Save link for research</string>
+    <string name="accessibility_service_description">Records which Douyin and TikTok posts appear on screen for an approved research study. It reads only these two apps and never records comment text, messages, or any other app.</string>
+    <string name="register_prompt">Enter the email address enrolled in the study</string>
+    <string name="register_button">Register device</string>
+    <string name="status_registered">Registered as %1$s</string>
+    <string name="status_not_registered">Not registered</string>
+    <string name="status_pending">%1$d captures waiting to upload</string>
+    <string name="sync_now">Upload now</string>
+    <string name="open_accessibility_settings">Enable capture service</string>
+    <string name="share_saved">Link saved</string>
+    <string name="share_not_recognised">Not a Douyin or TikTok link</string>
+    <string name="share_not_registered">Register this device first</string>
+</resources>
