@@ -23,12 +23,31 @@ android {
         )
     }
 
+    // A checked-in debug key, so every CI build signs identically.
+    // Without it the runner generates a throwaway key per build and each
+    // new APK refuses to install over the last one
+    // (INSTALL_FAILED_UPDATE_INCOMPATIBLE), which makes "download the
+    // latest build and reinstall" impossible. Debug keys are not secrets:
+    // Android's own default debug key has published credentials, and this
+    // one signs nothing that is distributed.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         viewBinding = true
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
