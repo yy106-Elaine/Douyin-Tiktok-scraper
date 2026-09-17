@@ -66,6 +66,13 @@ class Finding:
     #: The specific disappearance verdict, once it has disappeared.
     outcome: str | None
 
+    #: When the video was published. Decoded from the id where the id
+    #: encodes it (Douyin, TikTok -- see snowflake.py), otherwise taken
+    #: from the collected post row, which is where YouTube's exact
+    #: publishedAt lives. Without the second source this column, and
+    #: every lifetime computed from it, was empty for YouTube.
+    published_at: datetime | None = None
+
     @property
     def is_gone(self) -> bool:
         return self.first_gone_at is not None
@@ -76,10 +83,6 @@ class Finding:
         if self.last_alive_at is None or self.first_gone_at is None:
             return None
         return self.first_gone_at - self.last_alive_at
-
-    @property
-    def published_at(self) -> datetime | None:
-        return posted_at_from_video_id(self.video_id)
 
     def lifetime(self) -> tuple[timedelta, timedelta] | None:
         """Time from publication to removal, as (at least, at most).
@@ -102,8 +105,14 @@ def _informative(checks: list[LinkCheck]) -> list[tuple[LinkCheck, str]]:
     return [(check, verdict) for check, verdict in graded if verdict not in NO_INFORMATION]
 
 
-def finding_for(checks: list[LinkCheck]) -> Finding | None:
-    """Summarise one video's checks. `checks` must all be one video."""
+def finding_for(
+    checks: list[LinkCheck], posted_on: datetime | None = None
+) -> Finding | None:
+    """Summarise one video's checks. `checks` must all be one video.
+
+    `posted_on` is the publication time recorded when the video was
+    collected, used when the id does not encode one.
+    """
     video_checks = [check for check in checks if check.target_kind == "video"]
     if not video_checks:
         return None
@@ -146,7 +155,32 @@ def finding_for(checks: list[LinkCheck]) -> Finding | None:
         first_gone_at=first_gone,
         current=graded[-1][1] if graded else None,
         outcome=outcome,
+        published_at=posted_at_from_video_id(first.video_id) or posted_on,
     )
+
+
+def _published_by_video(session: Session, platform: str | None) -> dict[str, datetime]:
+    """Publication times from the collected rows, keyed by video id.
+
+    Only needed for platforms whose ids carry no timestamp, but looked
+    up for all of them so nothing depends on which platform this is.
+    """
+    from .parsers import PLATFORM_TABLES
+
+    names = [platform] if platform else list(PLATFORM_TABLES)
+    out: dict[str, datetime] = {}
+    for name in names:
+        registered = PLATFORM_TABLES.get(name)
+        if registered is None:
+            continue
+        model, _ = registered
+        for video_id, posted_on in session.execute(
+            select(model.video_id, model.posted_on).where(
+                model.video_id.isnot(None), model.posted_on.isnot(None)
+            )
+        ):
+            out.setdefault(video_id, posted_on)
+    return out
 
 
 def findings(session: Session, platform: str | None = None) -> list[Finding]:
@@ -176,7 +210,12 @@ def findings(session: Session, platform: str | None = None) -> list[Finding]:
             ):
                 checks.append(check)
 
-    result = [f for checks in by_video.values() if (f := finding_for(checks))]
+    published = _published_by_video(session, platform)
+    result = [
+        f
+        for video_id, checks in by_video.items()
+        if (f := finding_for(checks, published.get(video_id)))
+    ]
     result.sort(key=lambda finding: finding.last_checked_at or datetime.min, reverse=True)
     return result
 

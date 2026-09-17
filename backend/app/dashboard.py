@@ -248,24 +248,27 @@ def _nav(view: str, platform: str | None, key: str) -> str:
 
     Separate rows because they are separate questions, and collapsing
     them into one strip of nine links made both harder to find.
+
+    The platform row stays on every page, Overview included. Hiding it
+    there was defensible -- Overview covers every platform at once --
+    but it left that page with no way out to a single platform, so the
+    row had to be re-found by going back first. On Overview those links
+    lead to Capture, which is where one platform's own rows are.
     """
+    paths = dict(_VIEWS)
     views = "".join(
         f'<a class="tab{" on" if name == view else ""}" '
         f'href="{path}?{"platform=" + escape(platform) + "&" if platform else ""}'
         f'key={escape(key)}">{name}</a>'
         for name, path in _VIEWS
     )
-    rows = f'<div class="tabs">{views}</div>'
-    if platform is None:
-        return rows
-
-    path = dict((name, path) for name, path in _VIEWS)[view]
+    target = paths[view] if platform is not None else paths["Capture"]
     platforms = "".join(
         f'<a class="tab{" on" if name == platform else ""}" '
-        f'href="{path}?platform={name}&key={escape(key)}">{escape(name)}</a>'
+        f'href="{target}?platform={name}&key={escape(key)}">{escape(name)}</a>'
         for name in sorted(PLATFORM_TABLES)
     )
-    return rows + f'<div class="tabs">{platforms}</div>'
+    return f'<div class="tabs">{views}</div><div class="tabs">{platforms}</div>'
 
 
 #: Shared by every page, so they cannot drift apart visually.

@@ -322,3 +322,38 @@ def test_the_overview_shows_every_platform(client, api_key):
 
 def test_the_overview_needs_the_admin_key(client):
     assert client.get("/dashboard/overview").status_code == 401
+
+
+def test_the_overview_keeps_a_way_out_to_each_platform(client):
+    """Hiding the platform row there stranded the page."""
+    body = client.get("/dashboard/overview?key=test-admin-key").text
+    for platform in ("douyin", "tiktok", "youtube"):
+        assert f'href="/dashboard?platform={platform}' in body
+
+
+def test_youtube_publication_time_reaches_the_findings_page(client):
+    """Its ids carry no timestamp, so it has to come from the row.
+
+    Without this the Published and Lifetime columns -- the study's
+    actual measure -- were empty for every YouTube video.
+    """
+    from app.recheck import FetchResult, run_round
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["a"], caller=_caller(), now=NOW)
+        run_round(
+            session,
+            now=NOW,
+            pause_seconds=0,
+            youtube_checker=lambda targets: check_youtube(
+                targets, caller=_caller()
+            ),
+        )
+        found = findings(session, "youtube")
+        assert found
+        assert all(f.published_at == datetime(2026, 9, 16, 8, 30) for f in found)
+
+    body = client.get(
+        "/dashboard/takedowns?key=test-admin-key&platform=youtube"
+    ).text
+    assert "2026-09-16 08:30" in body
