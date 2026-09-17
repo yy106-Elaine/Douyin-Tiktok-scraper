@@ -56,6 +56,19 @@ Mac joins is the quickest workaround.
 
 ## 3. Get the APK onto the phone
 
+### If the install fails
+
+Samsung phones (One UI 6.1 and later) ship **Auto Blocker** switched on,
+which blocks every sideloaded app and reports only a generic install
+failure. Turn it off first: **Settings → Security and privacy → Auto
+Blocker → off**. Other vendors gate the same thing per-browser under
+"install unknown apps".
+
+A failure that says the app is not installed, or mentions a signature
+conflict, means an older build is still present — uninstall **Video
+Capture** and install again. All CI builds are signed with the same
+committed debug key, so this should not recur.
+
 Open the server address itself in the **phone's** browser:
 
 ```

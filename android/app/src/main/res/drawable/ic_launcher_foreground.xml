@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A play triangle inside a viewfinder bracket: "watching a video feed".
+    Drawn as a vector so the icon needs no density buckets and no binary
+    assets in the repository.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Viewfinder corners -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,30 L32,36 L38,36 L38,30 Z M32,30 L44,30 L44,36 L38,36 L38,42 L32,42 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,30 L64,30 L64,36 L70,36 L70,42 L76,42 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,78 L44,78 L44,72 L38,72 L38,66 L32,66 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,78 L64,78 L64,72 L70,72 L70,66 L76,66 Z" />
+
+    <!-- Play triangle -->
+    <path
+        android:fillColor="#5FA8F5"
+        android:pathData="M47,42 L47,66 L68,54 Z" />
+</vector>
