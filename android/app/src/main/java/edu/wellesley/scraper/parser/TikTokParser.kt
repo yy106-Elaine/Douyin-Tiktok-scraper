@@ -110,6 +110,7 @@ class TikTokParser : PostParser {
                 ?: NodeTools.byViewId(nodes, "collect_count", "favorite_count")?.text,
             isAd = NodeTools.anyMatches(nodes, AD_MARKER),
             isAiGenerated = NodeTools.anyMatches(nodes, AI_MARKER),
+            videoIdHint = IdScanner.bestId(nodes),
         )
         return post.takeIf { it.isUsable() }
     }

@@ -32,8 +32,17 @@ object CaptureStats {
     @Volatile var lastParsed: String? = null
     @Volatile var lastUnparsedDump: List<String> = emptyList()
 
+    /** What the passive id scan found on the last screen read. */
+    @Volatile var lastIdScan: String? = null
+    @Volatile var idsFoundTotal: Int = 0
+
     fun onServiceConnected() {
         serviceConnectedAt = System.currentTimeMillis()
+    }
+
+    fun onIdScan(summary: String, found: Boolean) {
+        lastIdScan = summary
+        if (found) idsFoundTotal++
     }
 
     fun onFrame(packageName: String, nodeCount: Int, segmentCount: Int) {
@@ -104,6 +113,10 @@ object CaptureStats {
         lines += "Posts parsed: $parsedTotal"
         lines += "Rows stored: $storedTotal   same-day repeats: $duplicateTotal"
         lastParsed?.let { lines += "Last parsed:\n  $it" }
+
+        lines += ""
+        lines += "Video ids seen on screen: $idsFoundTotal of $framesSeen frames"
+        lastIdScan?.let { lines += "  last scan: $it" }
 
         if (lastUnparsedDump.isNotEmpty()) {
             lines += ""

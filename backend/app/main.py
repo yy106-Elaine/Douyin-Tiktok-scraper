@@ -18,7 +18,7 @@ from . import participants as participant_registry
 from .auth import require_participant
 from .dashboard import require_admin_view, router as dashboard_router
 from .db import get_session, init_db
-from .links import extract
+from .links import canonical_url_for, extract
 from .models import CaptureEvent, Participant, SharedLink
 from .pairing import pair_shared_link
 from .parsers import PLATFORM_TABLES, base
@@ -103,6 +103,12 @@ def ingest_batch(
 
         model, structure = PLATFORM_TABLES[family]
         row = structure(item.payload)
+        # An id read off the screen is already a complete answer; no
+        # share, no pairing, and no interaction with the app.
+        if row.get("video_id"):
+            row["video_url"] = canonical_url_for(
+                family, row["video_id"], row.get("author_handle")
+            )
         session.add(
             model(
                 capture_event_id=event.id,

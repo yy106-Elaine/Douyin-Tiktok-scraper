@@ -7,6 +7,7 @@ hooks exist for the fields that genuinely differ.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +30,9 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
         "feed": _clean(payload.get("feed")),
         "is_ad": _as_bool(payload.get("is_ad")),
         "is_ai_generated": _as_bool(payload.get("is_ai_generated")),
+        # Present only when the device found an id already on screen.
+        # Obtained passively, so it needed no interaction with the app.
+        "video_id": _video_id(payload.get("video_id_hint")),
     }
 
     approximate = False
@@ -39,6 +43,17 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
     row["counts_approximate"] = approximate
 
     return row
+
+
+_ID_SHAPED = re.compile(r"^\d{18,19}$")
+
+
+def _video_id(value: Any) -> str | None:
+    """Accept a hint only if it looks like a platform video id."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if _ID_SHAPED.match(text) else None
 
 
 def _clean(value: Any) -> str | None:

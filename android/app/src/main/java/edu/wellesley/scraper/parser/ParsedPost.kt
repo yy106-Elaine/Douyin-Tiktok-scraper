@@ -20,16 +20,22 @@ data class ParsedPost(
     val saveRaw: String? = null,
     val isAd: Boolean? = null,
     val isAiGenerated: Boolean? = null,
+    /**
+     * A video id found on screen, when either app happens to expose
+     * one. Read passively, so obtaining it costs no interaction with
+     * the app and cannot influence what the feed serves next.
+     */
+    val videoIdHint: String? = null,
 ) {
     /**
      * Stable identity for this post across the several partial reads
      * that happen as the user watches it.
      *
-     * The accessibility tree never exposes a video id, so this is the
-     * best identity available. It collides when one author posts two
-     * videos whose captions share a prefix -- a known limitation,
-     * documented in docs/METHODOLOGY.md, and resolved for any post the
-     * participant also shares a link for.
+     * A real video id would be better, and [videoIdHint] supplies one
+     * where the interface exposes it. Where it does not, this is the
+     * best identity available: it collides when one author posts two
+     * videos whose captions share a prefix, which is documented in
+     * docs/METHODOLOGY.md.
      */
     fun fingerprint(): String? {
         val author = authorHandle?.trim().orEmpty()
@@ -59,6 +65,7 @@ data class ParsedPost(
         saveRaw = other.saveRaw ?: saveRaw,
         isAd = other.isAd ?: isAd,
         isAiGenerated = other.isAiGenerated ?: isAiGenerated,
+        videoIdHint = other.videoIdHint ?: videoIdHint,
     )
 
     fun toPayload(): Map<String, Any?> = mapOf(
@@ -72,5 +79,6 @@ data class ParsedPost(
         "save_raw" to saveRaw,
         "is_ad" to isAd,
         "is_ai_generated" to isAiGenerated,
+        "video_id_hint" to videoIdHint,
     )
 }

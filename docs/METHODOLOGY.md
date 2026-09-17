@@ -27,11 +27,26 @@ Every structured row carries `counts_approximate`. Report it:
 Do not report these counts to more significant figures than the display had.
 Prefer bucketed or log-scale analysis over exact arithmetic.
 
-### 2. Most posts have no video id
+### 2. Video ids are not guaranteed
 
-The accessibility tree contains no video id, so `video_id` and `video_url` are
-populated **only** for posts the participant also shared into the app. Plan
-for two tiers:
+Three paths can supply one, in descending order of preference:
+
+1. **Read off the screen.** Each frame is scanned for an id-shaped token
+   (18-19 digits). This costs no interaction with the app, so it sends no
+   engagement signal and cannot influence what the recommender serves next —
+   which matters in a study of the feed itself. The app's self-check reports
+   how many frames carried one, so whether this works is a measurement rather
+   than an assumption.
+2. **Shared by hand.** The participant shares a video into the app, or pastes
+   a copied link. Exact when the device knew which post it was harvesting for.
+3. **Nothing.** Metadata only, no citable URL.
+
+Do not drive the platform's own share sheet automatically to obtain ids.
+Opening a share sheet and copying a link are engagement actions; performing
+them on every post would systematically alter the feed under study, which is
+an endogeneity problem no amount of coverage compensates for.
+
+Where ids are missing, plan for two tiers:
 
 - **all captured posts** — metadata, no citable URL;
 - **the shared subset** — metadata plus a verifiable link.

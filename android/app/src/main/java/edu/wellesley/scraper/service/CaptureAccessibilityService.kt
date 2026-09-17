@@ -9,6 +9,7 @@ import edu.wellesley.scraper.data.CaptureEntity
 import edu.wellesley.scraper.data.Prefs
 import edu.wellesley.scraper.net.SyncWorker
 import edu.wellesley.scraper.parser.DouyinParser
+import edu.wellesley.scraper.parser.IdScanner
 import edu.wellesley.scraper.parser.NodeTools
 import edu.wellesley.scraper.parser.ParsedPost
 import edu.wellesley.scraper.parser.PostParser
@@ -88,6 +89,11 @@ class CaptureAccessibilityService : AccessibilityService() {
         val segments = NodeTools.segment(nodes, parser::isPostBoundary)
         CaptureStats.onFrame(packageName, nodes.size, segments.size)
         CaptureLog.segments(segments.size, nodes.size)
+
+        // Whether either app puts a video id on screen decides how links
+        // can be obtained at all, so record the answer per frame.
+        val scanned = IdScanner.scan(nodes)
+        CaptureStats.onIdScan(IdScanner.describe(nodes), scanned.isNotEmpty())
 
         var parsedAny = false
         for (segment in segments) {

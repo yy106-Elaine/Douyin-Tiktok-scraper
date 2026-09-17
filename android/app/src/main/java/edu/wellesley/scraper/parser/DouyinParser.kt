@@ -70,6 +70,7 @@ class DouyinParser : PostParser {
             saveRaw = firstCount(nodes, SAVE),
             isAd = NodeTools.anyMatches(nodes, AD_MARKER),
             isAiGenerated = NodeTools.anyMatches(nodes, AI_MARKER),
+            videoIdHint = IdScanner.bestId(nodes),
         )
         return post.takeIf { it.isUsable() }
     }
