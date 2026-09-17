@@ -113,6 +113,7 @@ class CaptureAccessibilityService : AccessibilityService() {
         // can be obtained at all, so record the answer per frame.
         val scanned = IdScanner.scan(nodes)
         CaptureStats.onIdScan(IdScanner.describe(nodes), scanned.isNotEmpty())
+        CaptureStats.onFrameDump(nodes)
 
         var parsedAny = false
         for (segment in segments) {
@@ -126,6 +127,7 @@ class CaptureAccessibilityService : AccessibilityService() {
             CaptureStats.onNothingParsed(nodes)
             CaptureLog.dumpUnparsed(nodes)
         }
+        CaptureStats.distinctPosts = buffer.size()
 
         flush(force = false)
     }

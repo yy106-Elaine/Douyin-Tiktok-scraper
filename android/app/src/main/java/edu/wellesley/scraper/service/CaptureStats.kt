@@ -31,6 +31,9 @@ object CaptureStats {
     @Volatile var duplicateTotal: Int = 0
     @Volatile var lastParsed: String? = null
     @Volatile var lastUnparsedDump: List<String> = emptyList()
+    @Volatile var lastFrameDump: List<String> = emptyList()
+    @Volatile var lastSelectedNodes: List<String> = emptyList()
+    @Volatile var distinctPosts: Int = 0
 
     /** What the passive id scan found on the last screen read. */
     @Volatile var lastIdScan: String? = null
@@ -76,15 +79,34 @@ object CaptureStats {
 
     /** Text-bearing nodes from a frame that produced no post. */
     fun onNothingParsed(nodes: List<FlatNode>) {
-        lastUnparsedDump = nodes
-            .filter { it.text != null || it.description != null }
-            .take(40)
-            .map {
-                "id=${it.viewId?.substringAfterLast('/') ?: "-"} | " +
-                    "text=${it.text?.take(40) ?: "-"} | " +
-                    "desc=${it.description?.take(40) ?: "-"}"
-            }
+        lastUnparsedDump = dump(nodes)
     }
+
+    /**
+     * Every read frame is dumped, not only the ones that fail.
+     *
+     * Once parsing succeeds a failure dump never fires again, which is
+     * exactly when the fields that are still empty -- saves, feed,
+     * handle -- become impossible to fix without guessing. Keeping the
+     * last successful frame means the real nodes are one button away.
+     */
+    fun onFrameDump(nodes: List<FlatNode>) {
+        lastFrameDump = dump(nodes)
+        lastSelectedNodes = nodes
+            .filter { it.selected }
+            .take(8)
+            .map { "selected: text=${it.text ?: "-"} desc=${it.description ?: "-"}" }
+    }
+
+    private fun dump(nodes: List<FlatNode>): List<String> = nodes
+        .filter { it.text != null || it.description != null }
+        .take(60)
+        .map {
+            "id=${it.viewId?.substringAfterLast('/') ?: "-"} | " +
+                "text=${it.text?.take(50) ?: "-"} | " +
+                "desc=${it.description?.take(50) ?: "-"}" +
+                if (it.selected) " | SELECTED" else ""
+        }
 
     /** A block of text someone can read on screen, or paste into a message. */
     fun report(): String {
@@ -119,10 +141,24 @@ object CaptureStats {
         lines += "Video ids seen on screen: $idsFoundTotal of $framesSeen frames"
         lastIdScan?.let { lines += "  last scan: $it" }
 
+        lines += "Distinct posts buffered: $distinctPosts"
+
+        if (lastSelectedNodes.isNotEmpty()) {
+            lines += ""
+            lines += "Nodes marked selected:"
+            lastSelectedNodes.forEach { lines += "  $it" }
+        }
+
         if (lastUnparsedDump.isNotEmpty()) {
             lines += ""
             lines += "Last screen that parsed nothing:"
             lastUnparsedDump.forEach { lines += "  $it" }
+        }
+
+        if (lastFrameDump.isNotEmpty()) {
+            lines += ""
+            lines += "Last screen read (${lastFrameDump.size} text nodes):"
+            lastFrameDump.forEach { lines += "  $it" }
         }
 
         return lines.joinToString("\n")
