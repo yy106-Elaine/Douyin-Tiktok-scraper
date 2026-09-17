@@ -18,13 +18,13 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .links import canonical_url_for
-from .models import SharedLink
+from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
 from .platforms import family_for_platform
 
 
 def pair_shared_link(session: Session, link: SharedLink) -> int | None:
-    """Attach `link`'s video id to the best matching post. Returns its id."""
+    """Attach `link`'s video id to the matching post. Returns its id."""
     if not link.video_id or not link.platform:
         return None
 
@@ -33,6 +33,10 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
     if registered is None:
         return None
     model, _ = registered
+
+    exact = _pair_by_fingerprint(session, link, model, family)
+    if exact is not None:
+        return exact
 
     window = timedelta(seconds=settings.pairing_window_seconds)
     candidates = session.scalars(
@@ -55,13 +59,44 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
         if best.author_handle.lstrip("@").lower() != link.author_handle.lstrip("@").lower():
             return None
 
-    best.video_id = link.video_id
-    best.video_url = link.canonical_url or canonical_url_for(
-        family, link.video_id, best.author_handle
-    )
-    link.matched_capture_id = best.capture_event_id
-    session.commit()
+    _attach(session, link, best, family, method="window")
     return best.id
+
+
+def _pair_by_fingerprint(session: Session, link: SharedLink, model, family: str):
+    """Exact pairing: the device harvested this link for a known capture.
+
+    No time window and no author comparison are needed -- the device
+    triggered the share from the post itself, so the association is a
+    fact rather than an inference.
+    """
+    if not link.fingerprint:
+        return None
+
+    post = session.scalars(
+        select(model)
+        .join(CaptureEvent, CaptureEvent.id == model.capture_event_id)
+        .where(
+            model.participant_id == link.participant_id,
+            CaptureEvent.fingerprint == link.fingerprint,
+        )
+        .order_by(model.captured_at.desc())
+    ).first()
+    if post is None:
+        return None
+
+    _attach(session, link, post, family, method="fingerprint")
+    return post.id
+
+
+def _attach(session: Session, link: SharedLink, post, family: str, method: str) -> None:
+    post.video_id = link.video_id
+    post.video_url = link.canonical_url or canonical_url_for(
+        family, link.video_id, post.author_handle
+    )
+    link.matched_capture_id = post.capture_event_id
+    link.pairing_method = method
+    session.commit()
 
 
 def _distance(post, link: SharedLink) -> tuple[int, float]:

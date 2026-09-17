@@ -142,6 +142,7 @@ def ingest_shared_link(
         author_handle=parsed.author_handle,
         canonical_url=parsed.canonical_url,
         shared_at=shared_at,
+        fingerprint=body.fingerprint,
     )
     session.add(link)
     session.commit()

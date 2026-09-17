@@ -42,6 +42,10 @@ class SharedLinkIn(BaseModel):
     raw_text: str = Field(min_length=1)
     shared_at: Any = None
 
+    #: Set when the device harvested this link for a post it had just
+    #: captured. Pairing is then exact rather than a time-window guess.
+    fingerprint: str | None = Field(default=None, max_length=255)
+
 
 class SharedLinkResponse(BaseModel):
     stored: bool

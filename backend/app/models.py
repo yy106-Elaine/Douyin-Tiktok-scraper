@@ -127,6 +127,15 @@ class SharedLink(Base):
     shared_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     received_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
+    #: The capture this link was harvested for, when the device knew.
+    fingerprint: Mapped[str | None] = mapped_column(String(255), index=True)
+
     matched_capture_id: Mapped[int | None] = mapped_column(
         ForeignKey("capture_events.id"), index=True
     )
+
+    #: How the link was matched to a post: "fingerprint" (exact, the
+    #: device harvested it for a known capture), "window" (heuristic,
+    #: nearest capture in time), or null when unpaired. Analysis should
+    #: be able to exclude heuristically paired rows.
+    pairing_method: Mapped[str | None] = mapped_column(String(16))
