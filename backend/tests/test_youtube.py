@@ -149,6 +149,31 @@ class TestCollecting:
             assert second.stored == 0
             assert second.duplicates == 2
 
+    def test_an_overlapping_window_on_a_later_day_is_free(self, client):
+        """What makes a 72-hour window runnable daily.
+
+        Stored per day, the same video would arrive three times and
+        "videos collected" would count runs rather than videos.
+        """
+        with SessionLocal() as session:
+            youtube.collect(session, ["a"], caller=_caller(), now=NOW)
+            later = youtube.collect(
+                session, ["a"], caller=_caller(), now=NOW + timedelta(days=1)
+            )
+            assert later.found == 2
+            assert later.stored == 0
+            assert later.duplicates == 2
+
+    def test_a_known_video_costs_no_details_call(self, client):
+        """Skipping it has to skip its quota too."""
+        with SessionLocal() as session:
+            youtube.collect(session, ["a"], caller=_caller(), now=NOW)
+            second = youtube.collect(
+                session, ["a"], caller=_caller(), now=NOW + timedelta(days=1)
+            )
+            # One search, and no videos.list at all.
+            assert second.spend.calls == {"search": 1}
+
     def test_the_search_language_defaults_to_chinese(self, client):
         """Configured, not typed daily -- and it changes the sample."""
         seen = {}

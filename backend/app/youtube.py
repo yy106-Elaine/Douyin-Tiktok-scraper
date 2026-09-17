@@ -287,8 +287,16 @@ def collect(
     verbatim API record in `capture_events`, the typed row in
     `youtube_posts` -- so the dashboards, the CSV export and the
     re-checker need to know nothing about where a platform came from.
-    The unique constraint on (participant, fingerprint, date) does the
-    de-duplication, which matters because keyword searches overlap.
+A video already stored is skipped, whatever day it was stored on.
+    That is what makes overlapping windows free: run a 72-hour window
+    every day and the same video is collected once, not three times.
+
+    The other platforms deliberately allow one observation per post per
+    day, because their engagement counts are re-read off the screen and
+    a post's identity there is only a fingerprint. Here the id is exact
+    and the counts are not the research question, so a second row would
+    add nothing and would make "videos collected" a count of runs
+    rather than of videos.
     """
     import json as _json
 
@@ -307,6 +315,15 @@ def collect(
 
     model, structure = PLATFORM_TABLES["youtube"]
     moment = now or datetime.now(timezone.utc).replace(tzinfo=None)
+
+    from sqlalchemy import select as _select
+
+    already = {
+        video_id
+        for (video_id,) in session.execute(
+            _select(model.video_id).where(model.video_id.isnot(None))
+        )
+    }
     since = window_start(hours, moment)
 
     report = CollectReport(keywords=len(keywords))
@@ -331,7 +348,11 @@ def collect(
                 matched.append(keyword)
 
     report.found = len(seen)
-    records = details(list(seen), caller=caller, spend=report.spend)
+    # Nothing is fetched for a video already held: details cost quota
+    # too, and there is nothing to learn from a second copy.
+    fresh = [video_id for video_id in seen if video_id not in already]
+    report.duplicates += len(seen) - len(fresh)
+    records = details(fresh, caller=caller, spend=report.spend)
 
     for video_id, item in records.items():
         payload = to_payload(item)

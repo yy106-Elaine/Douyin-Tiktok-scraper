@@ -234,6 +234,16 @@ as a change of sample.
 Ordering is `date`, never relevance: the study samples a time window, and
 relevance ranking would silently decide which videos in that window got in.
 
+The collection window is **72 hours, run daily**, so each run re-covers the two
+days before it. This is a coverage decision, not a convenience: YouTube's
+search index lags publication, so a video posted an hour ago is often not yet
+searchable, and a strict 24-hour window would miss the newest videos
+systematically rather than at random — the exact population under study. The
+overlap costs nothing, because a video already stored is skipped without a
+details call, so the corpus holds one row per video and "collected" counts
+videos rather than runs. State the window and the run frequency together; one
+without the other does not describe the sample.
+
 One limitation YouTube does *not* escape: which party removed a video is still
 absent from the response, and the id lookup cannot separate a deletion from a
 regional block either.

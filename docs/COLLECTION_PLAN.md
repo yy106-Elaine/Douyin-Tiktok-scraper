@@ -50,7 +50,8 @@ cannot be part of a takedown finding.
 cd ~/Douyin-Tiktok-scraper/backend
 
 # 1. YouTube: search and store. No scrolling needed.
-./.venv/bin/python -m app.youtube collect --keywords keywords.txt --hours 24
+#    72 hours, not 24, and run daily -- see "Why the window overlaps".
+./.venv/bin/python -m app.youtube collect --keywords keywords.txt --hours 72
 
 # 2. Turn the copied short links into video IDs and @handles.
 ./.venv/bin/python -m app.resolve
@@ -101,6 +102,26 @@ code. These change which results the API returns, so they are part of the
 sampling method: they are stored on every row, and changing one mid-study means
 the rows before and after are different samples. Override for one run with
 `--language` / `--region`; pass `--language ""` to search without one.
+
+## Why the window overlaps
+
+The window is 72 hours and the run is daily, so each day re-covers the two days
+before it. Three reasons, in order of how much they matter:
+
+1. **YouTube's search index lags publication.** A video posted an hour ago is
+   often not searchable yet. A strict 24-hour window run once a day therefore
+   misses videos systematically, not randomly — and the ones it misses are the
+   newest, which is exactly the population a takedown study is about.
+2. **A missed day stops costing data.** Travel, a dead laptop, a forgotten run:
+   with an overlap the next run still picks those videos up.
+3. **It is free.** A video already stored is skipped on sight, and no
+   `videos.list` call is made for it, so the second and third days of the
+   window cost one `search` call each and nothing else. "Videos collected"
+   stays a count of videos rather than of runs.
+
+Widening it further has diminishing returns: YouTube caps a search at roughly
+500 results however many pages are requested, and `--max` caps it earlier
+still.
 
 ## Quota and rate limits
 
