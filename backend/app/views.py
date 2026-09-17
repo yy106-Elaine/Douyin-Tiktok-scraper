@@ -55,9 +55,10 @@ class VideoRow:
 
     posted_at: datetime | None
     posted_display: str | None
-    #: Where `posted_display` came from: "video id" (exact, decoded from
-    #: the id), "screen" (parsed from what the interface rendered), or
-    #: "as shown" (the rendered string, unparsed). Empty when unknown.
+    #: Where `posted_display` came from: "video id" (exact, decoded
+    #: from the id), "api" (exact, the platform said so), "screen"
+    #: (parsed from what the interface rendered), or "as shown" (the
+    #: rendered string, unparsed). Empty when unknown.
     posted_source: str
 
     video_id: str | None
@@ -78,19 +79,28 @@ class VideoRow:
 
 
 def publication(
-    video_id: object, posted_on: datetime | None, posted_at_raw: str | None
+    video_id: object,
+    posted_on: datetime | None,
+    posted_at_raw: str | None,
+    platform: str | None = None,
 ) -> tuple[datetime | None, str | None, str]:
     """Best available publication time, with its provenance.
 
     The id decodes to the second and needs nothing from the interface,
     so it wins wherever it exists. What the screen showed is the
     fallback, and the unparsed string is better than an empty column.
+
+    `platform` only changes the label: YouTube's `posted_on` came from
+    its API and is exact, so calling it "from screen" would understate
+    it as badly as calling a rendered "11h ago" exact would overstate
+    the others.
     """
     derived = posted_at_from_video_id(video_id)
     if derived is not None:
         return derived, derived.strftime("%Y-%m-%d %H:%M"), "video id"
     if posted_on is not None:
-        return posted_on, posted_on.strftime("%Y-%m-%d %H:%M"), "screen"
+        source = "api" if (platform or "").startswith("youtube") else "screen"
+        return posted_on, posted_on.strftime("%Y-%m-%d %H:%M"), source
     if posted_at_raw:
         return None, posted_at_raw, "as shown"
     return None, None, ""
@@ -110,7 +120,7 @@ def _post_state(post, method: str | None) -> str:
 
 def _row_from_post(post, platform: str, method: str | None = None) -> VideoRow:
     posted_at, display, source = publication(
-        post.video_id, post.posted_on, post.posted_at_raw
+        post.video_id, post.posted_on, post.posted_at_raw, platform
     )
     return VideoRow(
         when=post.captured_at,

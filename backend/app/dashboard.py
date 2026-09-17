@@ -6,6 +6,7 @@ whether data is actually arriving.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -234,7 +235,40 @@ def _video_rows(rows) -> str:
     return "".join(out)
 
 
-#: Shared by both pages, so they cannot drift apart visually.
+
+_VIEWS = (
+    ("Capture", "/dashboard"),
+    ("Takedowns", "/dashboard/takedowns"),
+    ("Overview", "/dashboard/overview"),
+)
+
+
+def _nav(view: str, platform: str | None, key: str) -> str:
+    """Two rows: which view, then which platform.
+
+    Separate rows because they are separate questions, and collapsing
+    them into one strip of nine links made both harder to find.
+    """
+    views = "".join(
+        f'<a class="tab{" on" if name == view else ""}" '
+        f'href="{path}?{"platform=" + escape(platform) + "&" if platform else ""}'
+        f'key={escape(key)}">{name}</a>'
+        for name, path in _VIEWS
+    )
+    rows = f'<div class="tabs">{views}</div>'
+    if platform is None:
+        return rows
+
+    path = dict((name, path) for name, path in _VIEWS)[view]
+    platforms = "".join(
+        f'<a class="tab{" on" if name == platform else ""}" '
+        f'href="{path}?platform={name}&key={escape(key)}">{escape(name)}</a>'
+        for name in sorted(PLATFORM_TABLES)
+    )
+    return rows + f'<div class="tabs">{platforms}</div>'
+
+
+#: Shared by every page, so they cannot drift apart visually.
 _SHARED_CSS = """  :root {
     color-scheme: light;
     --surface: #fcfcfb; --panel: #ffffff; --line: #e5e4e0;
@@ -331,11 +365,7 @@ _SHARED_CSS = """  :root {
 
 def _page(**ctx) -> str:
     platform = ctx["platform"]
-    tabs = "".join(
-        f'<a class="tab{" on" if name == platform else ""}" '
-        f'href="/dashboard?platform={name}&key={escape(ctx["key"])}">{escape(name)}</a>'
-        for name in sorted(PLATFORM_TABLES)
-    )
+    tabs = _nav("Capture", platform, ctx["key"])
 
     tiles = "".join(
         [
@@ -406,8 +436,6 @@ are approximate wherever flagged.</p>
 </table></div>
 
 <footer>
-<a href="/dashboard/takedowns?platform={escape(platform)}&key={escape(ctx["key"])}">Takedown
-findings &rarr;</a><br>
 Showing the most recent {_ROW_LIMIT} rows.
 Full data: <a href="/api/export/posts.csv?platform={escape(platform)}&key={escape(ctx["key"])}">download CSV</a>.
 </footer>
@@ -648,11 +676,7 @@ def _findings_page(**ctx) -> str:
     summary = ctx["summary"]
     rate = summary.rate
 
-    tabs = "".join(
-        f'<a class="tab{" on" if name == platform else ""}" '
-        f'href="/dashboard/takedowns?platform={name}&key={escape(ctx["key"])}">{escape(name)}</a>'
-        for name in sorted(PLATFORM_TABLES)
-    )
+    tabs = _nav("Takedowns", platform, ctx["key"])
 
     tiles = "".join(
         [
@@ -735,8 +759,221 @@ observed &mdash; report which fraction.</li>
 </ul>
 </div>
 
-<footer>
-<a href="/dashboard?platform={escape(platform)}&key={escape(ctx["key"])}">&larr; Capture
-dashboard</a>
-</footer>
+<footer>Findings are computed from the stored checks, never from a saved
+verdict &mdash; correcting the classification re-reads the whole history.</footer>
+</div></body></html>"""
+
+
+# --------------------------------------------------------------------
+# Overview: all three platforms at once
+# --------------------------------------------------------------------
+
+#: State colours are the reserved status steps, and red-vs-green is the
+#: one pair colour-blind readers cannot separate. So every segment also
+#: carries a glyph, a direct count and a row in the table below --
+#: colour never carries the meaning on its own.
+_STATES = (
+    ("alive", "still up", "good", "●"),
+    ("gone", "disappeared", "crit", "✕"),
+    ("unmeasured", "not measured", "mute", "○"),
+)
+
+
+@dataclass
+class PlatformRow:
+    """One platform's totals, for the overview."""
+
+    platform: str
+    captured: int = 0
+    with_id: int = 0
+    alive: int = 0
+    gone: int = 0
+    unmeasured: int = 0
+
+    @property
+    def tracked(self) -> int:
+        return self.alive + self.gone + self.unmeasured
+
+    @property
+    def measured(self) -> int:
+        return self.alive + self.gone
+
+    @property
+    def rate(self) -> float | None:
+        return None if not self.measured else self.gone / self.measured
+
+
+def _platform_rows(session: Session) -> list[PlatformRow]:
+    rows = []
+    for platform in sorted(PLATFORM_TABLES):
+        model, _ = PLATFORM_TABLES[platform]
+        row = PlatformRow(platform=platform)
+        row.captured = session.scalar(select(func.count()).select_from(model)) or 0
+        row.with_id = (
+            session.scalar(
+                select(func.count()).select_from(model).where(model.video_id.isnot(None))
+            )
+            or 0
+        )
+        summary = summarise(findings(session, platform))
+        row.alive, row.gone = summary.alive, summary.gone
+        row.unmeasured = summary.unmeasured + summary.doubtful
+        rows.append(row)
+    return rows
+
+
+def _bar(row: PlatformRow) -> str:
+    """A stacked bar of one platform's check outcomes.
+
+    Flex rather than SVG so it reflows with the page, with a 2px gap
+    between segments so adjacent fills never touch. The title
+    attributes give a hover readout without any JavaScript.
+    """
+    if not row.tracked:
+        return '<div class="bar empty-bar" title="nothing re-checked yet"></div>'
+
+    segments = []
+    for key, label, tone, glyph in _STATES:
+        count = getattr(row, key)
+        if not count:
+            continue
+        share = round(100 * count / row.tracked)
+        # Below ~9% a number inside the segment collides with its edge.
+        inner = f"{glyph} {count}" if share >= 9 else ""
+        segments.append(
+            f'<span class="seg {tone}" style="flex:{count}" '
+            f'title="{escape(label)}: {count} of {row.tracked} ({share}%)">'
+            f"{escape(inner)}</span>"
+        )
+    return f'<div class="bar">{"".join(segments)}</div>'
+
+
+def _corpus_share(count: int, total: int) -> str:
+    return "—" if not total else f"{round(100 * count / total)}%"
+
+
+def _overview_rows(rows: list[PlatformRow], captured_total: int) -> str:
+    out = []
+    for row in rows:
+        out.append(
+            "<tr>"
+            f"<td><strong>{escape(row.platform)}</strong></td>"
+            f'<td class="n">{row.captured:,}</td>'
+            f'<td class="n">{escape(_corpus_share(row.captured, captured_total))}</td>'
+            f'<td class="n">{row.with_id:,}</td>'
+            f'<td class="n">{row.alive:,}</td>'
+            f'<td class="n">{row.gone:,}</td>'
+            f'<td class="n">{row.unmeasured:,}</td>'
+            f'<td class="n">{"—" if row.rate is None else f"{round(100 * row.rate)}%"}</td>'
+            "</tr>"
+        )
+    return "".join(out)
+
+
+@router.get("/dashboard/overview", response_class=HTMLResponse)
+def overview(
+    key: str = Depends(require_admin_view),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    rows = _platform_rows(session)
+    return HTMLResponse(_overview_page(key=key, rows=rows))
+
+
+def _overview_page(**ctx) -> str:
+    rows: list[PlatformRow] = ctx["rows"]
+    captured = sum(row.captured for row in rows)
+    with_id = sum(row.with_id for row in rows)
+    gone = sum(row.gone for row in rows)
+    alive = sum(row.alive for row in rows)
+    unmeasured = sum(row.unmeasured for row in rows)
+    measured = gone + alive
+
+    tiles = "".join(
+        [
+            _tile("Videos collected", _compact(captured), "all platforms"),
+            _tile(
+                "Re-checkable",
+                _pct(with_id, captured),
+                f"{with_id:,} have a video ID",
+            ),
+            _tile("Disappeared", _compact(gone), "at the latest check"),
+            _tile("Still up", _compact(alive), "at the latest check"),
+            _tile(
+                "Takedown rate",
+                "—" if not measured else f"{round(100 * gone / measured)}%",
+                f"{gone:,} of {measured:,} measured",
+            ),
+            _tile("Not measured", _compact(unmeasured), "excluded from the rate"),
+        ]
+    )
+
+    legend = "".join(
+        f'<span class="key"><span class="dot {tone}"></span>{escape(glyph)} {escape(label)}</span>'
+        for _, label, tone, glyph in _STATES
+    )
+
+    bars = "".join(
+        f'<div class="barrow"><div class="barlabel">{escape(row.platform)}'
+        f'<span class="muted"> {row.tracked:,} tracked</span></div>{_bar(row)}</div>'
+        for row in rows
+    )
+
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview</title>
+<style>{_SHARED_CSS}
+  .barrow {{ margin-bottom: 14px; }}
+  .barlabel {{ font-size: 13px; margin-bottom: 5px; }}
+  .bar {{ display: flex; gap: 2px; height: 26px; }}
+  .bar .seg {{
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #fff; overflow: hidden; white-space: nowrap;
+  }}
+  .bar .seg:first-child {{ border-radius: 4px 0 0 4px; }}
+  .bar .seg:last-child {{ border-radius: 0 4px 4px 0; }}
+  .bar .seg:only-child {{ border-radius: 4px; }}
+  .seg.good {{ background: var(--good); }}
+  .seg.crit {{ background: var(--crit); }}
+  .seg.mute {{ background: var(--ink-3); }}
+  .empty-bar {{
+    background: var(--surface); border: 1px dashed var(--line); border-radius: 4px;
+  }}
+  .keys {{ display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 18px; }}
+  .key {{ font-size: 12px; color: var(--ink-2); }}
+  .dot {{
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 6px; vertical-align: -1px;
+  }}
+  .dot.good {{ background: var(--good); }}
+  .dot.crit {{ background: var(--crit); }}
+  .dot.mute {{ background: var(--ink-3); }}
+</style>
+</head><body><div class="wrap">
+
+<h1>Overview</h1>
+<p class="sub">Every platform, one page. Rates count only videos actually
+measured; anything unreachable is left out rather than assumed still up.</p>
+
+{_nav("Overview", None, ctx["key"])}
+<div class="tiles">{tiles}</div>
+
+<h2>Check outcomes by platform</h2>
+<div class="keys">{legend}</div>
+{bars}
+
+<h2>The same numbers</h2>
+<div class="panel"><table class="narrow">
+<thead><tr>
+<th>Platform</th><th class="n">Collected</th><th class="n">Share</th>
+<th class="n">With ID</th><th class="n">Still up</th><th class="n">Gone</th>
+<th class="n">Not measured</th><th class="n">Rate</th>
+</tr></thead>
+<tbody>{_overview_rows(rows, captured)}</tbody>
+</table></div>
+
+<footer>Only videos with an ID can be re-checked, so "tracked" is a subset of
+"collected". YouTube is collected through its API, so every one of its videos
+has an ID; Douyin and TikTok need a copied link.</footer>
 </div></body></html>"""

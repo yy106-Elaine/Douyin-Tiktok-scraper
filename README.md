@@ -21,10 +21,12 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend, dashboard, install page | Complete, 116 tests passing |
+| Backend, dashboards, install page | Complete, 138 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
+| YouTube via the Data API | Complete; needs `YOUTUBE_API_KEY` |
+| Takedown re-checker and findings | Complete; marker lists unverified for Douyin/TikTok |
 
 No Douyin selector in this repository has been confirmed against a device.
 Dump the tree and correct them before collecting anything:
@@ -93,7 +95,16 @@ cd backend
 # Revisit collected links and record whether each video is still there.
 ./.venv/bin/python -m app.recheck                  # everything due
 ./.venv/bin/python -m app.recheck --all --limit 50 # ignore the cadence
+
+# YouTube needs no phone: the API searches and stores in one step.
+./.venv/bin/python -m app.youtube collect --keywords keywords.txt --hours 24
 ```
+
+`app.youtube` needs `YOUTUBE_API_KEY` in `backend/.env` — create one in the
+Google Cloud console with the YouTube Data API v3 enabled. Every run prints
+what it spent against the 10,000-unit daily quota.
+
+The daily routine for all three platforms is `docs/COLLECTION_PLAN.md`.
 
 `recheck` stores what the server returned, not a verdict — see
 `docs/METHODOLOGY.md` §8 for why, and for what it cannot distinguish

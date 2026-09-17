@@ -217,7 +217,9 @@ def export_posts(
     writer = csv.writer(buffer)
     writer.writerow(_EXPORT_COLUMNS + _DERIVED_COLUMNS)
     for post in session.scalars(select(model).order_by(model.captured_at)):
-        exact, _, source = publication(post.video_id, post.posted_on, post.posted_at_raw)
+        exact, _, source = publication(
+            post.video_id, post.posted_on, post.posted_at_raw, family
+        )
         writer.writerow(
             [getattr(post, column) for column in _EXPORT_COLUMNS]
             + [exact.isoformat() if exact else "", source]

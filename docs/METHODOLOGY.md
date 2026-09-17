@@ -200,6 +200,39 @@ which videos to ask about and brackets when it happened.
 is a subset of what was observed. Report that fraction — the capture dashboard
 shows it as "With a video ID".
 
+### 9. YouTube is a different instrument, and must be reported as one
+
+YouTube is read through its Data API, not off a screen. That removes most of
+this document's limitations for that platform and it would be misleading to
+present the three as one method:
+
+| | YouTube | Douyin / TikTok |
+|---|---|---|
+| Video id | always present | only when a link was copied |
+| Publication time | the API's own `publishedAt` | decoded from the id (§2b) |
+| Counts | exact integers | abbreviated, approximate (§1) |
+| Author identity | channel id always | `@handle` only after resolving |
+| Re-check | id lookup; a missing id is a missing video | page wording (§8) |
+| Sampling | every result the API returns for the keyword and window | whatever one person had time to copy |
+
+`counts_approximate` is false for YouTube rows and the publication source is
+labelled `api` rather than `screen`, so the difference is visible per row
+rather than something a reader has to remember.
+
+The sampling difference is the one that matters most. The YouTube subset is
+close to a census of its keyword results; the phone subsets are convenience
+samples of what was copied during a collection session. **Do not pool them into
+a single takedown rate without saying so.** `regionCode` and
+`relevanceLanguage` are recorded when used, because they change which results
+the API returns.
+
+Ordering is `date`, never relevance: the study samples a time window, and
+relevance ranking would silently decide which videos in that window got in.
+
+One limitation YouTube does *not* escape: which party removed a video is still
+absent from the response, and the id lookup cannot separate a deletion from a
+regional block either.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two

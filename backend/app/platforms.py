@@ -15,12 +15,18 @@ PACKAGE_TO_PLATFORM: dict[str, str] = {
     "com.tiktok.lite.go": "tiktok_lite",
 }
 
+#: Platforms collected without a phone. YouTube is read through its own
+#: Data API, so no Android package maps to it -- but everything
+#: downstream (tables, dashboards, re-checking, export) is the same.
+API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
+
 # Platforms whose structured rows live in the same table.
 PLATFORM_FAMILY: dict[str, str] = {
     "douyin": "douyin",
     "douyin_lite": "douyin",
     "tiktok": "tiktok",
     "tiktok_lite": "tiktok",
+    "youtube": "youtube",
 }
 
 

@@ -1,0 +1,5 @@
+# One keyword per line. Lines starting with # are ignored.
+# Drives `python -m app.youtube collect --keywords keywords.txt`,
+# and is the same list to search by hand on TikTok and Douyin, so the
+# three platforms stay comparable.
+拉拉

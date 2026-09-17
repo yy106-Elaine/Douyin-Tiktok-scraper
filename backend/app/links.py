@@ -108,6 +108,8 @@ def extract(text: str) -> ExtractedLink:
 
 def canonical_url_for(platform: str, video_id: str, handle: str | None = None) -> str:
     """Build the public web URL for a known video id."""
+    if platform.startswith("youtube"):
+        return f"https://www.youtube.com/watch?v={video_id}"
     if platform.startswith("tiktok"):
         return f"https://www.tiktok.com/@{handle or 'i'}/video/{video_id}"
     return f"https://www.douyin.com/video/{video_id}"

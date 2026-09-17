@@ -38,6 +38,8 @@ DATABASE_URL=sqlite:///./scraper.db
 ADMIN_API_KEY=${ADMIN_KEY}
 APPROVED_PARTICIPANTS_CSV=./approved_participants.csv
 PAIRING_WINDOW_SECONDS=900
+# Only app.youtube needs this; everything else runs without it.
+YOUTUBE_API_KEY=
 ENVFILE
 fi
 

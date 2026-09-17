@@ -398,6 +398,48 @@ def author_url(platform: str, handle: str) -> str:
     return f"https://www.douyin.com/user/{handle}"
 
 
+def check_youtube(
+    targets: list[Target], caller: "object | None" = None
+) -> dict[str, FetchResult]:
+    """Re-check YouTube by id lookup rather than by reading a page.
+
+    The API answers with the videos that still exist, so the ones
+    missing from the answer are the ones that no longer resolve. That
+    removes the whole class of error the HTML path has to guard
+    against: there is no wording to keep up to date, and no removed
+    video answering 200. A failed call raises, so it can never look
+    like a removal.
+
+    The result is expressed as FetchResult so one code path records and
+    classifies every platform.
+    """
+    from . import youtube
+
+    kwargs = {"caller": caller} if caller is not None else {}
+    ids = [target.video_id for target in targets]
+    alive, statuses = youtube.existing_ids(ids, **kwargs)  # type: ignore[arg-type]
+
+    out: dict[str, FetchResult] = {}
+    for video_id in ids:
+        if video_id not in alive:
+            # The id resolves to nothing. Phrased as the API's own
+            # answer, not as a page that said so.
+            out[video_id] = FetchResult(
+                status=404,
+                final_url=youtube.watch_url(video_id),
+                body="youtube api: id not returned",
+            )
+            continue
+        status = statuses.get(video_id, "unknown")
+        body = f"youtube api: privacyStatus={status}"
+        if status in ("private", "privacyStatusUnspecified"):
+            body += " this account is private"
+        out[video_id] = FetchResult(
+            status=200, final_url=youtube.watch_url(video_id), body=body
+        )
+    return out
+
+
 def run_round(
     session: Session,
     fetcher: Fetcher = fetch,
@@ -406,6 +448,7 @@ def run_round(
     pause_seconds: float = 2.0,
     targets: Iterable[Target] | None = None,
     ignore_cadence: bool = False,
+    youtube_checker: Callable[[list[Target]], dict[str, FetchResult]] | None = check_youtube,
 ) -> RecheckReport:
     """Check everything due once, recording each response.
 
@@ -423,18 +466,35 @@ def run_round(
     if limit is not None:
         due = due[:limit]
 
-    for index, target in enumerate(due):
-        if index and pause_seconds:
-            time.sleep(pause_seconds)
+    # YouTube is looked up fifty ids at a time, so it is resolved in
+    # one pass before the per-target loop rather than one request per
+    # video like the platforms that have to be read as pages.
+    api_results: dict[str, FetchResult] = {}
+    api_targets = [target for target in due if target.platform == "youtube"]
+    if api_targets and youtube_checker is not None:
+        api_results = youtube_checker(api_targets)
 
-        check = _record(session, target, "video", target.url, fetcher(target.url), moment)
+    for index, target in enumerate(due):
+        from_api = api_results.get(target.video_id) if target.platform == "youtube" else None
+        if from_api is None:
+            if index and pause_seconds:
+                time.sleep(pause_seconds)
+            result = fetcher(target.url)
+        else:
+            result = from_api
+
+        check = _record(session, target, "video", target.url, result, moment)
         verdict = classify(check)
         report.record(verdict)
 
         # Only then, and only when it would distinguish something: if
         # the video is missing, whether the account is still there is
         # what separates one removal from a whole account disappearing.
-        if verdict in (GONE, WITHHELD, UNKNOWN) and target.author_handle:
+        if (
+            verdict in (GONE, WITHHELD, UNKNOWN)
+            and target.author_handle
+            and target.platform != "youtube"
+        ):
             if pause_seconds:
                 time.sleep(pause_seconds)
             url = author_url(target.platform, target.author_handle)

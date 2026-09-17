@@ -122,6 +122,20 @@ class TikTokPost(_PostMixin, Base):
     __tablename__ = "tiktok_posts"
 
 
+class YouTubePost(_PostMixin, Base):
+    """Same columns, different provenance.
+
+    YouTube is read through its Data API rather than off a screen, so
+    every field here is exact: the id is given, `posted_on` is the
+    API's own publishedAt, and the counts are integers rather than
+    rendered abbreviations. `counts_approximate` is therefore false for
+    these rows, and that difference between platforms belongs in a
+    write-up -- see docs/METHODOLOGY.md.
+    """
+
+    __tablename__ = "youtube_posts"
+
+
 class SharedLink(Base):
     """A link the participant actively shared into the app.
 

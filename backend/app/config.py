@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     approved_participants_csv: str = "./approved_participants.csv"
     pairing_window_seconds: int = 900
 
+    #: YouTube Data API v3 key. Only `app.youtube` needs it, so the
+    #: rest of the system runs without one.
+    youtube_api_key: str = ""
+
     #: Where the install page sends a phone to fetch the APK. CI keeps
     #: this asset name stable, so the URL does not change per build.
     apk_download_url: str = (
