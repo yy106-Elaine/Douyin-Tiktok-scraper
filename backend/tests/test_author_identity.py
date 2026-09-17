@@ -55,10 +55,16 @@ def test_a_display_name_alone_still_stores(client, api_key):
 
 
 def test_both_appear_in_the_dashboard(client, api_key):
+    # An on-topic caption, because the capture view lists rows that are
+    # in scope -- see app/relevance.py.
     _ingest(
         client,
         api_key,
-        {"author_handle": "leinliv", "author_name": "lei n liv", "caption": "hi there"},
+        {
+            "author_handle": "leinliv",
+            "author_name": "lei n liv",
+            "caption": "我们是拉拉，在一起三年了",
+        },
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
     assert "leinliv" in body

@@ -25,6 +25,13 @@ from app.relevance import HIDDEN, classify
         ("100%純陀港女，精通穴位按摩 速預約: t.me/BabyM666", "advertising"),
         ("AI虚拟女同志 AI生成美女", "ai generated"),
         ("Lesbian couple reacts to their wedding video", "not in chinese"),
+        ("ENTRE DOS HOMBRES GAY O DOS MUJERES", "not in chinese"),
+        ("紫微斗數 課堂節錄 例子盤提供 女同志", "divination"),
+        ("八字命理入门 女同志学员案例", "divination"),
+        ("西芹百合炒虾仁做法", "no topic term"),
+        ("百合莲子银耳汤 润肺止咳", "no topic term"),
+        ("男同志情侣日常vlog", "no topic term"),
+        ("同性恋婚姻合法化进程", "no topic term"),
         ("今天天气不错，出去走走", "no topic term"),
     ],
 )
@@ -40,6 +47,8 @@ def test_known_collisions_are_named(text, reason):
         "百合短剧《错位红妆》#百合 #治愈女同#女女恋",
         "女同志社群活动记录",
         "蕾丝边的自我认同",
+        "【百合】失业遇失忆富家女 | 治愈女同 GL",
+        "同性恋女孩的出柜故事",
     ],
 )
 def test_community_content_is_in_scope(text):
@@ -67,17 +76,25 @@ def test_advertising_outranks_a_topic_term():
     assert classify("女同性恋 上门服务 加微信 xxx") == "advertising"
 
 
-def test_only_positive_evidence_hides_a_row():
-    """Absence of a keyword is not evidence the video is off topic.
+def test_the_requirement_is_inclusion_not_absence_of_noise():
+    """Chinese-language AND on topic. Anything else is out of scope.
 
-    Phone captures often render a truncated caption or none at all,
-    and English-hashtag posts are the community content under study.
+    Every reason hides the row, so the burden is on the text to
+    qualify rather than on a rule list to catch each way it can fail.
+    Hidden is not deleted: `?show=all` lists them, and app/views.py
+    keeps hand-collected phone rows visible whatever the text says.
     """
-    assert "no topic term" not in HIDDEN
-    assert "not in chinese" not in HIDDEN
-    assert "no text" not in HIDDEN
-    assert "advertising" in HIDDEN
-    assert "unrelated product" in HIDDEN
+    for reason in (
+        "advertising",
+        "ai generated",
+        "divination",
+        "unrelated product",
+        "not about the topic",
+        "not in chinese",
+        "no topic term",
+        "no text",
+    ):
+        assert reason in HIDDEN, reason
 
 
 def test_empty_text_is_recorded_not_guessed():
@@ -168,3 +185,80 @@ def remark_reason(session):
     from app.models import YouTubePost
 
     return session.scalars(select(YouTubePost)).one().relevance
+
+
+class TestTheCarveOut:
+    """Hand-collected phone rows stay visible whatever the text says."""
+
+    def _capture(self, client, api_key, caption):
+        return client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.zhiliaoapp.musically",
+                        "fingerprint": "tt::1",
+                        "captured_at": "2026-09-14T12:00:00Z",
+                        "payload": {"author_name": "someone", "caption": caption},
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+
+    def test_a_truncated_caption_hides_a_phone_row_with_no_link(self, client, api_key):
+        self._capture(client, api_key, "re uploadd ...more")
+        body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+        assert "re uploadd" not in body
+
+    def test_but_not_once_its_link_has_been_copied(self, client, api_key):
+        """The rows that cost the most to collect are never hidden.
+
+        A caption truncated to "...more" is no evidence about the
+        video, and a person chose this one deliberately.
+        """
+        self._capture(client, api_key, "re uploadd ...more")
+        client.post(
+            "/api/links/shared",
+            json={
+                "raw_text": "https://www.tiktok.com/@someuser/video/7301234567890123456",
+                "shared_at": "2026-09-14T12:00:30Z",
+            },
+            headers={"X-API-Key": api_key},
+        )
+        body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+        assert "re uploadd" in body
+
+    def test_youtube_gets_no_such_exemption(self, client):
+        """Every YouTube row has an id; the API chose them, not a person."""
+        from app import youtube
+        from app.db import SessionLocal
+
+        def caller(endpoint, params):
+            if endpoint == "search":
+                return {"items": [{"id": {"videoId": "v1"}}]}
+            return {
+                "items": [
+                    {
+                        "id": "v1",
+                        "snippet": {
+                            "channelId": "UC1",
+                            "channelTitle": "c",
+                            "title": "货拉拉搬家报价",
+                            "description": "",
+                            "publishedAt": "2026-09-16T08:30:00Z",
+                        },
+                        "statistics": {},
+                        "status": {"privacyStatus": "public"},
+                    }
+                ]
+            }
+
+        with SessionLocal() as session:
+            youtube.collect(session, ["拉拉"], caller=caller)
+        body = client.get("/dashboard?key=test-admin-key&platform=youtube").text
+        assert "货拉拉" not in body
+        assert "货拉拉" in client.get(
+            "/dashboard?key=test-admin-key&platform=youtube&show=all"
+        ).text

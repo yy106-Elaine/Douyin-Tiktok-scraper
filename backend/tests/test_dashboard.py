@@ -6,7 +6,8 @@ _CAPTURE = {
     "captured_at": "2026-09-14T12:00:00Z",
     "payload": {
         "author_handle": "someuser",
-        "caption": "hello world",
+        # On topic, so the capture view lists it by default.
+        "caption": "拉拉情侣的一天",
         "like_raw": "74.9K",
         "comment_raw": "1,234",
         "feed": "For You",
@@ -88,12 +89,20 @@ def test_an_unresolved_short_link_is_flagged(client, api_key):
 
 
 def test_captions_are_escaped_not_injected(client, api_key):
+    """Escaping has to hold on the off-topic rows too.
+
+    A caption of pure markup has no topic term, so it is only listed
+    under show=all -- which is exactly where an injection would be
+    rendered if escaping were skipped there.
+    """
     _capture(
         client,
         api_key,
         {"payload": {**_CAPTURE["payload"], "caption": "<script>alert(1)</script>"}},
     )
-    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    body = client.get(
+        "/dashboard?key=test-admin-key&platform=tiktok&show=all"
+    ).text
     assert "<script>alert(1)</script>" not in body
     assert "&lt;script&gt;" in body
 
@@ -127,7 +136,7 @@ def test_one_table_holds_both_halves_of_an_observation(client, api_key):
     assert body.count("7301234567890123456") == 2  # the href and its text
     assert "Shared links" not in body
     # The caption proves it is the post's row that carries the id.
-    assert "hello world" in body
+    assert "拉拉情侣的一天" in body
 
 
 def test_an_unpaired_link_still_gets_a_row(client, api_key):

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from .links import extract
 from .models import SharedLink
+from .platforms import API_PLATFORMS
 from .relevance import HIDDEN
 from .parsers import PLATFORM_TABLES
 from .snowflake import posted_at_from_video_id
@@ -203,7 +204,15 @@ def video_rows(
 
     statement = select(model).order_by(model.captured_at.desc())
     if not include_excluded:
-        statement = statement.where(model.relevance.notin_(HIDDEN) | model.relevance.is_(None))
+        in_scope = model.relevance.notin_(HIDDEN) | model.relevance.is_(None)
+        if platform not in API_PLATFORMS:
+            # A phone row with an id is one whose link a person copied
+            # by hand, one video at a time. Its caption is often
+            # truncated to "...more" or absent, so the text is no
+            # evidence about the video -- and these are the rows that
+            # cost the most to collect.
+            in_scope = in_scope | model.video_id.isnot(None)
+        statement = statement.where(in_scope)
     rows = [
         _row_from_post(post, platform, methods.get(post.capture_event_id))
         for post in session.scalars(statement.limit(limit))

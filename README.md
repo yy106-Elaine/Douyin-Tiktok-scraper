@@ -21,7 +21,7 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend, dashboards, install page | Complete, 169 tests passing |
+| Backend, dashboards, install page | Complete, 181 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
@@ -101,6 +101,7 @@ cd backend
 
 # Re-mark which rows are on topic, after changing keywords or rules.
 ./.venv/bin/python -m app.relevance
+./.venv/bin/python -m app.relevance --test "百合短剧 治愈女同"   # check a rule
 ```
 
 `app.youtube` needs `YOUTUBE_API_KEY` in `backend/.env` — create one in the
