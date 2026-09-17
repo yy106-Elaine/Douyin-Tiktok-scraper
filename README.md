@@ -21,7 +21,7 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend + dashboard | Complete, 35 tests passing |
+| Backend, dashboard, install page | Complete, 39 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
@@ -67,6 +67,7 @@ Defaults to SQLite. For MySQL, set `DATABASE_URL` in `.env`.
 | POST | `/api/captures/batch` | participant key | Upload ≤200 observations |
 | POST | `/api/links/shared` | participant key | Submit a shared link, pair it to a post |
 | GET | `/api/export/posts.csv?platform=douyin` | admin key | Export structured rows |
+| GET | `/` | none | Setup page for a phone: APK download and this server's address |
 | GET | `/dashboard?platform=douyin` | admin key | Web view of what has been captured |
 
 The dashboard also accepts the admin key as `?key=...`, since a browser cannot
@@ -81,8 +82,12 @@ curl -H "X-API-Key: $ADMIN_API_KEY" \
 ## Getting the app onto a phone
 
 **You do not need Android Studio.** Every push rebuilds the APK in CI and
-attaches it to the repository's **Latest debug APK** release — open that page
-in the phone's browser and download it directly.
+attaches it to the repository's **Latest debug APK** release as
+`capture-latest.apk`.
+
+Easiest route: with the backend running, open its address in the phone's
+browser. The page served there offers the APK and shows the server address to
+register with.
 
 To build locally instead (requires the Android SDK; `minSdk` 26):
 

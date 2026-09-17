@@ -10,5 +10,12 @@ class Settings(BaseSettings):
     approved_participants_csv: str = "./approved_participants.csv"
     pairing_window_seconds: int = 900
 
+    #: Where the install page sends a phone to fetch the APK. CI keeps
+    #: this asset name stable, so the URL does not change per build.
+    apk_download_url: str = (
+        "https://github.com/yy106-Elaine/Douyin-Tiktok-scraper/releases/"
+        "download/apk-latest/capture-latest.apk"
+    )
+
 
 settings = Settings()

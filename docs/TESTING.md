@@ -56,12 +56,19 @@ Mac joins is the quickest workaround.
 
 ## 3. Get the APK onto the phone
 
-On the **phone's** browser open the repository's Releases page and pick
-**Latest debug APK**, then download the `.apk`. Android will ask permission to
-install from this source; allow it for the browser.
+Open the server address itself in the **phone's** browser:
 
-The APK is rebuilt automatically on every push, so re-downloading from that
-same page is how you pick up a fix.
+```
+http://192.168.1.42:8000
+```
+
+That page has a **Download the APK** button and shows the exact server address
+to type in the next step, read back off your request so it cannot be wrong.
+Android will ask permission to install from your browser; allow it.
+
+The APK is rebuilt on every push, so re-downloading from that page later is how
+you pick up a fix. (The file also lives on the repository's Releases page as
+`capture-latest.apk`, if you would rather go there directly.)
 
 ## 4. Register the device
 

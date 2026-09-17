@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import is_admin_key
+from .config import settings
 from .db import get_session
 from .models import CaptureEvent, Participant, SharedLink
 from .parsers import PLATFORM_TABLES
@@ -338,3 +339,121 @@ Showing the most recent {_ROW_LIMIT} rows.
 Full data: <a href="/api/export/posts.csv?platform={escape(platform)}&key={escape(ctx["key"])}">download CSV</a>.
 </footer>
 </div></body></html>"""
+
+
+@router.get("/", response_class=HTMLResponse)
+def install_page(request: Request) -> HTMLResponse:
+    """Setup page for the phone.
+
+    Opening the backend's own address is the natural first thing to try
+    on a phone, so that address serves what is needed there: the APK
+    download and the server address to type into the app. The address
+    is read back off the request, so it is always exactly right rather
+    than something to copy across from a terminal.
+
+    No authentication: it exposes no collected data, only the address
+    of the host the request already reached.
+    """
+    host = request.headers.get("host", "").strip()
+    server_url = f"http://{host}" if host else ""
+
+    return HTMLResponse(
+        f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up the capture app</title>
+<style>
+  :root {{
+    color-scheme: light;
+    --surface: #fcfcfb; --panel: #ffffff; --line: #e5e4e0;
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #82817c;
+    --accent: #2a78d6; --good: #0ca30c;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root:not([data-theme="light"]) {{
+      color-scheme: dark;
+      --surface: #1a1a19; --panel: #232322; --line: #34332f;
+      --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e85;
+      --accent: #3987e5;
+    }}
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; padding-block: 28px; padding-inline: 16px;
+    background: var(--surface); color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }}
+  .wrap {{ max-width: 520px; margin: 0 auto; }}
+  h1 {{ font-size: 21px; margin: 0 0 6px; }}
+  .sub {{ color: var(--ink-2); margin: 0 0 26px; }}
+  .step {{
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }}
+  .n {{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 999px;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 600; margin-right: 8px;
+  }}
+  h2 {{ font-size: 16px; margin: 0 0 8px; display: flex; align-items: center; }}
+  p {{ margin: 0 0 10px; color: var(--ink-2); }}
+  p:last-child {{ margin-bottom: 0; }}
+  .cta {{
+    display: block; text-align: center; text-decoration: none;
+    background: var(--accent); color: #fff; font-weight: 600;
+    padding: 14px; border-radius: 10px; margin: 4px 0 2px;
+  }}
+  code {{
+    display: block; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 11px 13px; margin: 8px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px; word-break: break-all; color: var(--ink);
+  }}
+  .ok {{ color: var(--good); font-weight: 600; }}
+  footer {{ color: var(--ink-3); font-size: 13px; margin-top: 22px; }}
+  a {{ color: var(--accent); }}
+</style>
+</head><body><div class="wrap">
+
+<h1>Set up the capture app</h1>
+<p class="sub">You reached the backend, so the phone and this server can talk.
+<span class="ok">&check;</span></p>
+
+<div class="step">
+  <h2><span class="n">1</span>Install the app</h2>
+  <p>Android will ask whether to allow installing from your browser. Allow it.</p>
+  <a class="cta" href="{escape(settings.apk_download_url)}">Download the APK</a>
+  <p style="margin-top:10px">Already installed? Re-downloading from here replaces it
+  with the current build.</p>
+</div>
+
+<div class="step">
+  <h2><span class="n">2</span>Register</h2>
+  <p>Open <strong>Video Capture</strong> &rarr; <strong>Register device</strong>.
+  Enter your enrolled email, and this as the server:</p>
+  <code>{escape(server_url)}</code>
+</div>
+
+<div class="step">
+  <h2><span class="n">3</span>Turn on capture</h2>
+  <p>Tap <strong>Enable capture service</strong>, find
+  <strong>Video Capture</strong> under <em>Downloaded apps</em>, and switch it on.</p>
+  <p>It reads Douyin and TikTok only &mdash; the restriction is enforced by
+  Android, not just by the app.</p>
+</div>
+
+<div class="step">
+  <h2><span class="n">4</span>Scroll, then check</h2>
+  <p>Scroll a few videos slowly, a few seconds each. A post is recorded once it
+  has been off screen for 5&nbsp;seconds.</p>
+  <p>Open the dashboard on your laptop to watch rows arrive.</p>
+</div>
+
+<footer>
+Research tooling. Comment text and video files are never collected.
+<a href="/healthz">Server status</a>
+</footer>
+</div></body></html>"""
+    )
