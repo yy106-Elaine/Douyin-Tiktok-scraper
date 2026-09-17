@@ -4,7 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import edu.wellesley.scraper.R
 import edu.wellesley.scraper.data.Prefs
@@ -31,8 +31,15 @@ import kotlinx.coroutines.withContext
  * Reached from the floating button, so the sequence is: share, copy
  * link, tap. Nothing here touches the other app's interface; the
  * copying is a person's action and this only picks up the result.
+ *
+ * A ComponentActivity, not an AppCompatActivity: AppCompat requires a
+ * Theme.AppCompat descendant and throws on creation otherwise. With the
+ * translucent system theme this activity needs, that crash took the
+ * whole process down -- and the accessibility service and its overlay
+ * button with it, which is why the button vanished for good on the
+ * first tap. Nothing here draws a view, so AppCompat buys nothing.
  */
-class ClipboardReaderActivity : AppCompatActivity() {
+class ClipboardReaderActivity : ComponentActivity() {
 
     private var handled = false
 

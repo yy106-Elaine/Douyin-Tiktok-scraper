@@ -78,7 +78,28 @@ class CaptureAccessibilityService : AccessibilityService() {
         CaptureStats.onServiceConnected()
     }
 
+    /**
+     * Never let a read throw out of here.
+     *
+     * An exception in this callback kills the process, which takes the
+     * accessibility service and the overlay button down with it and
+     * leaves collection silently dead until someone re-enables the
+     * service. Most of the parsing below is written against interfaces
+     * that change without notice, so one bad frame must cost that frame
+     * and nothing more.
+     */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        try {
+            handleEvent(event)
+        } catch (error: Exception) {
+            CaptureStats.onSkip(
+                event?.packageName?.toString() ?: "?",
+                "error: ${error.javaClass.simpleName}: ${error.message?.take(80)}",
+            )
+        }
+    }
+
+    private fun handleEvent(event: AccessibilityEvent?) {
         val eventPackage = event?.packageName?.toString() ?: return
         if (eventPackage !in parsers.keys) return
 

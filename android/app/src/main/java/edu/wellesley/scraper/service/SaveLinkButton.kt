@@ -72,8 +72,11 @@ class SaveLinkButton(private val context: Context) {
         }
 
         button.setOnTouchListener(DragOrTap(params))
-        windows.addView(button, params)
-        view = button
+        // A failed add must not leave `view` set, or show() will think
+        // the button is up and never try again.
+        runCatching { windows.addView(button, params) }
+            .onSuccess { view = button }
+            .onFailure { view = null }
     }
 
     fun hide() {
