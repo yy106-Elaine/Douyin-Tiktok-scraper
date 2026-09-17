@@ -2,6 +2,7 @@ package edu.wellesley.scraper.parser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -131,5 +132,107 @@ class TikTokLiveFrameTest {
     fun `no video id is present anywhere in a real frame`() {
         // Measured, not assumed: 0 of 58 frames on the device.
         assertNull(IdScanner.bestId(videoNodes + browserNodes))
+    }
+
+    // ---- A second live frame: two videos plus the comment bar ----
+
+    /**
+     * Transcribed from a dump where one screen held two videos and the
+     * comment composer. Both are what went wrong: the two posts were
+     * merged into one row, and the composer's "mention" control became
+     * the author's handle.
+     */
+    private val twoVideoFrame = listOf(
+        node("long_press_layout", null, "Video"),
+        node("user_avatar", null, "Sophia Belle profile"),
+        node("ihy", null, "Follow Sophia Belle"),
+        node("fx6", null, "Like video. 92 likes"),
+        node("ehl", null, "Read or add comments. 3 comments"),
+        node("hu_", null, "Add or remove this video from Favorites."),
+        node("p2d", null, "Original sound by Sophia Belle"),
+        node("fx6", null, "Share video. 8 shares"),
+        node("title", "Sophia Belle", null),
+        node("tv_post_time", "· 11h ago", null),
+        node("desc", "We also got a hotel room this night we knew each other prior", null),
+        node("uia", "Search · wlw relationship moments", null),
+
+        node("long_press_layout", null, "Video"),
+        node("user_avatar", null, "MamaCann profile"),
+        node("ihy", null, "Follow MamaCann"),
+        node("fx6", null, "Like video. 56.4K likes"),
+        node("ehl", null, "Read or add comments. 185 comments"),
+        node("p2d", null, "Original sound by Pablo Prince"),
+        node("fx6", null, "Share video. 3,155 shares"),
+        node("title", "MamaCann", null),
+        node("tv_post_time", "· 19h ago", null),
+        node("desc", "great library of alexandria type beat #wlw #activism", null),
+
+        node("ed5", "Add comment...", null),
+        node("kgq", null, "@2131823198"),
+        node("lcn", null, "Mention someone"),
+    )
+
+    @Test
+    fun `two videos on one screen become two posts`() {
+        // They were merged: this build has no widget_container, so the
+        // whole tree was read as a single post.
+        val segments = NodeTools.segment(twoVideoFrame, parser::isPostBoundary)
+        val posts = segments.mapNotNull(parser::parse)
+
+        assertEquals(listOf("Sophia Belle", "MamaCann"), posts.map { it.authorName })
+        assertEquals(listOf("92", "56.4K"), posts.map { it.likeRaw })
+        assertEquals(listOf("11h ago", "19h ago"), posts.map { it.postedAtRaw })
+    }
+
+    @Test
+    fun `the comment bar's mention control is not the author's handle`() {
+        // It renders as "@<numeric user id>", and was stored as the
+        // handle for every row in a live session.
+        val posts = NodeTools.segment(twoVideoFrame, parser::isPostBoundary)
+            .mapNotNull(parser::parse)
+        assertTrue(posts.isNotEmpty())
+        posts.forEach { assertNull(it.authorHandle) }
+    }
+
+    @Test
+    fun `a real handle is still accepted`() {
+        // Inside the first post's own segment, where a handle would
+        // actually be rendered -- appending it to the screen would put
+        // it in the next post's segment instead.
+        val nodes = twoVideoFrame.flatMap { node ->
+            if (node.viewId == "title" && node.text == "Sophia Belle") {
+                listOf(node, node(null, "@sophiabelle", null))
+            } else {
+                listOf(node)
+            }
+        }
+
+        val posts = NodeTools.segment(nodes, parser::isPostBoundary)
+            .mapNotNull(parser::parse)
+        assertEquals("sophiabelle", posts[0].authorHandle)
+        // The second post has none of its own, and must not borrow it.
+        assertNull(posts[1].authorHandle)
+    }
+
+    @Test
+    fun `the search query on screen becomes the sampling frame`() {
+        assertEquals(
+            "search:wlw relationship moments",
+            parser.feed(twoVideoFrame),
+        )
+    }
+
+    @Test
+    fun `each post keeps its own caption`() {
+        val posts = NodeTools.segment(twoVideoFrame, parser::isPostBoundary)
+            .mapNotNull(parser::parse)
+        assertEquals(
+            "We also got a hotel room this night we knew each other prior",
+            posts[0].caption,
+        )
+        assertEquals(
+            "great library of alexandria type beat #wlw #activism",
+            posts[1].caption,
+        )
     }
 }

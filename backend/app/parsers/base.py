@@ -8,7 +8,7 @@ hooks exist for the fields that genuinely differ.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..counts import is_approximate, parse_count
@@ -26,7 +26,7 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
     row: dict[str, Any] = {
         "author_handle": _clean(payload.get("author_handle")),
         "author_name": _clean(payload.get("author_name")),
-        "posted_at_raw": _clean(payload.get("posted_at_raw")),
+        "posted_at_raw": _posted_raw(payload.get("posted_at_raw")),
         "posted_on": _posted_on(payload.get("posted_at_raw")),
         "caption": _clean(payload.get("caption")),
         "music": _clean(payload.get("music")),
@@ -53,25 +53,73 @@ _ID_SHAPED = re.compile(r"^\d{18,19}$")
 _FULL_DATE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
 
 
-def _posted_on(value: Any) -> datetime | None:
-    """Parse a publication date only when it is unambiguous.
+_RELATIVE = re.compile(
+    r"^(\d+)\s*(s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?|"
+    r"d|days?|w|weeks?|mo|months?|y|years?)\s*ago$",
+    re.IGNORECASE,
+)
 
-    The interface also renders partial dates ("5-31") and relative ones
-    ("3d ago"). Those could be resolved against the capture time, but
-    guessing a year or a day would quietly fabricate the variable a
-    takedown study measures from. They stay in `posted_at_raw` for
-    whoever wants to interpret them deliberately.
+_RELATIVE_UNITS = {
+    "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
+    "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60,
+    "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600,
+    "d": 86400, "day": 86400, "days": 86400,
+    "w": 604800, "week": 604800, "weeks": 604800,
+    "mo": 2592000, "month": 2592000, "months": 2592000,
+    "y": 31536000, "year": 31536000, "years": 31536000,
+}
+
+
+def resolve_posted_on(value: Any, reference: datetime | None = None) -> datetime | None:
+    """Parse a publication date, absolutely or relative to [reference].
+
+    A full date is taken as given. A relative one ("11h ago") is
+    resolved against the moment of capture, which is not a guess: the
+    offset and the reference are both known, so the result is accurate
+    to the granularity the interface showed. Anything coarser than the
+    unit is the interface's rounding, not this function's.
+
+    Partial dates ("5-31") are still refused. There the year is genuinely
+    missing, and inferring it would fabricate the variable a takedown
+    study measures from.
     """
     if value is None:
         return None
-    match = _FULL_DATE.match(str(value).strip().lstrip("·").strip())
-    if not match:
+    text = str(value).strip().lstrip("·").strip()
+    if not text:
         return None
-    year, month, day = (int(part) for part in match.groups())
-    try:
-        return datetime(year, month, day)
-    except ValueError:
-        return None
+
+    if match := _FULL_DATE.match(text):
+        year, month, day = (int(part) for part in match.groups())
+        try:
+            return datetime(year, month, day)
+        except ValueError:
+            return None
+
+    if match := _RELATIVE.match(text):
+        if reference is None:
+            return None
+        seconds = _RELATIVE_UNITS.get(match.group(2).lower())
+        if seconds is None:
+            return None
+        return reference - timedelta(seconds=int(match.group(1)) * seconds)
+
+    return None
+
+
+def _posted_on(value: Any) -> datetime | None:
+    """Absolute dates only; the caller resolves relative ones."""
+    return resolve_posted_on(value, reference=None)
+
+
+def _posted_raw(value: Any) -> str | None:
+    """The displayed date, without the separator bullet the UI draws.
+
+    The device strips it too, but a stored value should not depend on
+    which side got there first.
+    """
+    text = _clean(value)
+    return text.lstrip("·").strip() or None if text else None
 
 
 def _video_id(value: Any) -> str | None:

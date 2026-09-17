@@ -66,8 +66,22 @@ class TikTokParser : PostParser {
          */
         val HANDLE_ONLY = Regex("""^@([A-Za-z0-9._]{2,24})$""")
 
+        /**
+         * The comment bar's "mention someone" control is described as
+         * `@<numeric user id>`, which a live capture stored as the
+         * author's handle. A handle carries at least one letter; an
+         * all-digit token is an internal id and is not one.
+         */
+        val HAS_A_LETTER = Regex("""[A-Za-z]""")
+
         /** "Follow SierraLocklear" -- another rendering of the name. */
         val FOLLOW = Regex("""^Follow\s+(.+)$""", RegexOption.IGNORE_CASE)
+
+        /** Nodes belonging to the comment composer, not to the post. */
+        val COMMENT_BAR_IDS = listOf("ed5", "kgq", "lcn", "lk6")
+
+        /** "Search · wlw relationship moments" -- the sampling frame. */
+        val SEARCH_CONTEXT = Regex("""^Search\s*[·・]\s*(.+)$""")
 
         /**
          * The caption TextView also renders the "expand" affordance, so
@@ -99,8 +113,16 @@ class TikTokParser : PostParser {
         val AD_MARKER = Regex("""(?:paid partnership|sponsored|promoted)""", RegexOption.IGNORE_CASE)
         val AI_MARKER = Regex("""AI[- ]generated""", RegexOption.IGNORE_CASE)
 
-        /** Each post's root carries this in its view id. */
-        const val POST_CONTAINER = "widget_container"
+        /**
+         * Markers for the root of one post.
+         *
+         * A live frame held two videos, each opening with
+         * `long_press_layout`, and `widget_container` was absent
+         * entirely -- so the whole tree was read as a single post and
+         * the two videos' fields were merged into one row. Both are
+         * accepted, since builds differ.
+         */
+        val POST_CONTAINERS = arrayOf("long_press_layout", "widget_container")
 
         /** Below this length a stray label is more likely than a caption. */
         const val CAPTION_MIN_LENGTH = 30
@@ -119,8 +141,10 @@ class TikTokParser : PostParser {
         )
     }
 
-    override fun isPostBoundary(node: FlatNode): Boolean =
-        node.viewId?.contains(POST_CONTAINER) == true
+    override fun isPostBoundary(node: FlatNode): Boolean {
+        val id = node.viewId ?: return false
+        return POST_CONTAINERS.any { id.contains(it) }
+    }
 
     /**
      * Which feed tab is showing.
@@ -133,6 +157,10 @@ class TikTokParser : PostParser {
      * guessing.
      */
     override fun feed(nodes: List<FlatNode>): String? {
+        // Browsing search results shows the query on screen; that is
+        // the sampling frame, and it outranks any tab label.
+        NodeTools.firstGroup(nodes, SEARCH_CONTEXT)?.let { return "search:${it.trim()}" }
+
         val selected = nodes.firstOrNull { node ->
             node.selected && labelOf(node) != null
         }?.let(::labelOf)
@@ -185,8 +213,10 @@ class TikTokParser : PostParser {
      */
     private fun handle(nodes: List<FlatNode>): String? {
         for (node in nodes) {
+            if (node.viewId?.let { id -> COMMENT_BAR_IDS.any(id::contains) } == true) continue
             for (candidate in listOfNotNull(node.text, node.description)) {
-                HANDLE_ONLY.find(candidate.trim())?.let { return it.groupValues[1] }
+                val found = HANDLE_ONLY.find(candidate.trim())?.groupValues?.get(1)
+                if (found != null && HAS_A_LETTER.containsMatchIn(found)) return found
             }
         }
         // Some builds put the handle in the profile label instead.

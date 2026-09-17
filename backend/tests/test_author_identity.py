@@ -117,3 +117,43 @@ def test_the_migration_is_idempotent(client):
     init_db()
     columns = {column["name"] for column in inspect(engine).get_columns("tiktok_posts")}
     assert "author_name" in columns
+
+
+def test_a_relative_publication_time_is_resolved_against_the_capture(client, api_key):
+    """"11h ago" is exact once the capture time is known.
+
+    Refusing it would leave a takedown study with no publication time at
+    all for recent posts, which are exactly the ones a censorship study
+    cares about.
+    """
+    _ingest(
+        client,
+        api_key,
+        {"author_name": "Sophia Belle", "caption": "hi", "posted_at_raw": "· 11h ago"},
+    )
+
+    with SessionLocal() as session:
+        post = session.query(TikTokPost).one()
+        assert post.posted_at_raw == "11h ago"
+        assert post.posted_on is not None
+        assert (post.captured_at - post.posted_on).total_seconds() == 11 * 3600
+
+
+def test_an_absolute_date_is_taken_as_given(client, api_key):
+    _ingest(
+        client,
+        api_key,
+        {"author_name": "a", "caption": "hi", "posted_at_raw": "· 2025-05-31"},
+    )
+    with SessionLocal() as session:
+        assert session.query(TikTokPost).one().posted_on.date().isoformat() == "2025-05-31"
+
+
+def test_a_partial_date_is_still_refused(client, api_key):
+    # The year is genuinely missing; inferring it would fabricate the
+    # variable the study measures from.
+    _ingest(client, api_key, {"author_name": "a", "caption": "hi", "posted_at_raw": "5-31"})
+    with SessionLocal() as session:
+        post = session.query(TikTokPost).one()
+        assert post.posted_at_raw == "5-31"
+        assert post.posted_on is None

@@ -103,6 +103,11 @@ def ingest_batch(
 
         model, structure = PLATFORM_TABLES[family]
         row = structure(item.payload)
+        # "11h ago" is exact once the capture time is known, so the
+        # reference has to come from here rather than from the parser.
+        row["posted_on"] = base.resolve_posted_on(
+            item.payload.get("posted_at_raw"), reference=captured_at
+        )
         # An id read off the screen is already a complete answer; no
         # share, no pairing, and no interaction with the app.
         if row.get("video_id"):
