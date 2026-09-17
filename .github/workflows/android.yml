@@ -38,22 +38,36 @@ jobs:
       # Resource compilation rejects "--" inside an XML comment, and the
       # failure it produces names a row and column rather than the rule.
       # Cheaper to catch here than three minutes into a Gradle build.
-      - name: Check XML resources parse
+      # Resource compilation rejects malformed XML, "--" inside a
+      # comment, and a duplicate resource name. The last of those cost
+      # four consecutive builds -- every push in between never reached
+      # a phone -- because this check only looked at the first two.
+      - name: Check Android resources
         run: |
           python3 - <<'CHECK'
-          import pathlib, re, sys, xml.dom.minidom
+          import collections, pathlib, re, sys, xml.etree.ElementTree as ET
           bad = []
           for path in pathlib.Path("android").rglob("*.xml"):
               if "build/" in str(path):
                   continue
+              text = path.read_text(encoding="utf-8")
               try:
-                  xml.dom.minidom.parse(str(path))
-              except Exception as error:
+                  root = ET.fromstring(text)
+              except ET.ParseError as error:
                   bad.append(f"{path}: {error}")
                   continue
-              for match in re.finditer(r"<!--(.*?)-->", path.read_text(), re.S):
+              for match in re.finditer(r"<!--(.*?)-->", text, re.S):
                   if "--" in match.group(1):
                       bad.append(f"{path}: '--' inside an XML comment")
+              if root.tag == "resources":
+                  names = [
+                      (child.tag, child.get("name"))
+                      for child in root
+                      if child.get("name")
+                  ]
+                  for key, count in collections.Counter(names).items():
+                      if count > 1:
+                          bad.append(f"{path}: {key[0]} '{key[1]}' defined {count} times")
           for line in bad:
               print(line)
           sys.exit(1 if bad else 0)
