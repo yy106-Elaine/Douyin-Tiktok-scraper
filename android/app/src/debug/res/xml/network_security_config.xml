@@ -6,7 +6,7 @@
     Android matches <domain> entries against host names, not CIDR
     ranges, so a private IPv4 range cannot be expressed here; the whole
     cleartext restriction is lifted for debug instead. This file is not
-    part of a release build -- confirm that before distributing one.
+    part of a release build; confirm that before distributing one.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">
