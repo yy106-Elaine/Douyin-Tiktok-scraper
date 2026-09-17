@@ -93,18 +93,19 @@ def dashboard(
         or 0
     )
 
-    # Rows the keyword search returned but the topic filter marked as
-    # noise. Counted so the filter is visible, and reachable so it can
-    # be audited rather than trusted.
-    filtered = (
-        session.scalar(
-            select(func.count()).select_from(model).where(model.relevance.in_(HIDDEN))
+    # Every exclusion reason with a count, so the filter is reviewable
+    # category by category rather than as one number to trust.
+    reasons = {
+        reason: count
+        for reason, count in session.execute(
+            select(model.relevance, func.count())
+            .where(model.relevance.in_(HIDDEN))
+            .group_by(model.relevance)
         )
-        or 0
-    )
+    }
+    filtered = sum(reasons.values())
 
-    include_excluded = show == "all"
-    rows = video_rows(session, platform, _ROW_LIMIT, include_excluded)
+    rows = video_rows(session, platform, _ROW_LIMIT, show)
     dated = sum(1 for row in rows if row.posted_display)
 
     return HTMLResponse(
@@ -119,7 +120,8 @@ def dashboard(
             rows=rows,
             dated=dated,
             filtered=filtered,
-            showing_all=include_excluded,
+            reasons=reasons,
+            show=show,
         )
     )
 
@@ -433,23 +435,32 @@ def _page(**ctx) -> str:
 
     # A filter that cannot be inspected is a filter that has to be
     # trusted, which is not good enough for deciding what is in a
-    # corpus.
-    if ctx["showing_all"]:
-        filter_note = (
-            '<p class="note-line">Showing off-topic rows too, marked in Notes. '
-            f'<a href="/dashboard?platform={escape(platform)}&key={escape(ctx["key"])}">'
-            "Hide them</a>.</p>"
+    # corpus. So every category is one click away, with its count.
+    def review(label: str, value: str, count: int | None = None) -> str:
+        on = " on" if ctx["show"] == value else ""
+        suffix = f" {count:,}" if count is not None else ""
+        query = f"platform={escape(platform)}"
+        if value:
+            query += f"&show={escape(value)}"
+        return (
+            f'<a class="chip{on}" href="/dashboard?{query}'
+            f'&key={escape(ctx["key"])}">{escape(label)}{suffix}</a>'
         )
-    elif ctx["filtered"]:
-        filter_note = (
-            f'<p class="note-line">{ctx["filtered"]:,} row(s) hidden as off topic '
-            "&mdash; adverts, AI-generated clips, and keyword collisions like "
-            "\u62c9\u62c9\u88e4 or \u5973\u540c\u684c. "
-            f'<a href="/dashboard?platform={escape(platform)}&show=all'
-            f'&key={escape(ctx["key"])}">Show them</a>.</p>'
-        )
-    else:
-        filter_note = ""
+
+    chips = [
+        review("in scope", ""),
+        review("everything", "all"),
+        review("excluded", "excluded", ctx["filtered"]),
+    ]
+    chips += [
+        review(reason, reason, count)
+        for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
+    ]
+    filter_note = (
+        '<p class="note-line">Review what the topic filter did. Excluded rows are '
+        "hidden, never deleted &mdash; read a category before trusting it.</p>"
+        f'<div class="chips">{"".join(chips)}</div>'
+    )
 
     return f"""<!doctype html>
 <html lang="en"><head>

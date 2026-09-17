@@ -58,7 +58,7 @@ _CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 #: 彩虹糖 and 彩虹屁.
 STRONG = re.compile(
     r"女同性[恋戀]|女同志|蕾[丝絲][边邊]|"
-    r"出[柜櫃]|女女|les\b|lesbian|lgbt|wlw|girls?\s*love|gl\b|"
+    r"出[柜櫃]|女女|les\b|lesbian|lgbt|wlw|"
     r"(?<![货貨巴芭沙])拉拉(?![裤褲队隊操手])|"
     r"女同(?![学學事胞僚桌])",
     re.IGNORECASE,
@@ -103,6 +103,23 @@ HARD: tuple[tuple[str, str], ...] = (
     ("divination", r"紫微|斗[数數]|命[盘盤]|八字|塔[罗羅]|占卜|六爻|奇[门門]|"
                    r"[风風]水|生肖|[面手][相]|星座運勢|星座运势|[算批]命|"
                    r"[开開]運|改運|改运"),
+    # Scripted fiction: short dramas, novels, audio dramas, comics,
+    # edits. Hard, not soft, because 百合短剧 carries a topic term and
+    # is still fiction -- and for this study fiction has no author who
+    # can be interviewed about why their own video disappeared. `GL`
+    # and `girls love` moved here from the topic terms for the same
+    # reason: they label a genre, not a person.
+    ("fiction", r"短[剧劇]|小[说說]|[广廣]播[剧劇]|有[声聲][书書]|[漫画畫]{2}|[条條]漫|"
+                r"[动動]漫|番外|[连連][载載]|完[结結]|全集|合集|"
+                r"\bgl\b|girls?\s*love|bg[文向]|甜[宠寵]|[宠寵]文|"
+                r"虐[恋戀]|追妻|重生|穿[书書越]|[总總]裁|替身|豪[门門]|"
+                r"第\d+集|ep\s*\d+|[剧劇]情|演[绎繹]|混剪|解[说說]|"
+                r"女主|男主|男二|女二|原著"),
+    # Games, toys and children's media, which is where 拉拉 turns up as
+    # a character or a brand: 拉拉公主, 拉拉管玩具, NPC walkthroughs.
+    ("games and toys", r"玩具|公主|npc|[游遊][戏戲]|攻略|[联聯]机|沙盒|"
+                       r"我的世界|迷你世界|[动動][画畫]片|[儿兒]歌|[积積]木|"
+                       r"[盲]盒|开箱|[开開]箱|保安[队隊][长長]|小院"),
 )
 
 #: Exclusions a STRONG term overrides -- the keyword matched something
@@ -127,6 +144,8 @@ HIDDEN = frozenset(
         "advertising",
         "ai generated",
         "divination",
+        "fiction",
+        "games and toys",
         "unrelated product",
         "not about the topic",
         "gossip",

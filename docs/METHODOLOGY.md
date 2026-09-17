@@ -284,6 +284,8 @@ Exclusion reasons, all of which hide the row:
 | --- | --- |
 | `advertising` | escort bait: a booking phrase plus a Telegram or WeChat contact |
 | `ai generated` | synthetic, so no author an interview could follow up |
+| `fiction` | short dramas, novels, audio dramas, comics, edits. The largest single category in a real run, and a hard exclusion for the same reason as `ai generated` rather than because the text is off topic: 百合短剧 *is* on topic, and still has no author who can be interviewed about why their own video disappeared. `GL` and `girls love` label a genre, not a person, so they were moved here from the topic terms |
+| `games and toys` | where 拉拉 turns up as a character or a brand: 拉拉公主, 拉拉管玩具, NPC walkthroughs |
 | `divination` | 紫微斗数, 八字, 塔罗, 风水 — a genre where 女同志 means "female client". Hard rather than soft, because the case that prompted it carried a topic term and still had to go |
 | `unrelated product` | 拉拉 inside a brand or product name |
 | `not about the topic` | 女同 inside a word about a classmate or colleague |
@@ -296,8 +298,10 @@ Exclusion reasons, all of which hide the row:
 **Rows are marked, never dropped.** A video a filter deletes is a video whose
 disappearance can never be observed, and nothing in the data would show it had
 been there — the one failure a takedown study cannot detect after the fact.
-`?show=all` lists the excluded rows with their reasons, so the filter is
-audited rather than trusted.
+The capture dashboard lists each
+reason with its count and lets one be read on its own (`?show=fiction`,
+`?show=excluded`, `?show=all`), because a filter is only worth trusting once
+someone has read what it removed — and reading 500 mixed rows is not reading.
 
 **One carve-out**, in `app/views.py`: a Douyin or TikTok row whose link was
 copied by hand is never hidden. Those were chosen one at a time by a person,

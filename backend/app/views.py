@@ -178,13 +178,21 @@ def _row_from_link(link: SharedLink) -> VideoRow:
     )
 
 
+#: What `show` may ask for beyond a specific exclusion reason.
+SHOW_ALL = "all"
+SHOW_EXCLUDED = "excluded"
+
+
 def video_rows(
-    session: Session, platform: str, limit: int, include_excluded: bool = False
+    session: Session, platform: str, limit: int, show: str = ""
 ) -> list[VideoRow]:
     """Merged rows for one platform, most recently seen first.
 
-    Out-of-scope rows are hidden by default and shown on request --
-    they are stored either way, so the filter can always be audited.
+    `show` selects what to list: "" for the rows in scope, "all" for
+    everything, "excluded" for only the hidden rows, or one exclusion
+    reason to review that category on its own. Reviewing by category is
+    the point -- a filter is only worth trusting once someone has read
+    what it removed, and reading 500 mixed rows is not reading.
     """
     registered = PLATFORM_TABLES.get(platform)
     if registered is None:
@@ -203,15 +211,24 @@ def video_rows(
     }
 
     statement = select(model).order_by(model.captured_at.desc())
-    if not include_excluded:
-        in_scope = model.relevance.notin_(HIDDEN) | model.relevance.is_(None)
-        if platform not in API_PLATFORMS:
-            # A phone row with an id is one whose link a person copied
-            # by hand, one video at a time. Its caption is often
-            # truncated to "...more" or absent, so the text is no
-            # evidence about the video -- and these are the rows that
-            # cost the most to collect.
-            in_scope = in_scope | model.video_id.isnot(None)
+    in_scope = model.relevance.notin_(HIDDEN) | model.relevance.is_(None)
+    if platform not in API_PLATFORMS:
+        # A phone row with an id is one whose link a person copied by
+        # hand, one video at a time. Its caption is often truncated to
+        # "...more" or absent, so the text is no evidence about the
+        # video -- and these are the rows that cost the most to
+        # collect.
+        in_scope = in_scope | model.video_id.isnot(None)
+
+    if show == SHOW_ALL:
+        pass
+    elif show == SHOW_EXCLUDED:
+        statement = statement.where(~in_scope)
+    elif show:
+        # One named reason. Still intersected with the carve-out, so a
+        # hand-collected row never appears as excluded when it is not.
+        statement = statement.where(model.relevance == show, ~in_scope)
+    else:
         statement = statement.where(in_scope)
     rows = [
         _row_from_post(post, platform, methods.get(post.capture_event_id))

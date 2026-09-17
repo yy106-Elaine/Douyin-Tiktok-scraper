@@ -20,7 +20,9 @@ from app.relevance import HIDDEN, classify
         ("我的女同事天天迟到", "not about the topic"),
         ("成人拉拉裤 护理用品 老人失禁", "unrelated product"),
         ("货拉拉搬家多少钱", "unrelated product"),
-        ("巴拉拉小魔仙全集", "unrelated product"),
+        # 全集 makes this fiction, which is checked before the brand
+        # collision; either answer excludes it.
+        ("巴拉拉小魔仙全集", "fiction"),
         ("拉拉队舞蹈教学", "unrelated product"),
         ("100%純陀港女，精通穴位按摩 速預約: t.me/BabyM666", "advertising"),
         ("AI虚拟女同志 AI生成美女", "ai generated"),
@@ -44,15 +46,52 @@ def test_known_collisions_are_named(text, reason):
     [
         "女同性恋情侣日常vlog",
         "我是拉拉，出柜五年了",
-        "百合短剧《错位红妆》#百合 #治愈女同#女女恋",
         "女同志社群活动记录",
         "蕾丝边的自我认同",
-        "【百合】失业遇失忆富家女 | 治愈女同 GL",
         "同性恋女孩的出柜故事",
+        "我和女朋友的日常 我们是拉拉",
+        "我很宠我女朋友，我们是拉拉",
     ],
 )
 def test_community_content_is_in_scope(text):
     assert classify(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Short dramas, the largest single category in a real run.
+        "百合短剧《错位红妆》ep 2 #古风 #百合 #治愈女同#女女恋",
+        "【百合】失业遇失忆富家女，被她死死纠缠 | 治愈女同 GL",
+        "甜宠短剧",
+        "宠文推荐",
+        "女同小说推荐 完结",
+        "百合广播剧 第3集",
+    ],
+)
+def test_fiction_is_excluded_even_carrying_a_topic_term(text):
+    """Fiction has no author to interview about their own removal.
+
+    This is the largest category by far, and it is a hard exclusion for
+    that reason rather than because the text is off topic: 百合短剧 is
+    on topic and still useless to a study that follows up with the
+    people who posted.
+    """
+    assert classify(text) == "fiction"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "拉拉公主NPC 攻略",
+        "拉拉管玩具开箱",
+        "和拉拉来到自在小院",
+        "和拉拉聊了一下 地球村保安队长",
+    ],
+)
+def test_games_and_toys_are_excluded(text):
+    """Where 拉拉 turns up as a character or a brand."""
+    assert classify(text) == "games and toys"
 
 
 def test_a_topic_term_overrides_an_incidental_collision():
@@ -340,3 +379,88 @@ def test_the_parameter_breakdown_separates_runs_by_their_hint(client):
         table = by_parameter(session)
         assert table["(none set)"] == {"not in chinese": 1}
         assert table["zh-Hans"] == {"in scope": 1}
+
+
+class TestReviewingByCategory:
+    """The dashboard has to let someone read what the filter removed."""
+
+    def _collect(self, session, titles):
+        from app import youtube
+
+        def caller(endpoint, params):
+            if endpoint == "search":
+                return {"items": [{"id": {"videoId": f"v{i}"}} for i in range(len(titles))]}
+            out = []
+            for video_id in params["id"].split(","):
+                index = int(video_id[1:])
+                out.append(
+                    {
+                        "id": video_id,
+                        "snippet": {
+                            "channelId": f"UC{index}",
+                            "channelTitle": "c",
+                            "title": titles[index],
+                            "description": "",
+                            "publishedAt": "2026-09-16T08:30:00Z",
+                        },
+                        "statistics": {},
+                        "status": {"privacyStatus": "public"},
+                    }
+                )
+            return {"items": out}
+
+        return youtube.collect(session, ["拉拉"], caller=caller)
+
+    TITLES = [
+        "我是拉拉，出柜五年了",          # in scope
+        "百合短剧 第2集",                 # fiction
+        "拉拉管玩具开箱",                 # games and toys
+        "货拉拉搬家",                     # unrelated product
+    ]
+
+    def _body(self, client, show=""):
+        query = f"&show={show}" if show else ""
+        return client.get(
+            f"/dashboard?key=test-admin-key&platform=youtube{query}"
+        ).text
+
+    def test_by_default_only_the_rows_in_scope_are_listed(self, client):
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session, self.TITLES)
+        body = self._body(client)
+        assert "出柜五年" in body
+        for off_topic in ("百合短剧", "玩具开箱", "货拉拉"):
+            assert off_topic not in body
+
+    def test_one_category_can_be_read_on_its_own(self, client):
+        """Reading 500 mixed rows is not reading."""
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session, self.TITLES)
+        body = self._body(client, "fiction")
+        assert "百合短剧" in body
+        assert "玩具开箱" not in body
+        assert "出柜五年" not in body
+
+    def test_excluded_lists_every_hidden_row_and_no_others(self, client):
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session, self.TITLES)
+        body = self._body(client, "excluded")
+        for off_topic in ("百合短剧", "玩具开箱", "货拉拉"):
+            assert off_topic in body
+        assert "出柜五年" not in body
+
+    def test_each_category_is_offered_with_its_count(self, client):
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session, self.TITLES)
+        body = self._body(client)
+        assert "show=fiction" in body
+        assert "show=games+and+toys" in body or "show=games and toys" in body
+        assert "excluded 3" in body
