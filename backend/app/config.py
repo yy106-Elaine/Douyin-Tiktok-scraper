@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     #: rest of the system runs without one.
     youtube_api_key: str = ""
 
+    #: Search parameters for YouTube collection. These change which
+    #: results the API returns, so they are part of the sampling method
+    #: rather than a convenience -- kept here so the daily command
+    #: stays short and the choice is recorded in one place, and stored
+    #: on every row so a mid-study change is visible in the data.
+    youtube_relevance_language: str = "zh-Hans"
+    youtube_region_code: str = ""
+
     #: Where the install page sends a phone to fetch the APK. CI keeps
     #: this asset name stable, so the URL does not change per build.
     apk_download_url: str = (

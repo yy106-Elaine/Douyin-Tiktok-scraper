@@ -294,8 +294,16 @@ def collect(
 
     from sqlalchemy.exc import IntegrityError
 
+    from .config import settings
     from .models import CaptureEvent
     from .parsers import PLATFORM_TABLES
+
+    # Configured defaults, overridable per call. None means "use the
+    # configured value"; an empty string means "explicitly none".
+    if relevance_language is None:
+        relevance_language = settings.youtube_relevance_language
+    if region_code is None:
+        region_code = settings.youtube_region_code
 
     model, structure = PLATFORM_TABLES["youtube"]
     moment = now or datetime.now(timezone.utc).replace(tzinfo=None)
@@ -328,6 +336,12 @@ def collect(
     for video_id, item in records.items():
         payload = to_payload(item)
         payload["feed"] = "search:" + ",".join(seen[video_id])
+        # The parameters that produced this row travel with it. Change
+        # them halfway through a study and the rows before and after
+        # are not the same sample; without this, nothing in the data
+        # would say which is which.
+        payload["relevance_language"] = relevance_language or None
+        payload["region_code"] = region_code or None
 
         event = CaptureEvent(
             participant_id=participant_id,
@@ -390,8 +404,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         "--max", type=int, default=200, dest="max_per_keyword",
         help="cap on videos per keyword (50 per search call)",
     )
-    parser.add_argument("--region", help="regionCode, e.g. TW or HK")
-    parser.add_argument("--language", help="relevanceLanguage, e.g. zh-Hans")
+    parser.add_argument(
+        "--region", help="regionCode, e.g. TW or HK; overrides .env"
+    )
+    parser.add_argument(
+        "--language",
+        help="relevanceLanguage, e.g. zh-Hans; overrides .env. Pass an "
+        "empty string to search without one.",
+    )
     args = parser.parse_args()
 
     keywords = read_keywords(args.keyword, args.keywords)

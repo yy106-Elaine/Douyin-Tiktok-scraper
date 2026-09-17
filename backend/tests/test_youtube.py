@@ -149,6 +149,53 @@ class TestCollecting:
             assert second.stored == 0
             assert second.duplicates == 2
 
+    def test_the_search_language_defaults_to_chinese(self, client):
+        """Configured, not typed daily -- and it changes the sample."""
+        seen = {}
+
+        def call(endpoint, params):
+            if endpoint == "search":
+                seen.update(params)
+                return {"items": []}
+            return {"items": []}
+
+        with SessionLocal() as session:
+            youtube.collect(session, ["拉拉"], caller=call, now=NOW)
+        assert seen["relevanceLanguage"] == "zh-Hans"
+
+    def test_an_explicit_empty_language_searches_without_one(self, client):
+        """So the default can be turned off, not just changed."""
+        seen = {}
+
+        def call(endpoint, params):
+            if endpoint == "search":
+                seen.update(params)
+            return {"items": []}
+
+        with SessionLocal() as session:
+            youtube.collect(
+                session, ["拉拉"], caller=call, now=NOW, relevance_language=""
+            )
+        assert "relevanceLanguage" not in seen
+
+    def test_the_sampling_parameters_are_stored_on_the_row(self, client):
+        """Change them mid-study and the data has to show where."""
+        import json
+
+        from sqlalchemy import select
+
+        from app.models import CaptureEvent
+
+        with SessionLocal() as session:
+            youtube.collect(
+                session, ["a"], caller=_caller(), now=NOW, region_code="TW"
+            )
+            payload = json.loads(
+                session.scalars(select(CaptureEvent)).first().payload
+            )
+            assert payload["relevance_language"] == "zh-Hans"
+            assert payload["region_code"] == "TW"
+
     def test_a_video_matching_two_keywords_is_one_observation(self, client):
         with SessionLocal() as session:
             report = youtube.collect(
