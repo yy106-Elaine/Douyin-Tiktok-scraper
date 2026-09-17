@@ -209,7 +209,15 @@ class MainActivity : AppCompatActivity() {
         }
         refreshSaveButtonLabel()
         showSelfCheck()
-        captureCopiedLink()
+    }
+
+    /**
+     * The clipboard is readable only once this window holds focus, so
+     * the read waits for it. onResume is too early and came back empty.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) captureCopiedLink()
     }
 
     private companion object {

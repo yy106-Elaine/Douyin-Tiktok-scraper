@@ -17,22 +17,38 @@ import kotlinx.coroutines.withContext
 /**
  * Reads the clipboard and saves whatever link is in it, then closes.
  *
- * From Android 10 only a focused app may read the clipboard, so an
- * activity has to come forward for an instant to do it. This one is
- * translucent, keeps no history and finishes immediately, so the system
- * returns to whatever was underneath -- which is the point: the link
- * gets recorded without leaving the app the operator is working in.
+ * From Android 10 the clipboard is readable only by an app that holds
+ * window focus, so an activity has to come forward for an instant to do
+ * it. This one is translucent, keeps no history and finishes
+ * immediately, so the system returns to whatever was underneath -- the
+ * link gets recorded without leaving the app being worked in.
  *
- * It is reached from the floating button, so the sequence is: share,
- * copy link, tap. Nothing here touches the other app's interface; the
- * copying is a person's action, and this only picks up the result.
+ * The read happens in [onWindowFocusChanged], not in onCreate. Being
+ * created is not the same as holding focus, and reading too early
+ * returns an empty clipboard and reports "nothing copied" for a link
+ * that was copied a second earlier.
+ *
+ * Reached from the floating button, so the sequence is: share, copy
+ * link, tap. Nothing here touches the other app's interface; the
+ * copying is a person's action and this only picks up the result.
  */
 class ClipboardReaderActivity : AppCompatActivity() {
+
+    private var handled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
+    }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || handled) return
+        handled = true
+        saveClipboard()
+    }
+
+    private fun saveClipboard() {
         val prefs = Prefs(this)
         val apiKey = prefs.apiKey
         if (apiKey == null) {
