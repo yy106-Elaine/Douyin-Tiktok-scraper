@@ -25,6 +25,7 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
     """Map a raw capture payload onto structured post columns."""
     row: dict[str, Any] = {
         "author_handle": _clean(payload.get("author_handle")),
+        "author_name": _clean(payload.get("author_name")),
         "caption": _clean(payload.get("caption")),
         "music": _clean(payload.get("music")),
         "feed": _clean(payload.get("feed")),

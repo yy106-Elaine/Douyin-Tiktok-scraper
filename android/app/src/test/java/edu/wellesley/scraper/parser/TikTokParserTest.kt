@@ -47,7 +47,7 @@ class TikTokParserTest {
     @Test
     fun `reads author caption and music`() {
         val post = parser.parse(onePost())!!
-        assertEquals("someuser", post.authorHandle)
+        assertEquals("someuser", post.authorName)
         assertEquals("a caption long enough to be recognised as one", post.caption)
         assertEquals("original sound - someuser", post.music)
     }
@@ -79,7 +79,7 @@ class TikTokParserTest {
         assertEquals(2, segments.size)
 
         val parsed = segments.mapNotNull(parser::parse)
-        assertEquals(listOf("alice", "bob"), parsed.map { it.authorHandle })
+        assertEquals(listOf("alice", "bob"), parsed.map { it.authorName })
     }
 
     @Test
@@ -87,7 +87,7 @@ class TikTokParserTest {
         val nodes = listOf(node(text = "For You", selected = true, depth = 1)) + onePost()
         val segments = NodeTools.segment(nodes, parser::isPostBoundary)
         assertEquals(1, segments.size)
-        assertEquals("someuser", parser.parse(segments.single())!!.authorHandle)
+        assertEquals("someuser", parser.parse(segments.single())!!.authorName)
     }
 
     @Test
@@ -193,5 +193,48 @@ class TikTokParserTest {
             "a substantially longer caption than the first one",
             parser.parse(nodes)!!.caption,
         )
+    }
+
+    @Test
+    fun `the author handle is read from a node that is only a handle`() {
+        val nodes = onePost() + node(text = "@someuser")
+        val post = parser.parse(nodes)!!
+        assertEquals("someuser", post.authorHandle)
+        assertEquals("someuser", post.authorName)
+    }
+
+    @Test
+    fun `a mention inside the caption is not taken for the author`() {
+        // Captions routinely tag other accounts; attributing the post to
+        // whoever it tagged would send an interview request to the wrong
+        // person.
+        val nodes = onePost(caption = "big thanks to @otheraccount for the idea here")
+        assertNull(parser.parse(nodes)!!.authorHandle)
+    }
+
+    @Test
+    fun `a handle in the profile label is recognised`() {
+        val nodes = listOf(
+            node(viewId = "com.zhiliaoapp.musically:id/widget_container"),
+            node(description = "@someuser profile"),
+            node(text = "a caption long enough to be recognised as one"),
+        )
+        val post = parser.parse(nodes)!!
+        assertEquals("someuser", post.authorHandle)
+        assertEquals("someuser", post.authorName)
+    }
+
+    @Test
+    fun `a display name with emoji is kept but yields no handle`() {
+        // Real capture: "lilly 🤚 profile". Display names are not
+        // account identifiers.
+        val nodes = listOf(
+            node(viewId = "com.zhiliaoapp.musically:id/widget_container"),
+            node(description = "lilly \uD83E\uDD1A profile"),
+            node(text = "a caption long enough to be recognised as one"),
+        )
+        val post = parser.parse(nodes)!!
+        assertNull(post.authorHandle)
+        assertEquals("lilly \uD83E\uDD1A", post.authorName)
     }
 }

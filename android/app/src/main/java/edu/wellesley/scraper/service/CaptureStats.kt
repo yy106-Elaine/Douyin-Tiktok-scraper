@@ -62,7 +62,8 @@ object CaptureStats {
 
     fun onParsed(post: ParsedPost) {
         parsedTotal++
-        lastParsed = "author=${post.authorHandle} likes=${post.likeRaw} " +
+        lastParsed = "handle=${post.authorHandle} name=${post.authorName} " +
+            "likes=${post.likeRaw} " +
             "comments=${post.commentRaw} shares=${post.shareRaw} " +
             "saves=${post.saveRaw} feed=${post.feed} " +
             "caption=${post.caption?.take(30)}"

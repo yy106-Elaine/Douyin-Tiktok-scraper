@@ -39,6 +39,16 @@ class TikTokParser : PostParser {
         val AUTHOR = Regex("""(.+?)\s+profile""", RegexOption.IGNORE_CASE)
 
         /**
+         * A node that is nothing but an `@handle`.
+         *
+         * Anchored on purpose: captions routinely @-mention other
+         * accounts, and matching inside one would attribute the post to
+         * whoever it happened to tag. The author's handle, when the
+         * feed renders it, is its own node.
+         */
+        val HANDLE_ONLY = Regex("""^@([A-Za-z0-9._]{2,24})$""")
+
+        /**
          * The caption TextView also renders the "expand" affordance, so
          * the text arrives as "<caption> more" or "<caption>...more".
          * Left in place it adds a meaningless token to every caption,
@@ -127,8 +137,8 @@ class TikTokParser : PostParser {
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(
             platform = platform,
-            authorHandle = NodeTools.firstGroup(nodes, AUTHOR)
-                ?: NodeTools.byViewId(nodes, "title")?.text,
+            authorHandle = handle(nodes),
+            authorName = displayName(nodes),
             caption = caption(nodes),
             music = NodeTools.firstGroup(nodes, MUSIC),
             likeRaw = NodeTools.firstGroup(nodes, LIKE),
@@ -143,6 +153,27 @@ class TikTokParser : PostParser {
         )
         return post.takeIf { it.isUsable() }
     }
+
+    /**
+     * The author's `@handle`, which is what identifies the account
+     * later -- for finding it again, or for contacting the author.
+     * Display names are neither unique nor stable, so they are not a
+     * substitute.
+     */
+    private fun handle(nodes: List<FlatNode>): String? {
+        for (node in nodes) {
+            for (candidate in listOfNotNull(node.text, node.description)) {
+                HANDLE_ONLY.find(candidate.trim())?.let { return it.groupValues[1] }
+            }
+        }
+        // Some builds put the handle in the profile label instead.
+        val label = NodeTools.firstGroup(nodes, AUTHOR)?.trim()
+        return label?.removePrefix("@")?.takeIf { label.startsWith("@") }
+    }
+
+    private fun displayName(nodes: List<FlatNode>): String? =
+        NodeTools.firstGroup(nodes, AUTHOR)?.removePrefix("@")?.trim()
+            ?: NodeTools.byViewId(nodes, "title")?.text
 
     /**
      * The caption has a view id on some builds and none on others, so

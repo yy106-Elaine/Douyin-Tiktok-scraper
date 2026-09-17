@@ -12,7 +12,7 @@ class ParsedPostTest {
     fun `fingerprint combines platform author and caption prefix`() {
         val post = ParsedPost(
             platform = "douyin",
-            authorHandle = "someone",
+            authorName = "someone",
             caption = "0123456789012345678901234567890",
         )
         assertEquals("douyin::someone::01234567890123456789", post.fingerprint())
@@ -26,8 +26,8 @@ class ParsedPostTest {
     }
 
     @Test
-    fun `an author alone is enough to identify a post`() {
-        assertTrue(ParsedPost(platform = "douyin", authorHandle = "someone").isUsable())
+    fun `a display name alone is enough to identify a post`() {
+        assertTrue(ParsedPost(platform = "douyin", authorName = "someone").isUsable())
     }
 
     @Test

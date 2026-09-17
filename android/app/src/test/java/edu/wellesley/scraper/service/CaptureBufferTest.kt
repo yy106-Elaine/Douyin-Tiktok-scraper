@@ -12,7 +12,7 @@ class CaptureBufferTest {
 
     private fun post(like: String? = null, caption: String? = "hello world") = ParsedPost(
         platform = "tiktok",
-        authorHandle = "someuser",
+        authorName = "someuser",
         caption = caption,
         likeRaw = like,
     )

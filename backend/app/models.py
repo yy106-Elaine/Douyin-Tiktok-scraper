@@ -76,7 +76,13 @@ class _PostMixin:
     participant_id: Mapped[str] = mapped_column(String(64), index=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
-    author_handle: Mapped[str | None] = mapped_column(String(255))
+    #: The `@handle` -- unique, stable, and the only form that can be
+    #: used to find the account again or contact its owner. Often
+    #: absent, because the feed usually renders only a display name.
+    author_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+    #: The display name. Not unique, changeable, frequently carries
+    #: emoji. Present on nearly every capture.
+    author_name: Mapped[str | None] = mapped_column(String(255))
     caption: Mapped[str | None] = mapped_column(Text)
     music: Mapped[str | None] = mapped_column(Text)
     feed: Mapped[str | None] = mapped_column(String(64))

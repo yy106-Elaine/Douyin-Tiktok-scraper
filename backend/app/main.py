@@ -170,6 +170,7 @@ _EXPORT_COLUMNS = [
     "participant_id",
     "captured_at",
     "author_handle",
+    "author_name",
     "caption",
     "music",
     "feed",

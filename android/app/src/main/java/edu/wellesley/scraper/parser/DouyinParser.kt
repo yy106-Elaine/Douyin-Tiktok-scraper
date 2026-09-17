@@ -24,7 +24,20 @@ class DouyinParser : PostParser {
         val SHARE = Regex("""(?:分享|转发)\s*([\d.]+\s*[万亿]?)|([\d.]+\s*[万亿]?)\s*(?:次)?(?:分享|转发)""")
         val SAVE = Regex("""收藏\s*([\d.]+\s*[万亿]?)|([\d.]+\s*[万亿]?)\s*(?:次)?收藏""")
 
-        val AUTHOR = Regex("""@\s*([^\s，,。]+)""")
+        /**
+         * Anchored, so an @-mention inside a caption cannot be taken
+         * for the author. Douyin renders the author label as its own
+         * node.
+         */
+        val AUTHOR = Regex("""^@\s*([^\s，,。]{1,40})$""")
+
+        /**
+         * Douyin's stable account identifier is the 抖音号, which the
+         * feed does not show -- it lives on the profile page. Captured
+         * when it happens to be on screen, since it is what makes an
+         * account findable later.
+         */
+        val DOUYIN_ID = Regex("""抖音号[：:\s]*([A-Za-z0-9._\-]{2,30})""")
         val MUSIC = Regex("""@?(.+?)创作的原声|原声[：: ]\s*(.+)""")
 
         /**
@@ -77,7 +90,8 @@ class DouyinParser : PostParser {
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(
             platform = platform,
-            authorHandle = NodeTools.firstGroup(nodes, AUTHOR)
+            authorHandle = NodeTools.firstGroup(nodes, DOUYIN_ID),
+            authorName = NodeTools.firstGroup(nodes, AUTHOR)
                 ?: NodeTools.byViewId(nodes, "author_name", "nickname", "title")?.text,
             caption = caption(nodes),
             music = NodeTools.firstGroup(nodes, MUSIC)

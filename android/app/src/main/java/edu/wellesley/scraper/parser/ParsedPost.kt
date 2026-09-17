@@ -10,7 +10,17 @@ package edu.wellesley.scraper.parser
  */
 data class ParsedPost(
     val platform: String,
+    /**
+     * The author's `@handle` -- the stable, unique account identifier,
+     * and the only form that can be used to find the account again.
+     * Present only when the interface renders it.
+     */
     val authorHandle: String? = null,
+    /**
+     * The author's display name. Not unique, changeable, and often
+     * carries emoji. What the feed shows most of the time.
+     */
+    val authorName: String? = null,
     val caption: String? = null,
     val music: String? = null,
     val feed: String? = null,
@@ -38,7 +48,10 @@ data class ParsedPost(
      * docs/METHODOLOGY.md.
      */
     fun fingerprint(): String? {
-        val author = authorHandle?.trim().orEmpty()
+        // Display name first, deliberately: it is the field the feed
+        // exposes on nearly every frame, so keying on it keeps a post's
+        // identity stable across reads where the handle is absent.
+        val author = (authorName ?: authorHandle)?.trim().orEmpty()
         val head = caption?.trim()?.take(20).orEmpty()
         if (author.isEmpty() && head.isEmpty()) return null
         return "$platform::$author::$head"
@@ -56,6 +69,7 @@ data class ParsedPost(
     fun mergedWith(other: ParsedPost): ParsedPost = ParsedPost(
         platform = platform,
         authorHandle = other.authorHandle ?: authorHandle,
+        authorName = other.authorName ?: authorName,
         caption = other.caption ?: caption,
         music = other.music ?: music,
         feed = other.feed ?: feed,
@@ -70,6 +84,7 @@ data class ParsedPost(
 
     fun toPayload(): Map<String, Any?> = mapOf(
         "author_handle" to authorHandle,
+        "author_name" to authorName,
         "caption" to caption,
         "music" to music,
         "feed" to feed,
