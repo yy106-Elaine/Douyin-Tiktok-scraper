@@ -308,7 +308,13 @@ collected again. Check a rule against text without touching the database:
 ```
 
 Report the rule set used and the counts per reason; running `app.relevance`
-with no arguments prints both. Two judgement calls worth stating explicitly,
+with no arguments prints both, and `--by-keyword` attributes them to the search
+term that produced them. The first real run marked 71% of 150 YouTube results
+`not in chinese` and kept 15%, which says the search term rather than the
+filter is what to change: `relevanceLanguage` is a hint YouTube may ignore, not
+a language filter, and a latinisable term like 拉拉 matches "lalala" in any
+language. A term whose results are mostly excluded is spending quota on rows
+the filter then removes. Two judgement calls worth stating explicitly,
 because they are defensible either way: general `同性恋` news with no female
 marker is excluded, and non-Chinese posts are excluded even when they carry an
 English WLW hashtag.

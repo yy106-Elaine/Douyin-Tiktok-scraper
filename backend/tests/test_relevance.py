@@ -262,3 +262,37 @@ class TestTheCarveOut:
         assert "货拉拉" in client.get(
             "/dashboard?key=test-admin-key&platform=youtube&show=all"
         ).text
+
+
+def test_the_keyword_breakdown_attributes_a_video_to_every_term(client):
+    """Which term produced the noise, not just how much there was."""
+    from app import youtube
+    from app.db import SessionLocal
+    from app.relevance import by_keyword
+
+    def caller(endpoint, params):
+        if endpoint == "search":
+            return {"items": [{"id": {"videoId": "v1"}}]}
+        return {
+            "items": [
+                {
+                    "id": "v1",
+                    "snippet": {
+                        "channelId": "UC1",
+                        "channelTitle": "c",
+                        "title": "货拉拉搬家",
+                        "description": "",
+                        "publishedAt": "2026-09-16T08:30:00Z",
+                    },
+                    "statistics": {},
+                    "status": {"privacyStatus": "public"},
+                }
+            ]
+        }
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["拉拉", "女同志"], caller=caller)
+        table = by_keyword(session)
+        # One video, found by both terms, counted against both.
+        assert table["拉拉"] == {"unrelated product": 1}
+        assert table["女同志"] == {"unrelated product": 1}

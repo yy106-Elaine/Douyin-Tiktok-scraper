@@ -246,6 +246,37 @@ def explain(text: str) -> dict[str, object]:
     }
 
 
+def by_keyword(session) -> dict[str, dict[str, int]]:
+    """Cross-tabulate which keyword produced which outcome.
+
+    The overall tally says how much of a run was noise; this says which
+    search term produced it. Those are different questions, and only
+    the second one tells you what to change: a term returning 90%
+    off-topic results is spending quota on rows the filter then
+    removes, while a term returning few but clean results is cheap.
+
+    Read from `feed`, which names every keyword that surfaced a video,
+    so a video found by two terms counts for both.
+    """
+    from sqlalchemy import select
+
+    from .parsers import PLATFORM_TABLES
+
+    table: dict[str, dict[str, int]] = {}
+    for model, _ in PLATFORM_TABLES.values():
+        for feed, reason in session.execute(select(model.feed, model.relevance)):
+            if not feed or not feed.startswith("search:"):
+                continue
+            for keyword in feed[len("search:") :].split(","):
+                keyword = keyword.strip()
+                if not keyword:
+                    continue
+                row = table.setdefault(keyword, {})
+                key = reason or "in scope"
+                row[key] = row.get(key, 0) + 1
+    return table
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     import argparse
 
@@ -262,6 +293,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         "--test-file",
         metavar="PATH",
         help="classify one line of this file at a time",
+    )
+    parser.add_argument(
+        "--by-keyword",
+        action="store_true",
+        help="show which search term produced which outcome",
     )
     args = parser.parse_args()
 
@@ -281,6 +317,21 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
     init_db()
+
+    if args.by_keyword:
+        with SessionLocal() as session:
+            table = by_keyword(session)
+        for keyword, counts in sorted(
+            table.items(), key=lambda pair: -sum(pair[1].values())
+        ):
+            total = sum(counts.values())
+            kept = counts.get("in scope", 0)
+            share = f"{round(100 * kept / total)}%" if total else "-"
+            print(f"\n{keyword}   {total} found, {kept} in scope ({share})")
+            for reason, count in sorted(counts.items(), key=lambda pair: -pair[1]):
+                print(f"   {count:5}  {reason}")
+        return
+
     with SessionLocal() as session:
         tally = remark(session)
         changed = tally.pop("changed", 0)

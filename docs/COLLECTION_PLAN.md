@@ -85,8 +85,14 @@ the keyword list or the rules:
 
 ```
 ./.venv/bin/python -m app.relevance                        # re-mark the corpus
+./.venv/bin/python -m app.relevance --by-keyword           # which term is noisy
 ./.venv/bin/python -m app.relevance --test "some caption"  # check a rule
 ```
+
+Watch the per-keyword numbers rather than the total. A term returning mostly
+excluded rows is spending quota to collect rows the filter removes; a term
+returning few but clean results is cheap. Drop on that basis, not on the
+overall share.
 
 ### Search parameters
 
