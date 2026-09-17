@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Release posture: HTTPS only. An API key travels on every request, so
+    a deployed backend must be TLS-terminated.
+
+    The debug source set overrides this file with a permissive one, so
+    that a study phone can talk to a backend running on a laptop over
+    the local network during setup. See src/debug/res/xml/.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

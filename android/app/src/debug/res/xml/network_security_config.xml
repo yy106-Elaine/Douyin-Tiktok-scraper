@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    DEBUG BUILDS ONLY. Replaces the release config so that
+    http://<laptop-lan-ip>:8000 works during setup and calibration.
+
+    Android matches <domain> entries against host names, not CIDR
+    ranges, so a private IPv4 range cannot be expressed here; the whole
+    cleartext restriction is lifted for debug instead. This file is not
+    part of a release build -- confirm that before distributing one.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

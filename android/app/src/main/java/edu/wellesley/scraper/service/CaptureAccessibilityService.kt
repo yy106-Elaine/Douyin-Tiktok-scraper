@@ -58,13 +58,26 @@ class CaptureAccessibilityService : AccessibilityService() {
         lastScanAt = now
 
         val nodes = NodeTools.flatten(rootInActiveWindow)
-        if (nodes.isEmpty() || parser.shouldSkip(nodes)) return
+        if (nodes.isEmpty()) return
+        if (parser.shouldSkip(nodes)) {
+            CaptureLog.skipped("comment sheet open")
+            return
+        }
 
         // The feed tab belongs to the screen, not to any one post.
         val feed = parser.feed(nodes)
-        for (segment in NodeTools.segment(nodes, parser::isPostBoundary)) {
-            parser.parse(segment)?.let { buffer.observe(it.copy(feed = feed)) }
+        val segments = NodeTools.segment(nodes, parser::isPostBoundary)
+        CaptureLog.segments(segments.size, nodes.size)
+
+        var parsedAny = false
+        for (segment in segments) {
+            val post = parser.parse(segment) ?: continue
+            parsedAny = true
+            CaptureLog.parsed(post)
+            buffer.observe(post.copy(feed = feed))
         }
+        if (!parsedAny) CaptureLog.dumpUnparsed(nodes)
+
         flush(force = false)
     }
 

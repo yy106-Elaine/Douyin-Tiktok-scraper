@@ -1,0 +1,73 @@
+name: Build APK
+
+# Publishes an installable debug APK to a rolling GitHub Release, so a
+# study phone can download it straight from the browser without anyone
+# needing Android Studio locally.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew test --no-daemon
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Name the APK after the commit
+        id: rename
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist/capture-${GITHUB_SHA::7}.apk"
+          echo "path=dist/capture-${GITHUB_SHA::7}.apk" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Kept as a build artifact too: downloadable while signed in, and
+      # retained even after the rolling release moves on.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-apk-${{ steps.rename.outputs.sha }}
+          path: ${{ steps.rename.outputs.path }}
+          retention-days: 30
+
+      - name: Publish to the rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Latest debug APK
+          prerelease: true
+          body: |
+            Debug build of the capture app, rebuilt on every push to `android/`.
+
+            **Commit:** ${{ github.sha }}
+            **Branch:** ${{ github.ref_name }}
+
+            Install on the study phone: open this page in the phone's browser,
+            download the `.apk` below, and allow installation from unknown
+            sources when prompted. Debug builds are unsigned for distribution
+            and are for research devices only.
+          files: ${{ steps.rename.outputs.path }}

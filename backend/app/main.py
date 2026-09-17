@@ -15,7 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import participants as participant_registry
-from .auth import require_admin, require_participant
+from .auth import require_participant
+from .dashboard import require_admin_view, router as dashboard_router
 from .db import get_session, init_db
 from .links import extract
 from .models import CaptureEvent, Participant, SharedLink
@@ -40,6 +41,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Douyin/TikTok capture backend", version="0.1.0", lifespan=lifespan
 )
+app.include_router(dashboard_router)
 
 
 @app.get("/healthz")
@@ -176,7 +178,7 @@ _EXPORT_COLUMNS = [
 ]
 
 
-@app.get("/api/export/posts.csv", dependencies=[Depends(require_admin)])
+@app.get("/api/export/posts.csv", dependencies=[Depends(require_admin_view)])
 def export_posts(
     platform: str = Query(description="douyin or tiktok"),
     session: Session = Depends(get_session),
