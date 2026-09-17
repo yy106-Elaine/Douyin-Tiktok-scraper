@@ -57,6 +57,9 @@ cd ~/Douyin-Tiktok-scraper/backend
 
 # 3. Re-check everything due, on every platform.
 ./.venv/bin/python -m app.recheck
+
+# 4. Keep yesterday's database. Takes a second; there is no other copy.
+mkdir -p backups && cp scraper.db "backups/scraper-$(date +%F).db"
 ```
 
 Then open the overview and check the numbers moved:
@@ -67,19 +70,6 @@ Then open the overview and check the numbers moved:
 One per line in `backend/keywords.txt`; lines starting with `#` are ignored.
 The same file drives YouTube. TikTok and Douyin are searched by hand from the
 same list, so the three platforms stay comparable.
-
-The four terms overlap on purpose (`女同` sits inside `女同性恋` and
-`女同志`). A video found by several is one observation, recorded with all of
-the keywords that surfaced it, so a per-keyword count does not depend on the
-order of the file.
-
-### Search parameters
-
-`YOUTUBE_RELEVANCE_LANGUAGE=zh-Hans` is set in `backend/.env`, with no region
-code. These change which results the API returns, so they are part of the
-sampling method: they are stored on every row, and changing one mid-study means
-the rows before and after are different samples. Override for one run with
-`--language` / `--region`; pass `--language ""` to search without one.
 
 ## Quota and rate limits
 

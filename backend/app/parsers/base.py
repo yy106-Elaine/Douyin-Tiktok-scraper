@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..counts import is_approximate, parse_count
+from ..relevance import classify
 
 _COUNT_FIELDS = {
     "like_count": "like_raw",
@@ -36,6 +37,12 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
         # Present only when the device found an id already on screen.
         # Obtained passively, so it needed no interaction with the app.
         "video_id": _video_id(payload.get("video_id_hint")),
+        # Computed here so every platform gets it from one place --
+        # the phone parsers and the YouTube API both land on this
+        # function.
+        "relevance": classify(
+            payload.get("caption"), payload.get("description")
+        ),
     }
 
     approximate = False

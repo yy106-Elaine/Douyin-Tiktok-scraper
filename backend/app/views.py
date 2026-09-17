@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from .links import extract
 from .models import SharedLink
+from .relevance import HIDDEN
 from .parsers import PLATFORM_TABLES
 from .snowflake import posted_at_from_video_id
 
@@ -76,6 +77,10 @@ class VideoRow:
     counts_approximate: bool = False
     is_ad: bool | None = None
     is_ai_generated: bool | None = None
+
+    #: Null when in scope; otherwise why the row is out. See
+    #: app/relevance.py.
+    relevance: str | None = None
 
 
 def publication(
@@ -143,6 +148,7 @@ def _row_from_post(post, platform: str, method: str | None = None) -> VideoRow:
         counts_approximate=bool(post.counts_approximate),
         is_ad=post.is_ad,
         is_ai_generated=post.is_ai_generated,
+        relevance=post.relevance,
     )
 
 
@@ -171,8 +177,14 @@ def _row_from_link(link: SharedLink) -> VideoRow:
     )
 
 
-def video_rows(session: Session, platform: str, limit: int) -> list[VideoRow]:
-    """Merged rows for one platform, most recently seen first."""
+def video_rows(
+    session: Session, platform: str, limit: int, include_excluded: bool = False
+) -> list[VideoRow]:
+    """Merged rows for one platform, most recently seen first.
+
+    Out-of-scope rows are hidden by default and shown on request --
+    they are stored either way, so the filter can always be audited.
+    """
     registered = PLATFORM_TABLES.get(platform)
     if registered is None:
         return []
@@ -189,11 +201,12 @@ def video_rows(session: Session, platform: str, limit: int) -> list[VideoRow]:
         )
     }
 
+    statement = select(model).order_by(model.captured_at.desc())
+    if not include_excluded:
+        statement = statement.where(model.relevance.notin_(HIDDEN) | model.relevance.is_(None))
     rows = [
         _row_from_post(post, platform, methods.get(post.capture_event_id))
-        for post in session.scalars(
-            select(model).order_by(model.captured_at.desc()).limit(limit)
-        )
+        for post in session.scalars(statement.limit(limit))
     ]
 
     # Only the links that no post row already accounts for: a paired

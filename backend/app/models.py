@@ -113,6 +113,15 @@ class _PostMixin:
     is_ad: Mapped[bool | None] = mapped_column(Boolean)
     is_ai_generated: Mapped[bool | None] = mapped_column(Boolean)
 
+    #: Null when the row is in scope for the study, otherwise why it
+    #: is not -- see app/relevance.py. A keyword search returns what
+    #: the platform matched, not what the study is about, and in
+    #: Chinese the search terms sit inside unrelated words. Marked
+    #: rather than dropped: a video deleted by a filter is a video
+    #: whose disappearance can never be observed, and nothing in the
+    #: data would show it had been there.
+    relevance: Mapped[str | None] = mapped_column(String(32), index=True)
+
     # Populated only once a shared link has been paired to this post.
     video_id: Mapped[str | None] = mapped_column(String(128), index=True)
     video_url: Mapped[str | None] = mapped_column(String(512))

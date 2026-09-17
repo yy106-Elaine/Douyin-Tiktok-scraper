@@ -20,6 +20,7 @@ from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
+from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
@@ -57,6 +58,7 @@ def require_admin_view(request: Request, key: str = Query(default="")) -> str:
 def dashboard(
     key: str = Depends(require_admin_view),
     platform: str = Query(default="douyin"),
+    show: str = Query(default="", description="'all' also lists filtered rows"),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     if platform not in PLATFORM_TABLES:
@@ -91,7 +93,18 @@ def dashboard(
         or 0
     )
 
-    rows = video_rows(session, platform, _ROW_LIMIT)
+    # Rows the keyword search returned but the topic filter marked as
+    # noise. Counted so the filter is visible, and reachable so it can
+    # be audited rather than trusted.
+    filtered = (
+        session.scalar(
+            select(func.count()).select_from(model).where(model.relevance.in_(HIDDEN))
+        )
+        or 0
+    )
+
+    include_excluded = show == "all"
+    rows = video_rows(session, platform, _ROW_LIMIT, include_excluded)
     dated = sum(1 for row in rows if row.posted_display)
 
     return HTMLResponse(
@@ -105,6 +118,8 @@ def dashboard(
             unresolved=unresolved,
             rows=rows,
             dated=dated,
+            filtered=filtered,
+            showing_all=include_excluded,
         )
     )
 
@@ -244,16 +259,13 @@ _VIEWS = (
 
 
 def _nav(view: str, platform: str | None, key: str) -> str:
-    """Two rows: which view, then which platform.
+    """The view, then the platform, as one strip of links.
 
-    Separate rows because they are separate questions, and collapsing
-    them into one strip of nine links made both harder to find.
-
-    The platform row stays on every page, Overview included. Hiding it
-    there was defensible -- Overview covers every platform at once --
-    but it left that page with no way out to a single platform, so the
-    row had to be re-found by going back first. On Overview those links
-    lead to Capture, which is where one platform's own rows are.
+    One row, in the same order, on every page. It was two rows, and
+    Overview hid the platform half; both meant the strip moved or
+    changed shape when the page changed, so a link was never where it
+    had just been. On Overview the platform links lead to Capture,
+    which is where one platform's own rows are.
     """
     paths = dict(_VIEWS)
     views = "".join(
@@ -268,7 +280,11 @@ def _nav(view: str, platform: str | None, key: str) -> str:
         f'href="{target}?platform={name}&key={escape(key)}">{escape(name)}</a>'
         for name in sorted(PLATFORM_TABLES)
     )
-    return f'<div class="tabs">{views}</div><div class="tabs">{platforms}</div>'
+    return (
+        f'<div class="tabs">{views}'
+        '<span class="tabgap"></span>'
+        f"{platforms}</div>"
+    )
 
 
 #: Shared by every page, so they cannot drift apart visually.
@@ -390,6 +406,11 @@ def _page(**ctx) -> str:
                 "copied, not yet followed",
             ),
             _tile(
+                "Off topic",
+                _compact(ctx["filtered"]),
+                "hidden, not deleted",
+            ),
+            _tile(
                 "Counts approximate",
                 _pct(ctx["approximate"], ctx["posts"]),
                 "abbreviated in the UI",
@@ -410,6 +431,26 @@ def _page(**ctx) -> str:
         else ""
     )
 
+    # A filter that cannot be inspected is a filter that has to be
+    # trusted, which is not good enough for deciding what is in a
+    # corpus.
+    if ctx["showing_all"]:
+        filter_note = (
+            '<p class="note-line">Showing off-topic rows too, marked in Notes. '
+            f'<a href="/dashboard?platform={escape(platform)}&key={escape(ctx["key"])}">'
+            "Hide them</a>.</p>"
+        )
+    elif ctx["filtered"]:
+        filter_note = (
+            f'<p class="note-line">{ctx["filtered"]:,} row(s) hidden as off topic '
+            "&mdash; adverts, AI-generated clips, and keyword collisions like "
+            "\u62c9\u62c9\u88e4 or \u5973\u540c\u684c. "
+            f'<a href="/dashboard?platform={escape(platform)}&show=all'
+            f'&key={escape(ctx["key"])}">Show them</a>.</p>'
+        )
+    else:
+        filter_note = ""
+
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -428,6 +469,7 @@ are approximate wherever flagged.</p>
 {todo}
 
 <h2>Videos &mdash; {escape(platform)}</h2>
+{filter_note}
 <div class="panel"><table>
 <thead><tr>
 <th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>

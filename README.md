@@ -21,7 +21,7 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend, dashboards, install page | Complete, 138 tests passing |
+| Backend, dashboards, install page | Complete, 169 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
@@ -98,6 +98,9 @@ cd backend
 
 # YouTube needs no phone: the API searches and stores in one step.
 ./.venv/bin/python -m app.youtube collect --keywords keywords.txt --hours 24
+
+# Re-mark which rows are on topic, after changing keywords or rules.
+./.venv/bin/python -m app.relevance
 ```
 
 `app.youtube` needs `YOUTUBE_API_KEY` in `backend/.env` — create one in the

@@ -4,10 +4,24 @@
 # the same list to search by hand on TikTok and Douyin, so the three
 # platforms stay comparable.
 #
-# These overlap heavily on purpose. A video found by more than one is
-# recorded with all of them (see `feed`), so a per-keyword count is not
-# distorted by the order of this file.
+# A video found by several keywords is one observation, recorded with
+# all of them, so a per-keyword count does not depend on this order.
+#
+# Off-topic results are marked, not dropped, by app/relevance.py --
+# adverts, AI-generated clips, and keyword collisions. Widening this
+# list costs precision, not data: run `python -m app.relevance` after
+# any change to re-mark the whole corpus.
+
 女同性恋
-拉拉
 女同志
-女同
+拉拉
+
+# Dropped: 女同 on its own. It is a substring of 女同学, 女同事 and
+# 女同桌, which are ordinary words about school and work, and a run
+# with it returned mostly those -- quota spent on results the filter
+# then removes. 女同性恋 and 女同志 cover the term as an identity.
+
+# Worth trying, if recall matters more than precision. 百合 is the
+# fiction/fandom term and is productive; les is short enough to collide.
+# 百合
+# les
