@@ -1,5 +1,8 @@
 package edu.wellesley.scraper.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -12,6 +15,7 @@ import edu.wellesley.scraper.data.Prefs
 import edu.wellesley.scraper.databinding.ActivityMainBinding
 import edu.wellesley.scraper.net.ApiClient
 import edu.wellesley.scraper.net.SyncWorker
+import edu.wellesley.scraper.service.CaptureStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -35,6 +39,8 @@ class MainActivity : AppCompatActivity() {
         }
         binding.syncButton.setOnClickListener { SyncWorker.enqueue(this) }
         binding.pasteButton.setOnClickListener { saveTypedLink() }
+        binding.selfCheckRefresh.setOnClickListener { showSelfCheck() }
+        binding.selfCheckCopy.setOnClickListener { copySelfCheck() }
 
         lifecycleScope.launch {
             CaptureDatabase.get(this@MainActivity).captureDao().pendingCount()
@@ -42,6 +48,16 @@ class MainActivity : AppCompatActivity() {
                     binding.pendingText.text = getString(R.string.status_pending, count)
                 }
         }
+    }
+
+    private fun showSelfCheck() {
+        binding.selfCheckText.text = CaptureStats.report()
+    }
+
+    private fun copySelfCheck() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("self-check", CaptureStats.report()))
+        toast(getString(R.string.selfcheck_copied))
     }
 
     /**
@@ -100,5 +116,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.status_not_registered)
         }
+        showSelfCheck()
     }
 }

@@ -1,6 +1,8 @@
 package edu.wellesley.scraper.service
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import edu.wellesley.scraper.data.CaptureDatabase
 import edu.wellesley.scraper.data.CaptureEntity
@@ -30,6 +32,7 @@ class CaptureAccessibilityService : AccessibilityService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val buffer = CaptureBuffer()
+    private val idleHandler = Handler(Looper.getMainLooper())
 
     private val parsers: Map<String, PostParser> = mapOf(
         "com.ss.android.ugc.aweme" to DouyinParser(),
@@ -41,25 +44,41 @@ class CaptureAccessibilityService : AccessibilityService() {
     private var lastScanAt = 0L
     private var lastPackage: String? = null
 
+    /**
+     * Finalises the buffer when the screen goes quiet.
+     *
+     * Restricting `packageNames` means no event ever arrives for any
+     * other app, so leaving Douyin or TikTok is invisible to this
+     * service -- there is no "user switched away" signal to flush on.
+     * Without this timer the posts still buffered when someone closes
+     * the app are never written at all.
+     */
+    private val idleFlush = Runnable { flush(force = true) }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        CaptureStats.onServiceConnected()
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
-        val parser = parsers[packageName]
-
-        if (parser == null) {
-            // Left a target app: finalise whatever is still buffered.
-            if (lastPackage != null) flush(force = true)
-            lastPackage = null
-            return
-        }
+        val parser = parsers[packageName] ?: return
         lastPackage = packageName
+
+        idleHandler.removeCallbacks(idleFlush)
+        idleHandler.postDelayed(idleFlush, IDLE_FLUSH_MILLIS)
 
         val now = System.currentTimeMillis()
         if (now - lastScanAt < SCAN_INTERVAL_MILLIS) return
         lastScanAt = now
 
         val nodes = NodeTools.flatten(rootInActiveWindow)
-        if (nodes.isEmpty()) return
+        if (nodes.isEmpty()) {
+            CaptureStats.onSkip(packageName, "screen returned no nodes")
+            return
+        }
         if (parser.shouldSkip(nodes)) {
+            CaptureStats.onSkip(packageName, "comment sheet open")
             CaptureLog.skipped("comment sheet open")
             return
         }
@@ -67,16 +86,21 @@ class CaptureAccessibilityService : AccessibilityService() {
         // The feed tab belongs to the screen, not to any one post.
         val feed = parser.feed(nodes)
         val segments = NodeTools.segment(nodes, parser::isPostBoundary)
+        CaptureStats.onFrame(packageName, nodes.size, segments.size)
         CaptureLog.segments(segments.size, nodes.size)
 
         var parsedAny = false
         for (segment in segments) {
             val post = parser.parse(segment) ?: continue
             parsedAny = true
+            CaptureStats.onParsed(post)
             CaptureLog.parsed(post)
             buffer.observe(post.copy(feed = feed))
         }
-        if (!parsedAny) CaptureLog.dumpUnparsed(nodes)
+        if (!parsedAny) {
+            CaptureStats.onNothingParsed(nodes)
+            CaptureLog.dumpUnparsed(nodes)
+        }
 
         flush(force = false)
     }
@@ -86,6 +110,7 @@ class CaptureAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        idleHandler.removeCallbacks(idleFlush)
         flush(force = true)
         scope.cancel()
         super.onDestroy()
@@ -99,9 +124,13 @@ class CaptureAccessibilityService : AccessibilityService() {
         scope.launch {
             val dao = CaptureDatabase.get(applicationContext).captureDao()
             var stored = 0
+            var duplicates = 0
             for ((post, capturedAt) in settled) {
                 val fingerprint = post.fingerprint() ?: continue
-                if (dao.countSince(fingerprint, startOfDay(capturedAt)) > 0) continue
+                if (dao.countSince(fingerprint, startOfDay(capturedAt)) > 0) {
+                    duplicates++
+                    continue
+                }
                 dao.insert(
                     CaptureEntity(
                         platformPackage = packageName,
@@ -112,6 +141,7 @@ class CaptureAccessibilityService : AccessibilityService() {
                 )
                 stored++
             }
+            CaptureStats.onStored(stored, duplicates)
             if (stored > 0 && Prefs(applicationContext).isRegistered) {
                 SyncWorker.enqueue(applicationContext)
             }
@@ -137,5 +167,8 @@ class CaptureAccessibilityService : AccessibilityService() {
     private companion object {
         /** Feeds repaint constantly; one read every half second is plenty. */
         const val SCAN_INTERVAL_MILLIS = 500L
+
+        /** Slightly longer than the buffer's own settle window. */
+        const val IDLE_FLUSH_MILLIS = 6_000L
     }
 }

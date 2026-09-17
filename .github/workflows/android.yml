@@ -35,6 +35,30 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Resource compilation rejects "--" inside an XML comment, and the
+      # failure it produces names a row and column rather than the rule.
+      # Cheaper to catch here than three minutes into a Gradle build.
+      - name: Check XML resources parse
+        run: |
+          python3 - <<'CHECK'
+          import pathlib, re, sys, xml.dom.minidom
+          bad = []
+          for path in pathlib.Path("android").rglob("*.xml"):
+              if "build/" in str(path):
+                  continue
+              try:
+                  xml.dom.minidom.parse(str(path))
+              except Exception as error:
+                  bad.append(f"{path}: {error}")
+                  continue
+              for match in re.finditer(r"<!--(.*?)-->", path.read_text(), re.S):
+                  if "--" in match.group(1):
+                      bad.append(f"{path}: '--' inside an XML comment")
+          for line in bad:
+              print(line)
+          sys.exit(1 if bad else 0)
+          CHECK
+
       - name: Unit tests
         working-directory: android
         run: ./gradlew test --no-daemon

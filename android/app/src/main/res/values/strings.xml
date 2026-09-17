@@ -17,4 +17,8 @@
     <string name="paste_hint">Paste a Douyin or TikTok link</string>
     <string name="paste_button">Save this link</string>
     <string name="paste_empty">Paste a link first</string>
+    <string name="selfcheck_title">Self-check</string>
+    <string name="selfcheck_refresh">Refresh self-check</string>
+    <string name="selfcheck_copy">Copy self-check</string>
+    <string name="selfcheck_copied">Copied</string>
 </resources>
