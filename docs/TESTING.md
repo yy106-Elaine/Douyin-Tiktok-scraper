@@ -14,42 +14,45 @@ calibration in step 7 is the part that actually takes time.
 ## 1. Start the backend on your laptop
 
 ```bash
-cd Douyin-Tiktok-scraper/backend
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-cp .env.example .env
+git clone https://github.com/yy106-Elaine/Douyin-Tiktok-scraper.git
+cd Douyin-Tiktok-scraper
+git checkout claude/awesome-euler-ocgd3u
+cd backend
+./setup.sh your-email@example.edu
 ```
 
-Edit `.env` and set a real admin key:
+That one command creates the virtualenv, installs dependencies, generates an
+admin key, enrols your email (registration is refused for anything not on the
+approved list), works out this machine's Wi-Fi address, and starts the server.
+
+It finishes by printing the two URLs you need — **copy them somewhere**:
 
 ```
-ADMIN_API_KEY=pick-a-long-random-string-here
+  ON THE PHONE, enter this as the server address:
+      http://192.168.1.42:8000
+
+  ON THIS MAC, open the dashboard:
+      http://localhost:8000/dashboard?key=LONG-RANDOM-KEY
 ```
 
-Add yourself to `approved_participants.csv` — registration is refused for
-anything not on this list:
+Leave that terminal running; Ctrl-C stops the server. Re-running `setup.sh`
+later keeps the same key, so a phone that is already registered stays
+registered.
 
-```csv
-email,participant_id,note
-you@example.edu,P001,pilot
+## 2. Check the phone can reach it
+
+Open the phone URL's health endpoint in the **phone's** browser:
+
+```
+http://192.168.1.42:8000/healthz     ->  {"status":"ok"}
 ```
 
-Start it listening on the network rather than only on localhost:
-
-```bash
-./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-## 2. Find your laptop's address on the Wi-Fi
-
-```bash
-ipconfig getifaddr en0        # macOS Wi-Fi; try en1 if that is empty
-```
-
-You will get something like `192.168.1.42`. The phone will use
-`http://192.168.1.42:8000`. Check it from the phone's browser before going
-further — if that URL does not load, nothing else in this document will work,
-and the cause is usually the laptop firewall or a guest network that isolates
-devices from each other.
+If that does not load, stop here and fix it — nothing else in this document
+will work. Usual causes: the two devices are on different Wi-Fi networks, the
+Mac's firewall is blocking incoming connections (System Settings → Network →
+Firewall), or a guest/campus network is isolating devices from each other. On a
+campus network that blocks device-to-device traffic, a phone hotspot that the
+Mac joins is the quickest workaround.
 
 ## 3. Get the APK onto the phone
 
@@ -135,8 +138,16 @@ from the same Releases page.
 
 ## 8. Test the link capture
 
-In Douyin or TikTok, share a video → **Save link for research**. You should see
-"Link saved", and the dashboard's **Shared links** table should show a new row:
+In Douyin or TikTok, tap **Share** on a video. Past the row of friends there is
+a row of apps; **Save link for research** is our app. It may sit behind
+**More** / **其他**, which opens Android's own share sheet.
+
+**If it is not there at all**, neither app is obliged to offer third-party apps
+in its share sheet. Use the fallback instead: tap **Copy link** in the app,
+then open Video Capture and paste it into **Save a link by hand** at the bottom
+of the screen. Same result — the link reaches the same endpoint.
+
+Either way the dashboard's **Shared links** table should show a new row:
 
 - **paired** — matched to a post you had just scrolled past. This is the good case.
 - **needs resolving** — a `v.douyin.com` short link with no video id yet.

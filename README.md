@@ -34,14 +34,23 @@ Dump the tree and correct them before collecting anything:
 
 ```bash
 cd backend
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-cp .env.example .env          # set ADMIN_API_KEY to a long random string
-./.venv/bin/python -m pytest  # 24 tests
-./.venv/bin/uvicorn app.main:app --reload
+./setup.sh you@example.edu    # venv, deps, admin key, enrolment, server
 ```
 
-Add participants to `approved_participants.csv` — only listed emails can
-register:
+The script prints the phone's server address and the dashboard URL when it
+starts. Re-running it keeps the existing admin key, so already-registered
+phones keep working.
+
+Manually, if you prefer:
+
+```bash
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+cp .env.example .env          # set ADMIN_API_KEY to a long random string
+./.venv/bin/python -m pytest  # 35 tests
+./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Only emails listed in `approved_participants.csv` can register:
 
 ```csv
 email,participant_id,note
@@ -96,7 +105,9 @@ the server address) → **Enable capture service** → turn the service on in
 Android's accessibility settings.
 
 To capture a video's URL, the participant shares it from Douyin or TikTok and
-picks **"Save link for research"**.
+picks **"Save link for research"**. Neither app guarantees third-party apps a
+slot in its share sheet, so the home screen also takes a pasted link
+("Save a link by hand") — both paths hit the same endpoint.
 
 ## How to read the data
 

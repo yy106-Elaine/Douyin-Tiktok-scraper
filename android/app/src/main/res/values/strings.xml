@@ -12,4 +12,9 @@
     <string name="share_saved">Link saved</string>
     <string name="share_not_recognised">Not a Douyin or TikTok link</string>
     <string name="share_not_registered">Register this device first</string>
+    <string name="paste_prompt">Save a link by hand</string>
+    <string name="paste_help">If "Save link for research" is missing from the app\'s share menu, use Copy link there and paste it below.</string>
+    <string name="paste_hint">Paste a Douyin or TikTok link</string>
+    <string name="paste_button">Save this link</string>
+    <string name="paste_empty">Paste a link first</string>
 </resources>

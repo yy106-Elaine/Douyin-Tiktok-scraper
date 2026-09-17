@@ -38,4 +38,47 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="@string/sync_now" />
+
+    <!--
+        Fallback for the share sheet. Some builds of Douyin and TikTok
+        show only a friends list and a fixed set of apps when you tap
+        Share, so "Save link for research" may not appear. Copy link
+        there, then paste it here.
+    -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="28dp"
+        android:background="?android:attr/listDivider" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/paste_prompt"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="@string/paste_help"
+        android:textSize="13sp" />
+
+    <EditText
+        android:id="@+id/pasteInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:autofillHints="URL"
+        android:hint="@string/paste_hint"
+        android:inputType="textMultiLine"
+        android:maxLines="4" />
+
+    <Button
+        android:id="@+id/pasteButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/paste_button" />
 </LinearLayout>
