@@ -172,6 +172,8 @@ _EXPORT_COLUMNS = [
     "author_handle",
     "author_name",
     "caption",
+    "posted_at_raw",
+    "posted_on",
     "music",
     "feed",
     "like_count",

@@ -84,6 +84,16 @@ class _PostMixin:
     #: emoji. Present on nearly every capture.
     author_name: Mapped[str | None] = mapped_column(String(255))
     caption: Mapped[str | None] = mapped_column(Text)
+
+    #: Publication date exactly as the interface rendered it. Kept
+    #: verbatim because the form varies: a full date on older posts, a
+    #: partial or relative one on recent posts.
+    posted_at_raw: Mapped[str | None] = mapped_column(String(64))
+    #: Parsed only when the raw value carried a full, unambiguous date.
+    #: A takedown study measures from publication, so this is what makes
+    #: time-to-removal a property of the platform rather than of when
+    #: this device happened to scroll past.
+    posted_on: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     music: Mapped[str | None] = mapped_column(Text)
     feed: Mapped[str | None] = mapped_column(String(64))
 

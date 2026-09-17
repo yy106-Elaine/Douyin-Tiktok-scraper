@@ -143,7 +143,7 @@ def _num(value: object) -> str:
 
 def _post_rows(rows) -> str:
     if not rows:
-        return '<tr><td colspan="11" class="empty">No posts captured yet.</td></tr>'
+        return '<tr><td colspan="12" class="empty">No posts captured yet.</td></tr>'
 
     out = []
     for post in rows:
@@ -170,6 +170,7 @@ def _post_rows(rows) -> str:
             f"{_cell(post.participant_id)}"
             f"{_cell(post.author_handle)}"
             f"{_cell(post.author_name)}"
+            f"{_cell(post.posted_at_raw)}"
             f"{_cell(post.feed)}"
             f'<td class="caption">{escape((post.caption or "—")[:90])}</td>'
             f"{_num(post.like_count)}{_num(post.comment_count)}"
@@ -321,7 +322,7 @@ are approximate wherever flagged.</p>
 <h2>Latest posts &mdash; {escape(platform)}</h2>
 <div class="panel"><table>
 <thead><tr>
-<th>Seen</th><th>Participant</th><th>@handle</th><th>Display name</th><th>Feed</th><th>Caption</th>
+<th>Seen</th><th>Participant</th><th>@handle</th><th>Display name</th><th>Posted</th><th>Feed</th><th>Caption</th>
 <th class="n">Likes</th><th class="n">Comments</th><th class="n">Shares</th>
 <th class="n">Saves</th><th>Video link</th><th>Flags</th>
 </tr></thead>

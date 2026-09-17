@@ -26,6 +26,8 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
     row: dict[str, Any] = {
         "author_handle": _clean(payload.get("author_handle")),
         "author_name": _clean(payload.get("author_name")),
+        "posted_at_raw": _clean(payload.get("posted_at_raw")),
+        "posted_on": _posted_on(payload.get("posted_at_raw")),
         "caption": _clean(payload.get("caption")),
         "music": _clean(payload.get("music")),
         "feed": _clean(payload.get("feed")),
@@ -47,6 +49,29 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 _ID_SHAPED = re.compile(r"^\d{18,19}$")
+
+_FULL_DATE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
+
+
+def _posted_on(value: Any) -> datetime | None:
+    """Parse a publication date only when it is unambiguous.
+
+    The interface also renders partial dates ("5-31") and relative ones
+    ("3d ago"). Those could be resolved against the capture time, but
+    guessing a year or a day would quietly fabricate the variable a
+    takedown study measures from. They stay in `posted_at_raw` for
+    whoever wants to interpret them deliberately.
+    """
+    if value is None:
+        return None
+    match = _FULL_DATE.match(str(value).strip().lstrip("·").strip())
+    if not match:
+        return None
+    year, month, day = (int(part) for part in match.groups())
+    try:
+        return datetime(year, month, day)
+    except ValueError:
+        return None
 
 
 def _video_id(value: Any) -> str | None:

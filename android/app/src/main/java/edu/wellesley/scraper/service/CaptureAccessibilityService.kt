@@ -45,6 +45,9 @@ class CaptureAccessibilityService : AccessibilityService() {
     private var lastScanAt = 0L
     private var lastPackage: String? = null
 
+    /** Most recently observed feed tab; see where it is read below. */
+    private var lastFeed: String? = null
+
     /**
      * Finalises the buffer when the screen goes quiet.
      *
@@ -103,8 +106,14 @@ class CaptureAccessibilityService : AccessibilityService() {
             return
         }
 
-        // The feed tab belongs to the screen, not to any one post.
-        val feed = parser.feed(nodes)
+        // The feed tab belongs to the screen, not to any one post -- and
+        // TikTok hides the tab bar while a video plays fullscreen, so it
+        // is absent from most frames. The last tab actually observed is
+        // carried forward: someone stays on a tab for many posts, so the
+        // most recent reading is the best available answer. Recorded as
+        // "last observed", not as certainty.
+        parser.feed(nodes)?.let { lastFeed = it }
+        val feed = lastFeed
         val segments = NodeTools.segment(nodes, parser::isPostBoundary)
         CaptureStats.onFrame(activePackage, nodes.size, segments.size)
         CaptureLog.segments(segments.size, nodes.size)

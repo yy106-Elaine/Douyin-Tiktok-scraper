@@ -22,6 +22,16 @@ data class ParsedPost(
      */
     val authorName: String? = null,
     val caption: String? = null,
+    /**
+     * The publication date as the interface renders it -- "· 2025-05-31"
+     * on TikTok, sometimes relative ("3d ago") instead. Kept verbatim;
+     * the server parses what it can.
+     *
+     * A takedown study needs this: without it the only measurable
+     * interval is from when this device happened to see the post, which
+     * says more about the viewer's scrolling than about the platform.
+     */
+    val postedAtRaw: String? = null,
     val music: String? = null,
     val feed: String? = null,
     val likeRaw: String? = null,
@@ -71,6 +81,7 @@ data class ParsedPost(
         authorHandle = other.authorHandle ?: authorHandle,
         authorName = other.authorName ?: authorName,
         caption = other.caption ?: caption,
+        postedAtRaw = other.postedAtRaw ?: postedAtRaw,
         music = other.music ?: music,
         feed = other.feed ?: feed,
         likeRaw = other.likeRaw ?: likeRaw,
@@ -86,6 +97,7 @@ data class ParsedPost(
         "author_handle" to authorHandle,
         "author_name" to authorName,
         "caption" to caption,
+        "posted_at_raw" to postedAtRaw,
         "music" to music,
         "feed" to feed,
         "like_raw" to likeRaw,

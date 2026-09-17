@@ -21,19 +21,37 @@ class TikTokParser : PostParser {
         )
         val SHARE = Regex("""Share video\.\s*([\d.,]+[KMB]?)\s*shares""", RegexOption.IGNORE_CASE)
 
-        // The favourites button is labelled inconsistently across builds
-        // and often carries no count in its own description, so this
-        // matches the label loosely and the count is taken from the
-        // button's subtree. Unverified against a device; if Saves comes
-        // back empty, read the self-check dump and correct it.
+        /**
+         * Favourites count, where a build exposes one.
+         *
+         * This build does not. Its button reads "Add or remove this
+         * video from Favorites." with no number anywhere in the
+         * subtree, so save_count is simply unavailable -- see
+         * docs/SELECTORS.md. The lookups are kept because they cost
+         * nothing and other builds do label it, but do not expect this
+         * column to fill.
+         */
         val SAVE_MARKER = Regex(
             """(?:add to |remove from )?favou?rites?|bookmark|collect""",
             RegexOption.IGNORE_CASE,
         )
-        /** Some builds put the count straight in the description. */
         val SAVE_INLINE = Regex(
             """([\d.,]+[KMB]?)\s*(?:favou?rites?|bookmarks?)""", RegexOption.IGNORE_CASE
         )
+
+        /** "· 2025-05-31", and sometimes a relative form instead. */
+        val POST_TIME_ID = "tv_post_time"
+
+        /**
+         * The in-app browser, open over the feed.
+         *
+         * Its page content flattens into the same tree, and a live
+         * capture stored a shop's cookie banner as a video's caption.
+         * The engagement counts on such a frame are still the video's,
+         * so the frame is kept -- only the shape-based caption guess is
+         * withheld, since that is what the overlay's text hijacks.
+         */
+        val BROWSER_URL = Regex("""^(?:https?://|www\.)[\w.\-]+""", RegexOption.IGNORE_CASE)
         val COUNT_SHAPED = Regex("""^\d{1,3}([.,]\d+)?[KMB]?$""", RegexOption.IGNORE_CASE)
 
         val AUTHOR = Regex("""(.+?)\s+profile""", RegexOption.IGNORE_CASE)
@@ -47,6 +65,9 @@ class TikTokParser : PostParser {
          * feed renders it, is its own node.
          */
         val HANDLE_ONLY = Regex("""^@([A-Za-z0-9._]{2,24})$""")
+
+        /** "Follow SierraLocklear" -- another rendering of the name. */
+        val FOLLOW = Regex("""^Follow\s+(.+)$""", RegexOption.IGNORE_CASE)
 
         /**
          * The caption TextView also renders the "expand" affordance, so
@@ -140,6 +161,8 @@ class TikTokParser : PostParser {
             authorHandle = handle(nodes),
             authorName = displayName(nodes),
             caption = caption(nodes),
+            postedAtRaw = NodeTools.byViewId(nodes, POST_TIME_ID)?.text
+                ?.removePrefix("·")?.trim(),
             music = NodeTools.firstGroup(nodes, MUSIC),
             likeRaw = NodeTools.firstGroup(nodes, LIKE),
             commentRaw = NodeTools.firstGroup(nodes, COMMENT),
@@ -174,6 +197,9 @@ class TikTokParser : PostParser {
     private fun displayName(nodes: List<FlatNode>): String? =
         NodeTools.firstGroup(nodes, AUTHOR)?.removePrefix("@")?.trim()
             ?: NodeTools.byViewId(nodes, "title")?.text
+            // "Follow SierraLocklear" -- present even when the profile
+            // label is not.
+            ?: NodeTools.firstGroup(nodes, FOLLOW)?.trim()
 
     /**
      * The caption has a view id on some builds and none on others, so
@@ -182,11 +208,16 @@ class TikTokParser : PostParser {
      * that same shape.
      */
     private fun caption(nodes: List<FlatNode>): String? {
-        val raw = NodeTools.byViewId(nodes, "desc")?.text
-            ?: nodes
-                .filter { it.description == null && (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH }
-                .maxByOrNull { it.text!!.length }
-                ?.text
+        NodeTools.byViewId(nodes, "desc")?.text?.let { return stripExpandAffordance(it) }
+
+        // With the in-app browser open, the longest undescribed text on
+        // screen belongs to a web page, not to the video.
+        if (NodeTools.anyMatches(nodes, BROWSER_URL)) return null
+
+        val raw = nodes
+            .filter { it.description == null && (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH }
+            .maxByOrNull { it.text!!.length }
+            ?.text
         return raw?.let(::stripExpandAffordance)
     }
 
