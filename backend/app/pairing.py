@@ -94,9 +94,58 @@ def _attach(session: Session, link: SharedLink, post, family: str, method: str) 
     post.video_url = link.canonical_url or canonical_url_for(
         family, link.video_id, post.author_handle
     )
+    _adopt_handle(link, post)
     link.matched_capture_id = post.capture_event_id
     link.pairing_method = method
     session.commit()
+
+
+def _adopt_handle(link: SharedLink, post) -> None:
+    """Give the post the `@handle` the resolved link revealed.
+
+    The feed renders a display name, not a handle, so most captures
+    have none -- and the handle is the only form that finds the account
+    again or reaches its owner. A resolved link's URL contains it, so
+    pairing is the moment it becomes known.
+
+    Never overwritten: a handle already read off the screen was
+    observed directly, and this only fills an empty column.
+    """
+    if link.author_handle and not post.author_handle:
+        post.author_handle = link.author_handle.lstrip("@")
+
+
+def backfill_author_handles(session: Session) -> int:
+    """Repair posts paired before handles were adopted. Returns the count.
+
+    Idempotent, and safe to run at any time: it only fills columns that
+    are empty. Called by `python -m app.resolve`.
+    """
+    filled = 0
+    for link in session.scalars(
+        select(SharedLink).where(
+            SharedLink.matched_capture_id.isnot(None),
+            SharedLink.author_handle.isnot(None),
+        )
+    ):
+        family = family_for_platform(link.platform) or link.platform
+        registered = PLATFORM_TABLES.get(family)
+        if registered is None:
+            continue
+        model, _ = registered
+        post = session.scalars(
+            select(model).where(
+                model.capture_event_id == link.matched_capture_id,
+                model.author_handle.is_(None),
+            )
+        ).first()
+        if post is None:
+            continue
+        _adopt_handle(link, post)
+        filled += 1
+    if filled:
+        session.commit()
+    return filled
 
 
 def _distance(post, link: SharedLink) -> tuple[int, float]:

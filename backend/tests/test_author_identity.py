@@ -157,3 +157,137 @@ def test_a_partial_date_is_still_refused(client, api_key):
         post = session.query(TikTokPost).one()
         assert post.posted_at_raw == "5-31"
         assert post.posted_on is None
+
+
+def test_a_resolved_link_gives_its_post_the_handle(client, api_key):
+    """The handle is what finds the account again, so it must land on the row.
+
+    The feed renders a display name only. Without this the handle sat
+    in the links table while the @handle column stayed empty -- the one
+    field a follow-up interview cannot do without.
+    """
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [
+                {
+                    "platform_package": "com.zhiliaoapp.musically",
+                    "fingerprint": "tiktok::displayonly::hi",
+                    "captured_at": "2026-09-14T12:00:00Z",
+                    "payload": {"author_name": "h <3", "caption": "hi"},
+                }
+            ],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@realaccount/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:00:30Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "realaccount" in body
+    csv = client.get(
+        "/api/export/posts.csv?platform=tiktok", headers={"X-API-Key": "test-admin-key"}
+    ).text
+    assert "realaccount" in csv
+
+
+def test_adopting_a_handle_never_replaces_an_observed_one():
+    """Directly pinned, because two layers protect this and only one shows.
+
+    Window pairing already refuses an author mismatch, so the endpoint
+    test below would pass even if the guard here were removed.
+    """
+    from types import SimpleNamespace
+
+    from app.pairing import _adopt_handle
+
+    post = SimpleNamespace(author_handle="seenonscreen")
+    _adopt_handle(SimpleNamespace(author_handle="@fromlink"), post)
+    assert post.author_handle == "seenonscreen"
+
+    empty = SimpleNamespace(author_handle=None)
+    _adopt_handle(SimpleNamespace(author_handle="@fromlink"), empty)
+    assert empty.author_handle == "fromlink"  # the @ is not stored
+
+
+def test_a_mismatched_author_is_not_paired_at_all(client, api_key):
+    """A directly observed handle outranks one inferred from pairing."""
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [
+                {
+                    "platform_package": "com.zhiliaoapp.musically",
+                    "fingerprint": "tiktok::seen::hi",
+                    "captured_at": "2026-09-14T12:00:00Z",
+                    "payload": {"author_handle": "seenonscreen", "caption": "hi"},
+                }
+            ],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@someoneelse/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:00:30Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    csv = client.get(
+        "/api/export/posts.csv?platform=tiktok", headers={"X-API-Key": "test-admin-key"}
+    ).text
+    assert "seenonscreen" in csv
+
+
+def test_backfill_repairs_posts_paired_before_handles_were_adopted(client, api_key):
+    """An existing database is fixed by re-running app.resolve, not a migration."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import TikTokPost
+    from app.pairing import backfill_author_handles
+
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [
+                {
+                    "platform_package": "com.zhiliaoapp.musically",
+                    "fingerprint": "tiktok::old::hi",
+                    "captured_at": "2026-09-14T12:00:00Z",
+                    "payload": {"author_name": "h <3", "caption": "hi"},
+                }
+            ],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@realaccount/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:00:30Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    # Put the row back into the state an older pairing left it in.
+    with SessionLocal() as session:
+        post = session.scalars(select(TikTokPost)).one()
+        post.author_handle = None
+        session.commit()
+
+        assert backfill_author_handles(session) == 1
+        session.expire_all()
+        assert session.scalars(select(TikTokPost)).one().author_handle == "realaccount"
+        # Idempotent: nothing left to fill.
+        assert backfill_author_handles(session) == 0

@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from .links import extract
 from .models import SharedLink
-from .pairing import pair_shared_link
+from .pairing import backfill_author_handles, pair_shared_link
 
 #: A desktop browser string. Both platforms serve redirects to anything,
 #: but a default urllib agent is refused often enough to be worth it.
@@ -129,6 +129,12 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     init_db()
     with SessionLocal() as session:
         print(resolve_pending(session))
+        # Posts paired before handles were adopted still have an empty
+        # one; this is where that gets repaired, so re-running the
+        # command is all an existing database needs.
+        repaired = backfill_author_handles(session)
+        if repaired:
+            print(f"filled in {repaired} missing @handle(s)")
 
 
 if __name__ == "__main__":  # pragma: no cover

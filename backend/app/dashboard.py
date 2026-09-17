@@ -224,9 +224,9 @@ def _video_rows(rows) -> str:
             f"{_cell(row.author_name)}"
             f'<td class="caption">{escape((row.caption or "—")[:110])}</td>'
             f"<td class=\"when\">{escape(row.when.strftime('%m-%d %H:%M'))}</td>"
-            f"{_cell(row.feed)}"
             f"{_num(row.like_count)}{_num(row.comment_count)}{_num(row.share_count)}"
             f"{_notes_cell(row)}"
+            f"{_cell(row.feed)}"
             "</tr>"
         )
     return "".join(out)
@@ -381,9 +381,9 @@ are approximate wherever flagged.</p>
 <div class="panel"><table>
 <thead><tr>
 <th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
-<th>Caption</th><th>Seen</th><th>Feed</th>
+<th>Caption</th><th>Seen</th>
 <th class="n">Likes</th><th class="n">Comments</th><th class="n">Shares</th>
-<th>Notes</th>
+<th>Notes</th><th>Seen on</th>
 </tr></thead>
 <tbody>{_video_rows(ctx["rows"])}</tbody>
 </table></div>
