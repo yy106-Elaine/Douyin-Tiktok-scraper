@@ -277,6 +277,44 @@ def by_keyword(session) -> dict[str, dict[str, int]]:
     return table
 
 
+def by_parameter(session) -> dict[str, dict[str, int]]:
+    """Cross-tabulate outcome against the sampling parameters used.
+
+    `relevanceLanguage` is a hint YouTube may ignore, not a language
+    filter, so whether it helps is a measurement rather than something
+    to assume. The parameters are stored on every row, which makes the
+    comparison available after the fact: rows collected before the hint
+    was configured against rows collected after.
+    """
+    import json
+
+    from sqlalchemy import select
+
+    from .models import CaptureEvent
+    from .parsers import PLATFORM_TABLES
+
+    language: dict[int, str] = {}
+    for event in session.scalars(select(CaptureEvent)):
+        try:
+            payload = json.loads(event.payload)
+        except (TypeError, ValueError):
+            continue
+        language[event.id] = payload.get("relevance_language") or "(none set)"
+
+    table: dict[str, dict[str, int]] = {}
+    for model, _ in PLATFORM_TABLES.values():
+        for capture_id, reason in session.execute(
+            select(model.capture_event_id, model.relevance)
+        ):
+            key = language.get(capture_id)
+            if key is None:
+                continue
+            row = table.setdefault(key, {})
+            name = reason or "in scope"
+            row[name] = row.get(name, 0) + 1
+    return table
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     import argparse
 
@@ -299,6 +337,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="show which search term produced which outcome",
     )
+    parser.add_argument(
+        "--by-param",
+        action="store_true",
+        help="show whether the relevanceLanguage hint changed the results",
+    )
     args = parser.parse_args()
 
     samples = list(args.test or [])
@@ -317,6 +360,18 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
     init_db()
+
+    if args.by_param:
+        with SessionLocal() as session:
+            table = by_parameter(session)
+        for value, counts in sorted(table.items()):
+            total = sum(counts.values())
+            kept = counts.get("in scope", 0)
+            share = f"{round(100 * kept / total)}%" if total else "-"
+            print(f"\nrelevanceLanguage={value}   {total} rows, {kept} in scope ({share})")
+            for reason, count in sorted(counts.items(), key=lambda pair: -pair[1]):
+                print(f"   {count:5}  {reason}")
+        return
 
     if args.by_keyword:
         with SessionLocal() as session:

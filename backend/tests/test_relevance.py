@@ -296,3 +296,47 @@ def test_the_keyword_breakdown_attributes_a_video_to_every_term(client):
         # One video, found by both terms, counted against both.
         assert table["拉拉"] == {"unrelated product": 1}
         assert table["女同志"] == {"unrelated product": 1}
+
+
+def test_the_parameter_breakdown_separates_runs_by_their_hint(client):
+    """Whether relevanceLanguage helps is measurable, not assumable."""
+    from app import youtube
+    from app.db import SessionLocal
+    from app.relevance import by_parameter
+
+    def caller(video_id, title):
+        def call(endpoint, params):
+            if endpoint == "search":
+                return {"items": [{"id": {"videoId": video_id}}]}
+            return {
+                "items": [
+                    {
+                        "id": video_id,
+                        "snippet": {
+                            "channelId": "UC1",
+                            "channelTitle": "c",
+                            "title": title,
+                            "description": "",
+                            "publishedAt": "2026-09-16T08:30:00Z",
+                        },
+                        "statistics": {},
+                        "status": {"privacyStatus": "public"},
+                    }
+                ]
+            }
+
+        return call
+
+    with SessionLocal() as session:
+        youtube.collect(
+            session, ["x"], caller=caller("v1", "Lesbian vlog"), relevance_language=""
+        )
+        youtube.collect(
+            session,
+            ["x"],
+            caller=caller("v2", "拉拉情侣日常"),
+            relevance_language="zh-Hans",
+        )
+        table = by_parameter(session)
+        assert table["(none set)"] == {"not in chinese": 1}
+        assert table["zh-Hans"] == {"in scope": 1}

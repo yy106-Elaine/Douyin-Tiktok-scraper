@@ -7,21 +7,28 @@
 # A video found by several keywords is one observation, recorded with
 # all of them, so a per-keyword count does not depend on this order.
 #
-# Off-topic results are marked, not dropped, by app/relevance.py --
-# adverts, AI-generated clips, and keyword collisions. Widening this
-# list costs precision, not data: run `python -m app.relevance` after
-# any change to re-mark the whole corpus.
+# Measured on the first 150 YouTube results, with
+# `app.relevance --by-keyword`:
+#
+#   拉拉        30 found, 17 in scope (57%)
+#   女同        12 found,  4 in scope (33%)
+#   女同志       9 found,  2 in scope (22%)
+#   女同性恋   110 found,  3 in scope (3%) -- 105 of them not in Chinese
+#
+# The counter-intuitive result, and the reason this file has comments:
+# the most precise Chinese term leaks into other languages the most.
+# 女同性恋 is a clean translation of "lesbian", so the search maps it
+# across languages and returns English and Spanish results. 拉拉 and
+# 女同 are community slang with no such mapping, so they stay Chinese.
+#
+# Everything is kept anyway. Off-topic rows are marked, not deleted
+# (app/relevance.py), and quota is not the binding constraint at this
+# volume -- three keywords over 72 hours cost 704 of 10,000 daily
+# units. Precision is cheap; a term dropped is recall that cannot be
+# recovered later, because the videos will be gone.
 
 女同性恋
 女同志
+女同
 拉拉
-
-# Dropped: 女同 on its own. It is a substring of 女同学, 女同事 and
-# 女同桌, which are ordinary words about school and work, and a run
-# with it returned mostly those -- quota spent on results the filter
-# then removes. 女同性恋 and 女同志 cover the term as an identity.
-
-# Worth trying, if recall matters more than precision. 百合 is the
-# fiction/fandom term and is productive; les is short enough to collide.
-# 百合
-# les
+百合
