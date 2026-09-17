@@ -36,3 +36,32 @@ def test_canonical_url_construction():
         canonical_url_for("tiktok", "123", "bob")
         == "https://www.tiktok.com/@bob/video/123"
     )
+
+
+def test_the_copy_link_short_form_is_recognised():
+    # What the app's own "copy link" produces today. The older vm./vt.
+    # forms still appear in pasted text, so all three must work.
+    for url in (
+        "https://www.tiktok.com/t/ZP83TmDmq/",
+        "https://tiktok.com/t/ZP83TmDmq/",
+        "https://vm.tiktok.com/ZMabc123/",
+        "https://vt.tiktok.com/ZSabc123/",
+    ):
+        parsed = extract(url)
+        assert parsed.platform == "tiktok", url
+        assert parsed.needs_resolution is True, url
+        assert parsed.video_id is None, url
+
+
+def test_a_copy_link_inside_share_text_is_found():
+    blob = "Check this out on TikTok https://www.tiktok.com/t/ZP83TmDmq/ 😍"
+    parsed = extract(blob)
+    assert parsed.platform == "tiktok"
+    assert parsed.raw_url == "https://www.tiktok.com/t/ZP83TmDmq/"
+
+
+def test_a_profile_url_is_not_taken_for_a_video():
+    # Visiting an author's profile yields a URL with no video in it;
+    # storing it as a video link would be wrong.
+    parsed = extract("https://www.tiktok.com/@someuser")
+    assert parsed.video_id is None

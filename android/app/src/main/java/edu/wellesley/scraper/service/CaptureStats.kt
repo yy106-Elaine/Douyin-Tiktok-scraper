@@ -57,6 +57,17 @@ object CaptureStats {
     @Volatile var lastIdScan: String? = null
     @Volatile var idsFoundTotal: Int = 0
 
+    /**
+     * Frames read and ids found, per app.
+     *
+     * Douyin and TikTok are separate implementations, so a result from
+     * one says nothing about the other. Reporting them together hid
+     * that every frame so far had come from TikTok, and an app with no
+     * row here simply has not been measured.
+     */
+    private val framesByPackage = LinkedHashMap<String, Int>()
+    private val idsByPackage = LinkedHashMap<String, Int>()
+
     fun onServiceConnected() {
         serviceConnectedAt = System.currentTimeMillis()
     }
@@ -64,6 +75,18 @@ object CaptureStats {
     fun onIdScan(summary: String, found: Boolean) {
         lastIdScan = summary
         if (found) idsFoundTotal++
+    }
+
+    @Synchronized
+    fun onIdScan(packageName: String, summary: String, found: Boolean) {
+        onIdScan(summary, found)
+        framesByPackage[packageName] = (framesByPackage[packageName] ?: 0) + 1
+        if (found) idsByPackage[packageName] = (idsByPackage[packageName] ?: 0) + 1
+    }
+
+    @Synchronized
+    private fun idScanByPackage(): List<String> = framesByPackage.map { (pkg, frames) ->
+        "  $pkg: ${idsByPackage[pkg] ?: 0} of $frames frames"
     }
 
     fun onFrame(packageName: String, nodeCount: Int, segmentCount: Int) {
@@ -123,6 +146,7 @@ object CaptureStats {
             "id=${it.viewId?.substringAfterLast('/') ?: "-"} | " +
                 "text=${it.text?.take(50) ?: "-"} | " +
                 "desc=${it.description?.take(50) ?: "-"}" +
+                (it.extras?.let { extra -> " | extras=${extra.take(60)}" } ?: "") +
                 if (it.selected) " | SELECTED" else ""
         }
 
@@ -156,7 +180,10 @@ object CaptureStats {
         lastParsed?.let { lines += "Last parsed:\n  $it" }
 
         lines += ""
-        lines += "Video ids seen on screen: $idsFoundTotal of $framesSeen frames"
+        lines += "Video ids seen on screen, per app:"
+        val perApp = idScanByPackage()
+        if (perApp.isEmpty()) lines += "  nothing scanned yet"
+        lines += perApp
         lastIdScan?.let { lines += "  last scan: $it" }
 
         lines += "Distinct posts buffered: $distinctPosts"

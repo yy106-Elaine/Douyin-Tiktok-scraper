@@ -17,7 +17,13 @@ _URL = re.compile(r"https?://[^\s<>一-鿿]+", re.IGNORECASE)
 _TIKTOK_FULL = re.compile(
     r"tiktok\.com/@(?P<handle>[\w.\-]+)/video/(?P<vid>\d+)", re.IGNORECASE
 )
-_TIKTOK_SHORT = re.compile(r"(?:vm|vt)\.tiktok\.com/(?P<slug>[\w]+)", re.IGNORECASE)
+#: Three short forms are in circulation. `/t/<slug>` is what the app's
+#: own "copy link" produces today; vm./vt. are older and still appear in
+#: pasted text.
+_TIKTOK_SHORT = re.compile(
+    r"(?:(?:vm|vt)\.tiktok\.com|(?:www\.)?tiktok\.com/t)/(?P<slug>[\w]+)",
+    re.IGNORECASE,
+)
 _DOUYIN_FULL = re.compile(r"douyin\.com/video/(?P<vid>\d+)", re.IGNORECASE)
 _DOUYIN_SHORT = re.compile(r"v\.douyin\.com/(?P<slug>[\w\-]+)", re.IGNORECASE)
 
@@ -76,7 +82,7 @@ def extract(text: str) -> ExtractedLink:
             video_id=None,
             author_handle=None,
             canonical_url=None,
-            raw_url=raw_url or f"https://vm.tiktok.com/{m.group('slug')}",
+            raw_url=raw_url or f"https://www.tiktok.com/t/{m.group('slug')}/",
             needs_resolution=True,
         )
 

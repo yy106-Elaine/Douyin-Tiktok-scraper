@@ -11,6 +11,14 @@ data class FlatNode(
     val selected: Boolean,
     val depth: Int,
     val top: Int,
+    /**
+     * The node's extras bundle, flattened to text.
+     *
+     * Apps may attach their own data here, and a video id would be the
+     * kind of thing that turns up in it. Read passively like everything
+     * else, so it costs nothing to look.
+     */
+    val extras: String? = null,
 )
 
 object NodeTools {
@@ -18,6 +26,8 @@ object NodeTools {
     /** Depth-capped traversal; these feeds nest deeply and we are on a 500ms budget. */
     private const val MAX_DEPTH = 40
     private const val MAX_NODES = 900
+    private const val MAX_EXTRA_KEYS = 12
+    private const val MAX_EXTRA_VALUE_LENGTH = 80
 
     /**
      * Pre-order walk, so a node's descendants immediately follow it and
@@ -40,6 +50,7 @@ object NodeTools {
                     selected = node.isSelected,
                     depth = depth,
                     top = bounds.top,
+                    extras = flattenExtras(node),
                 )
             )
             for (i in 0 until node.childCount) {
@@ -49,6 +60,27 @@ object NodeTools {
 
         walk(root, 0)
         return out
+    }
+
+    /** Extras as "key=value" pairs, capped so a large bundle cannot stall a frame. */
+    private fun flattenExtras(node: AccessibilityNodeInfo): String? {
+        val extras = try {
+            node.extras
+        } catch (error: RuntimeException) {
+            null
+        } ?: return null
+
+        val keys = extras.keySet()
+        if (keys.isEmpty()) return null
+
+        return keys.take(MAX_EXTRA_KEYS).joinToString(" ") { key ->
+            val value = try {
+                extras.get(key)?.toString()
+            } catch (error: RuntimeException) {
+                null
+            }
+            "$key=${value?.take(MAX_EXTRA_VALUE_LENGTH) ?: ""}"
+        }
     }
 
     /**

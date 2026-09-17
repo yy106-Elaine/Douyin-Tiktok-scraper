@@ -33,6 +33,7 @@ object IdScanner {
                 "viewId" to node.viewId,
                 "text" to node.text,
                 "desc" to node.description,
+                "extras" to node.extras,
             )
             for ((where, value) in sources) {
                 if (value == null) continue

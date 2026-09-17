@@ -115,6 +115,15 @@ class CaptureAccessibilityService : AccessibilityService() {
             val found = searchParser.parseAll(nodes)
             CaptureStats.onFrame(activePackage, nodes.size, found.size)
             CaptureStats.onSearchFrame(found.size)
+            // The search grid is a different surface from the feed and
+            // may expose what the feed does not, so it gets scanned
+            // too. Returning early without this left the question of
+            // whether ids appear here unmeasured.
+            CaptureStats.onIdScan(
+                activePackage,
+                IdScanner.describe(nodes),
+                IdScanner.scan(nodes).isNotEmpty(),
+            )
             CaptureStats.onFrameDump(nodes)
             found.forEach {
                 CaptureStats.onParsed(it)
@@ -146,7 +155,7 @@ class CaptureAccessibilityService : AccessibilityService() {
         // Whether either app puts a video id on screen decides how links
         // can be obtained at all, so record the answer per frame.
         val scanned = IdScanner.scan(nodes)
-        CaptureStats.onIdScan(IdScanner.describe(nodes), scanned.isNotEmpty())
+        CaptureStats.onIdScan(activePackage, IdScanner.describe(nodes), scanned.isNotEmpty())
         CaptureStats.onFrameDump(nodes)
 
         var parsedAny = false
