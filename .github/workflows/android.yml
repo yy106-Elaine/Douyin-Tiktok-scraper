@@ -43,13 +43,16 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Name the APK after the commit
+      # A fixed file name on purpose: the release page is what someone
+      # opens on a phone, and two similarly-named APKs there is an easy
+      # way to install the wrong one. The commit is named in the release
+      # body instead.
+      - name: Stage the APK
         id: rename
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             "dist/capture-${GITHUB_SHA::7}.apk"
-          echo "path=dist/capture-${GITHUB_SHA::7}.apk" >> "$GITHUB_OUTPUT"
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/capture-latest.apk
+          echo "path=dist/capture-latest.apk" >> "$GITHUB_OUTPUT"
           echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       # Kept as a build artifact too: downloadable while signed in, and
@@ -69,11 +72,24 @@ jobs:
           body: |
             Debug build of the capture app, rebuilt on every push to `android/`.
 
-            **Commit:** ${{ github.sha }}
-            **Branch:** ${{ github.ref_name }}
+            **Commit:** `${{ steps.rename.outputs.sha }}` on `${{ github.ref_name }}`
+            **Built:** ${{ github.run_started_at }}
 
             Install on the study phone: open this page in the phone's browser,
             download the `.apk` below, and allow installation from unknown
             sources when prompted. Debug builds are unsigned for distribution
             and are for research devices only.
           files: ${{ steps.rename.outputs.path }}
+
+      # Earlier runs uploaded commit-stamped names; drop anything that is
+      # not the current APK so the page offers exactly one download.
+      - name: Drop superseded APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk-latest --json assets --jq '.assets[].name' \
+            | grep -v '^capture-latest\.apk$' \
+            | while read -r asset; do
+                echo "removing $asset"
+                gh release delete-asset apk-latest "$asset" --yes || true
+              done
