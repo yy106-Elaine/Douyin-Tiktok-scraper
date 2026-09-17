@@ -155,3 +155,62 @@ class SharedLink(Base):
     #: nearest capture in time), or null when unpaired. Analysis should
     #: be able to exclude heuristically paired rows.
     pairing_method: Mapped[str | None] = mapped_column(String(16))
+
+
+class LinkCheck(Base):
+    """One visit to one URL at one moment, recorded as raw signals.
+
+    This is the takedown study's measuring instrument, so what it
+    stores is deliberately not a verdict. Whether a video counts as
+    removed depends on marker phrases that change with the platform's
+    interface and on distinctions -- deleted by the author, deleted by
+    the platform, set to private, account banned, restricted by region
+    -- that one response often cannot separate. Storing `alive: false`
+    would bake today's reading of those signals into the data, and a
+    later correction could not be applied to videos that are already
+    gone.
+
+    So each row keeps what the server actually returned, and
+    `app/recheck.py` classifies on read. Reclassifying the whole
+    history is then a code change, not a new collection round.
+    """
+
+    __tablename__ = "link_checks"
+    __table_args__ = (
+        Index("ix_check_video_time", "video_id", "checked_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+
+    #: Which page was visited: "video" or "author". An author check is
+    #: what separates a banned or deleted account from a single removed
+    #: video, so it is a first-class row rather than a flag.
+    target_kind: Mapped[str] = mapped_column(String(16), default="video")
+
+    video_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    author_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+    url: Mapped[str] = mapped_column(String(512))
+
+    #: When the visit actually happened, not when it was due. A manual
+    #: schedule slips, and the gap between consecutive checks is the
+    #: precision of every disappearance time derived from them.
+    checked_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    #: Where the request ended up. A redirect to a login wall or to the
+    #: site root is itself a signal, and a different one from a 404.
+    final_url: Mapped[str | None] = mapped_column(String(512))
+    #: The page title, which is where both platforms put their
+    #: "unavailable" wording.
+    page_title: Mapped[str | None] = mapped_column(String(512))
+    #: A bounded slice of the response, kept so a corrected marker list
+    #: can be applied to checks already recorded.
+    excerpt: Mapped[str | None] = mapped_column(Text)
+    #: Marker names that matched, comma-separated. Raw evidence, not a
+    #: conclusion.
+    markers: Mapped[str | None] = mapped_column(String(255))
+    body_bytes: Mapped[int | None] = mapped_column(Integer)
+    #: Exception class name when the request never completed. A network
+    #: failure is not a takedown and must never be counted as one.
+    error: Mapped[str | None] = mapped_column(String(128))

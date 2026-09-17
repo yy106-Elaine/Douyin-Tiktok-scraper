@@ -145,6 +145,61 @@ Posts scrolled past faster than the 500ms sampling interval may be missed
 entirely. This under-counts rapid scrolling. It is a floor on exposure, not a
 census.
 
+### 8. The takedown check measures unwatchability, not moderation
+
+`app/recheck.py` revisits every collected link and records what the server
+returned. `app/survival.py` turns that history into a finding. Five things
+about it belong in a write-up.
+
+**A removed video does not answer 404.** Both platforms commonly serve HTTP 200
+with a page saying the video is unavailable, so "did the request succeed" would
+report every video as alive. Classification reads the page's wording; the
+status code is one input among several.
+
+**The verdict is not stored.** `link_checks` keeps the status, the final URL,
+the page title, a bounded excerpt and which marker phrases matched. Verdicts
+are computed on read. This is deliberate: the marker list is the part most
+likely to be wrong, and a stored boolean could not be corrected for videos
+that are already gone. A corrected list re-reads the whole history.
+
+**The marker list is checkable, not verified.** It comes from the platforms'
+published wording, not from a removed video observed here. Two safeguards: a
+page matching nothing is `unknown`, never `alive`, so a stale list appears as a
+growing unknown count rather than a quietly wrong survival curve; and the
+stored excerpt makes re-classification possible. **Confirm the wording against
+one genuinely removed video before quoting a rate.**
+
+**No information is never counted as an outcome.** Timeouts, rate limits, bot
+challenges and unrecognised pages are excluded from the denominator, not
+assumed alive. `Summary.rate` returns `None` rather than 0% when nothing was
+measured — 0% is a claim. Report the excluded count alongside any rate.
+
+**Removal time is an interval.** A video seen alive on one check and gone on
+the next disappeared somewhere between them. Every finding therefore carries
+`last_alive_at`, `first_gone_at` and the width between them, and a lifetime is
+a bracket (`56d 14h–58d 14h`), never a point. Quoting the later timestamp
+would present the checking schedule as a property of the platform. Because
+checks are manual, the actual check time is recorded, never the due time.
+
+**What it cannot distinguish.** The five disappearance types the study cares
+about do not all separate from one response:
+
+| type | distinguishable? |
+| --- | --- |
+| platform removal | not from author deletion — the page is often identical |
+| author deletion | not from platform removal |
+| account ban or deletion | yes — the author page is checked whenever a video is missing, and `author gone` outranks the video's own wording |
+| set to private | usually — distinct wording, recorded as `withheld`, not `gone` |
+| regional restriction | **no.** Checks run from one location. A video blocked elsewhere and visible here is indistinguishable from an available one. Not measured; state this as a limitation. |
+
+So `gone` means *unwatchable from here*, not *moderated*. Separating the first
+two types is what the author interviews are for; this instrument tells you
+which videos to ask about and brackets when it happened.
+
+**Coverage.** Only videos with an id can be re-checked, so the findings table
+is a subset of what was observed. Report that fraction — the capture dashboard
+shows it as "With a video ID".
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two

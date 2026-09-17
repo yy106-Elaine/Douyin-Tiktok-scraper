@@ -18,7 +18,9 @@ from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
+from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
 from .snowflake import derivation_is_verified
+from .survival import Finding, findings, summarise
 from .views import (
     ID_ON_SCREEN,
     LINK_ONLY,
@@ -232,6 +234,101 @@ def _video_rows(rows) -> str:
     return "".join(out)
 
 
+#: Shared by both pages, so they cannot drift apart visually.
+_SHARED_CSS = """  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --panel: #ffffff; --line: #e5e4e0;
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #82817c;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19; --panel: #232322; --line: #34332f;
+      --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e85;
+      --accent: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-block: 24px; padding-inline: 16px;
+    background: var(--surface); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--ink-2); margin: 0 0 20px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .tab {
+    padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--ink-2); text-decoration: none; background: var(--panel);
+  }
+  .tab.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .tiles {
+    display: grid; gap: 12px; margin-bottom: 28px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .tile {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .tile .label { color: var(--ink-2); font-size: 12px; }
+  .tile .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+  .tile .note { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; overflow-x: auto; margin-bottom: 28px;
+  }
+  /* min-width keeps the table scrolling sideways on a phone instead of
+     squeezing every column down to one word per line. */
+  table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 13px; }
+  table.narrow { min-width: 620px; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.when { white-space: nowrap; color: var(--ink-2); }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td.caption { min-width: 260px; max-width: 340px; color: var(--ink-2); }
+  .muted { color: var(--ink-3); }
+  .empty { padding: 28px 12px; text-align: center; color: var(--ink-3); }
+  a { color: var(--accent); }
+  .flag { font-size: 12px; white-space: nowrap; margin-right: 6px; }
+  .flag.good { color: var(--good); }
+  .flag.warn { color: var(--warn); }
+  .flag.crit { color: var(--crit); }
+  .flag.approx, .flag.ad, .flag.ai, .flag.muted { color: var(--ink-3); }
+  .prov { font-size: 11px; color: var(--ink-3); }
+  .prov.exact { color: var(--good); }
+  td.vid { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .todo {
+    background: var(--panel); border: 1px solid var(--warn);
+    border-radius: 10px; padding: 14px 16px; margin: 0 0 24px;
+    color: var(--ink-2);
+  }
+  .todo code {
+    display: block; margin-top: 8px; padding: 9px 11px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 7px; color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; word-break: break-all;
+  }
+  footer { color: var(--ink-3); font-size: 12px; }
+  .warn-text { color: var(--warn); }
+  .caveats {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 20px; margin-bottom: 24px;
+  }
+  .caveats ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .caveats li { margin-bottom: 8px; }
+  .caveats li:last-child { margin-bottom: 0; }
+  .empty code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+"""
+
+
 def _page(**ctx) -> str:
     platform = ctx["platform"]
     tabs = "".join(
@@ -285,87 +382,7 @@ def _page(**ctx) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Capture dashboard</title>
-<style>
-  :root {{
-    color-scheme: light;
-    --surface: #fcfcfb; --panel: #ffffff; --line: #e5e4e0;
-    --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #82817c;
-    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --accent: #2a78d6;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root:not([data-theme="light"]) {{
-      color-scheme: dark;
-      --surface: #1a1a19; --panel: #232322; --line: #34332f;
-      --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e85;
-      --accent: #3987e5;
-    }}
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; padding-block: 24px; padding-inline: 16px;
-    background: var(--surface); color: var(--ink);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }}
-  .wrap {{ max-width: 1180px; margin: 0 auto; }}
-  h1 {{ font-size: 20px; margin: 0 0 4px; }}
-  .sub {{ color: var(--ink-2); margin: 0 0 20px; }}
-  .tabs {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }}
-  .tab {{
-    padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
-    color: var(--ink-2); text-decoration: none; background: var(--panel);
-  }}
-  .tab.on {{ border-color: var(--accent); color: var(--accent); font-weight: 600; }}
-  .tiles {{
-    display: grid; gap: 12px; margin-bottom: 28px;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }}
-  .tile {{
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px 16px;
-  }}
-  .tile .label {{ color: var(--ink-2); font-size: 12px; }}
-  .tile .value {{ font-size: 28px; font-weight: 600; margin-top: 2px; }}
-  .tile .note {{ color: var(--ink-3); font-size: 12px; margin-top: 2px; }}
-  h2 {{ font-size: 15px; margin: 0 0 10px; }}
-  .panel {{
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; overflow-x: auto; margin-bottom: 28px;
-  }}
-  /* min-width keeps the table scrolling sideways on a phone instead of
-     squeezing every column down to one word per line. */
-  table {{ width: 100%; min-width: 900px; border-collapse: collapse; font-size: 13px; }}
-  table.narrow {{ min-width: 620px; }}
-  th, td {{ padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); }}
-  th {{ color: var(--ink-2); font-weight: 600; white-space: nowrap; }}
-  tr:last-child td {{ border-bottom: 0; }}
-  td.when {{ white-space: nowrap; color: var(--ink-2); }}
-  td.n, th.n {{ text-align: right; font-variant-numeric: tabular-nums; }}
-  td.caption {{ min-width: 260px; max-width: 340px; color: var(--ink-2); }}
-  .muted {{ color: var(--ink-3); }}
-  .empty {{ padding: 28px 12px; text-align: center; color: var(--ink-3); }}
-  a {{ color: var(--accent); }}
-  .flag {{ font-size: 12px; white-space: nowrap; margin-right: 6px; }}
-  .flag.good {{ color: var(--good); }}
-  .flag.warn {{ color: var(--warn); }}
-  .flag.crit {{ color: var(--crit); }}
-  .flag.approx, .flag.ad, .flag.ai, .flag.muted {{ color: var(--ink-3); }}
-  .prov {{ font-size: 11px; color: var(--ink-3); }}
-  .prov.exact {{ color: var(--good); }}
-  td.vid {{ font-variant-numeric: tabular-nums; white-space: nowrap; }}
-  .todo {{
-    background: var(--panel); border: 1px solid var(--warn);
-    border-radius: 10px; padding: 14px 16px; margin: 0 0 24px;
-    color: var(--ink-2);
-  }}
-  .todo code {{
-    display: block; margin-top: 8px; padding: 9px 11px;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: 7px; color: var(--ink);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px; word-break: break-all;
-  }}
-  footer {{ color: var(--ink-3); font-size: 12px; }}
-</style>
+<style>{_SHARED_CSS}</style>
 </head><body><div class="wrap">
 
 <h1>Capture dashboard</h1>
@@ -389,6 +406,8 @@ are approximate wherever flagged.</p>
 </table></div>
 
 <footer>
+<a href="/dashboard/takedowns?platform={escape(platform)}&key={escape(ctx["key"])}">Takedown
+findings &rarr;</a><br>
 Showing the most recent {_ROW_LIMIT} rows.
 Full data: <a href="/api/export/posts.csv?platform={escape(platform)}&key={escape(ctx["key"])}">download CSV</a>.
 </footer>
@@ -511,3 +530,213 @@ Research tooling. Comment text and video files are never collected.
 </footer>
 </div></body></html>"""
     )
+
+
+# --------------------------------------------------------------------
+# Takedown findings
+# --------------------------------------------------------------------
+
+_VERDICT_CLASS = {
+    ALIVE: "good",
+    GONE: "crit",
+    AUTHOR_GONE: "crit",
+    WITHHELD: "warn",
+}
+
+
+def _duration(span) -> str:
+    """Days and hours. Minutes would imply precision we do not have."""
+    if span is None:
+        return "—"
+    hours = int(span.total_seconds() // 3600)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    return f"{hours}h" if hours else "<1h"
+
+
+def _lifetime_cell(finding: Finding) -> str:
+    """The removal window, as a bracket.
+
+    A single number here would present the checking schedule as a
+    property of the platform. See app/survival.py.
+    """
+    bounds = finding.lifetime()
+    if bounds is None:
+        return '<td class="muted">&mdash;</td>'
+    lower, upper = bounds
+    if _duration(lower) == _duration(upper):
+        return f'<td class="when">{escape(_duration(upper))}</td>'
+    return (
+        f'<td class="when">{escape(_duration(lower))}&ndash;{escape(_duration(upper))}'
+        f'<div class="prov">window {escape(_duration(finding.uncertainty))}</div></td>'
+    )
+
+
+def _finding_rows(items: list[Finding]) -> str:
+    if not items:
+        return (
+            '<tr><td colspan="9" class="empty">No links have been re-checked yet. '
+            "Run <code>python -m app.recheck</code>.</td></tr>"
+        )
+
+    out = []
+    for finding in items:
+        verdict = finding.outcome or finding.current
+        state = (
+            f'<span class="flag {_VERDICT_CLASS.get(verdict, "muted")}">'
+            f'{escape(verdict or "not measured")}</span>'
+        )
+        published = finding.published_at
+        link = (
+            f'<a href="{escape(finding.url)}" rel="noreferrer noopener" '
+            f'target="_blank">{escape(finding.video_id)}</a>'
+            if finding.url
+            else escape(finding.video_id)
+        )
+        doubtful = (
+            '<div class="prov warn-text">mostly uninformative</div>'
+            if finding.checks and finding.uninformative * 2 > finding.checks
+            else ""
+        )
+        out.append(
+            "<tr>"
+            f'<td>{state}{doubtful}</td>'
+            f'<td class="vid">{link}</td>'
+            f"{_cell(finding.author_handle)}"
+            f'<td class="when">{escape(published.strftime("%Y-%m-%d %H:%M")) if published else "—"}</td>'
+            f"{_lifetime_cell(finding)}"
+            f'<td class="when">{escape(finding.last_alive_at.strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
+            f'<td class="when">{escape(finding.first_gone_at.strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
+            f'<td class="when">{escape(finding.last_checked_at.strftime("%m-%d %H:%M")) if finding.last_checked_at else "—"}</td>'
+            f'<td class="n">{finding.checks}</td>'
+            "</tr>"
+        )
+    return "".join(out)
+
+
+@router.get("/dashboard/takedowns", response_class=HTMLResponse)
+def takedowns(
+    key: str = Depends(require_admin_view),
+    platform: str = Query(default="tiktok"),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    if platform not in PLATFORM_TABLES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"unknown platform {platform}"
+        )
+
+    items = findings(session, platform)
+    summary = summarise(items)
+    collected = [t for t in collected_targets(session) if t.platform == platform]
+    due = due_targets(session, targets=collected)
+
+    return HTMLResponse(
+        _findings_page(
+            key=key,
+            platform=platform,
+            items=items,
+            summary=summary,
+            collected=len(collected),
+            due=len(due),
+        )
+    )
+
+
+def _findings_page(**ctx) -> str:
+    platform = ctx["platform"]
+    summary = ctx["summary"]
+    rate = summary.rate
+
+    tabs = "".join(
+        f'<a class="tab{" on" if name == platform else ""}" '
+        f'href="/dashboard/takedowns?platform={name}&key={escape(ctx["key"])}">{escape(name)}</a>'
+        for name in sorted(PLATFORM_TABLES)
+    )
+
+    tiles = "".join(
+        [
+            _tile("Videos tracked", _compact(summary.tracked), f"of {ctx['collected']:,} collected"),
+            _tile("Disappeared", _compact(summary.gone), "at the latest check"),
+            _tile(
+                "Takedown rate",
+                "—" if rate is None else f"{round(100 * rate)}%",
+                f"{summary.gone:,} of {summary.gone + summary.alive:,} measured",
+            ),
+            _tile(
+                "Not measured",
+                _compact(summary.unmeasured + summary.doubtful),
+                "excluded from the rate",
+            ),
+            _tile(
+                "Timing precision",
+                _duration(summary.median_uncertainty),
+                "median removal window",
+            ),
+            _tile("Due for a check", _compact(ctx["due"]), "at the current cadence"),
+        ]
+    )
+
+    todo = (
+        f'<p class="todo"><strong>{ctx["due"]:,} link(s)</strong> are due for a check.'
+        "<code>cd backend &amp;&amp; ./.venv/bin/python -m app.recheck</code>"
+        "Run it once a day; the schedule thins out as a video ages.</p>"
+        if ctx["due"]
+        else ""
+    )
+
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Takedown findings</title>
+<style>{_SHARED_CSS}</style>
+</head><body><div class="wrap">
+
+<h1>Takedown findings</h1>
+<p class="sub">How long each collected video survived. Removal times are
+<strong>intervals</strong>: a video seen alive on one check and gone on the next
+disappeared somewhere between them, and nothing in the data says where.</p>
+
+<div class="tabs">{tabs}</div>
+<div class="tiles">{tiles}</div>
+{todo}
+
+<h2>Per video &mdash; {escape(platform)}</h2>
+<div class="panel"><table>
+<thead><tr>
+<th>Outcome</th><th>Video ID</th><th>@handle</th><th>Published</th>
+<th>Lifetime</th><th>Last alive</th><th>First gone</th><th>Last checked</th>
+<th class="n">Checks</th>
+</tr></thead>
+<tbody>{_finding_rows(ctx["items"])}</tbody>
+</table></div>
+
+<div class="caveats">
+<h2>Read these before quoting a rate</h2>
+<ul>
+<li><strong>One vantage point.</strong> These checks run from wherever the
+command was run. A video restricted in one country and visible in another is
+indistinguishable from an available one. Regional blocking is not measured.</li>
+<li><strong>Who removed it is not in the response.</strong> An author deleting
+a post and a platform pulling it can return the same page. <em>gone</em> means
+unwatchable, not <em>moderated</em>. Interviews, not this table, separate
+those.</li>
+<li><strong>Not measured is not alive.</strong> Failed requests, bot
+challenges and unrecognised pages are excluded from the rate, never counted as
+survivals. A large count there means the rate is not yet trustworthy.</li>
+<li><strong>The marker list is checkable, not verified.</strong> Classification
+reads the platform's own wording. Confirm it against one genuinely removed
+video before trusting these numbers; the raw response is stored, so a corrected
+list can be re-applied to every check already made.</li>
+<li><strong>Only videos with an ID are here.</strong> A captured post with no
+copied link cannot be re-checked at all, so this table is a subset of what was
+observed &mdash; report which fraction.</li>
+</ul>
+</div>
+
+<footer>
+<a href="/dashboard?platform={escape(platform)}&key={escape(ctx["key"])}">&larr; Capture
+dashboard</a>
+</footer>
+</div></body></html>"""

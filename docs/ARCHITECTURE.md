@@ -40,6 +40,22 @@ Publication time is recovered from the id itself rather than from the screen
 `docs/METHODOLOGY.md` §2b for the arithmetic, its per-platform confidence, and
 what to report.
 
+## The third stage: re-checking
+
+Capture and pairing answer *what was there*. `app/recheck.py` answers *is it
+still there*, by revisiting each collected link on a cadence that thins as a
+video ages, and storing what the server returned rather than a verdict.
+`app/survival.py` reads that history into one finding per video, and
+`/dashboard/takedowns` renders it. Run it by hand:
+
+```
+cd backend && ./.venv/bin/python -m app.recheck          # everything due
+./.venv/bin/python -m app.recheck --all --limit 50       # ignore the cadence
+```
+
+Why no verdict is stored, and what the instrument cannot distinguish, is in
+`docs/METHODOLOGY.md` §8. Both belong in a write-up.
+
 ## The three-step platform registry
 
 Adding a platform touches exactly three files:

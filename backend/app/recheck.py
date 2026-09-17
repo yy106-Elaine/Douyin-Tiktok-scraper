@@ -1,0 +1,474 @@
+"""Revisit collected links and record whether each video is still there.
+
+This is the takedown instrument. It visits a video's public page, keeps
+what the server returned, and classifies afterwards -- see
+`app/models.py::LinkCheck` for why the verdict is not stored.
+
+Three things make a naive check wrong, and each one is handled here
+rather than left to the reader:
+
+**A removed video does not answer 404.** Both platforms commonly serve
+HTTP 200 with a page that says the video is unavailable. "Did the
+request succeed" therefore reports every video as alive. The decision
+is made on the page's own wording, and the status code is only one
+input among several.
+
+**A failed request is not a takedown.** A timeout, a DNS failure, a
+rate-limit page or a bot challenge all mean "no information", and each
+one is recorded as such. Counting them as removals would manufacture
+exactly the finding the study is looking for.
+
+**One vantage point cannot see a regional block.** A video restricted
+in one country and visible in another is indistinguishable, from here,
+from a video that is fine. That is a limitation of the design, not
+something the code can resolve; `docs/METHODOLOGY.md` says so and the
+dashboard repeats it.
+
+Runs on demand -- `python -m app.recheck` -- because a check that runs
+unattended against someone else's servers is a different kind of thing
+from one a researcher performs.
+"""
+from __future__ import annotations
+
+import re
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .links import canonical_url_for
+from .models import LinkCheck, SharedLink
+from .parsers import PLATFORM_TABLES
+
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
+
+#: How much of the response to keep. Enough to re-read the wording a
+#: later marker list cares about; not the whole page.
+EXCERPT_LIMIT = 1_200
+
+# --------------------------------------------------------------------
+# Verdicts
+# --------------------------------------------------------------------
+
+ALIVE = "alive"
+#: The page says the video is not there. Which party removed it is a
+#: separate question this cannot answer on its own.
+GONE = "gone"
+#: The account is unreachable, so every one of its videos is too.
+AUTHOR_GONE = "author gone"
+#: Reachable but withheld: private account, or a sign-in wall.
+WITHHELD = "withheld"
+#: The request never completed. No information about the video.
+UNREACHABLE = "unreachable"
+#: The platform answered, but with a challenge or something unrecognised.
+#: Loud on purpose: it means the marker list needs a look, and these
+#: rows must stay out of any takedown rate.
+UNKNOWN = "unknown"
+
+#: Verdicts that carry no information about the video's existence and
+#: must be excluded from a rate rather than counted either way.
+NO_INFORMATION = frozenset({UNREACHABLE, UNKNOWN})
+
+# --------------------------------------------------------------------
+# Marker phrases
+# --------------------------------------------------------------------
+#
+# These decide the classification, and they are the part most likely to
+# be wrong: they come from the platforms' published wording, not from a
+# removed video observed here. Two safeguards. A page matching nothing
+# is UNKNOWN, never "alive" -- so a stale list shows up as a growing
+# unknown count instead of a quietly wrong survival curve. And the
+# response excerpt is stored, so a corrected list can be applied to
+# checks already recorded.
+#
+# Verify against one genuinely removed video before trusting a rate.
+
+_MARKERS: tuple[tuple[str, str, str], ...] = (
+    # (name, verdict, pattern)
+    ("tiktok_unavailable", GONE, r"video (?:is )?currently unavailable"),
+    ("tiktok_removed", GONE, r"this video (?:has been|was) removed"),
+    ("tiktok_violating", GONE, r"violat(?:ing|ion of) our community guidelines"),
+    ("tiktok_no_account", AUTHOR_GONE, r"couldn'?t find this account"),
+    ("tiktok_account_banned", AUTHOR_GONE, r"account (?:was |has been )?banned"),
+    ("tiktok_private", WITHHELD, r"this account is private"),
+    ("tiktok_login", WITHHELD, r"log in to (?:continue|tiktok)"),
+    ("tiktok_captcha", UNKNOWN, r"verify to continue|captcha|unusual traffic"),
+    ("douyin_deleted", GONE, r"该作品已(?:被)?删除|内容不存在|作品不存在"),
+    ("douyin_gone", GONE, r"视频不见了|已下架|无法查看"),
+    ("douyin_account_gone", AUTHOR_GONE, r"该账号已注销|账号不存在|用户不存在"),
+    ("douyin_private", WITHHELD, r"私密账号|仅自己可见|需要关注"),
+    ("douyin_captcha", UNKNOWN, r"验证|滑块|访问频繁"),
+)
+
+_COMPILED = tuple(
+    (name, verdict, re.compile(pattern, re.IGNORECASE)) for name, verdict, pattern in _MARKERS
+)
+
+#: Order of precedence when several markers match. A challenge means we
+#: learned nothing and outranks everything; an absent account explains
+#: an absent video, so it outranks the video's own wording.
+_PRECEDENCE = (UNKNOWN, AUTHOR_GONE, GONE, WITHHELD)
+
+_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TAGS = re.compile(r"<(?:script|style)[^>]*>.*?</(?:script|style)>", re.IGNORECASE | re.DOTALL)
+_ANY_TAG = re.compile(r"<[^>]+>")
+_SPACE = re.compile(r"\s+")
+
+
+# --------------------------------------------------------------------
+# Fetching
+# --------------------------------------------------------------------
+
+
+@dataclass
+class FetchResult:
+    """What one visit returned, before any interpretation."""
+
+    status: int | None = None
+    final_url: str | None = None
+    body: str = ""
+    error: str | None = None
+
+
+#: Injected so the classification is testable without the network, and
+#: so a caller can substitute its own proxy or rate-limit policy.
+Fetcher = Callable[[str], FetchResult]
+
+
+def fetch(url: str, timeout: float = 20.0) -> FetchResult:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(200_000).decode("utf-8", errors="replace")
+            return FetchResult(
+                status=response.status, final_url=response.geturl(), body=body
+            )
+    except urllib.error.HTTPError as error:
+        # An HTTP error status is an answer, not a failure: 404 is the
+        # clearest removal signal either platform gives.
+        body = ""
+        try:
+            body = error.read(200_000).decode("utf-8", errors="replace")
+        except Exception:  # pragma: no cover - defensive
+            pass
+        return FetchResult(status=error.code, final_url=error.url, body=body)
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        return FetchResult(error=type(error).__name__)
+
+
+# --------------------------------------------------------------------
+# Reading a response
+# --------------------------------------------------------------------
+
+
+def page_title(body: str) -> str | None:
+    match = _TITLE.search(body or "")
+    if not match:
+        return None
+    return _SPACE.sub(" ", _ANY_TAG.sub(" ", match.group(1))).strip()[:500] or None
+
+
+def excerpt(body: str) -> str:
+    """Visible-ish text, bounded, for re-reading a check later."""
+    without_code = _TAGS.sub(" ", body or "")
+    return _SPACE.sub(" ", _ANY_TAG.sub(" ", without_code)).strip()[:EXCERPT_LIMIT]
+
+
+def matched_markers(text: str) -> list[tuple[str, str]]:
+    """Every marker that fires, as (name, verdict) pairs."""
+    return [
+        (name, verdict) for name, verdict, pattern in _COMPILED if pattern.search(text or "")
+    ]
+
+
+def searchable_text(check: LinkCheck) -> str:
+    """Title plus excerpt -- everywhere the wording could be."""
+    return f"{check.page_title or ''}\n{check.excerpt or ''}"
+
+
+def classify(check: LinkCheck) -> str:
+    """The verdict for one recorded check.
+
+    Pure and stored nowhere, so correcting it re-reads history rather
+    than requiring new collection.
+    """
+    if check.error:
+        return UNREACHABLE
+
+    verdicts = {verdict for _, verdict in matched_markers(searchable_text(check))}
+    for candidate in _PRECEDENCE:
+        if candidate in verdicts:
+            return candidate
+
+    if check.http_status == 404 or check.http_status == 410:
+        return GONE
+    if check.http_status in (403, 451):
+        # 451 is "unavailable for legal reasons"; 403 here is more
+        # often a bot wall than a removal, so neither is called GONE
+        # without wording to back it.
+        return WITHHELD if check.http_status == 451 else UNKNOWN
+    if check.http_status == 429 or (check.http_status or 0) >= 500:
+        return UNKNOWN
+    if check.http_status == 200:
+        # A video page that redirected to the site root or to a login
+        # path is not the video.
+        if check.final_url and _looks_like_a_dead_end(check.final_url):
+            return WITHHELD
+        return ALIVE
+    return UNKNOWN
+
+
+def _looks_like_a_dead_end(url: str) -> bool:
+    lowered = url.lower()
+    if "/login" in lowered or "/signup" in lowered:
+        return True
+    # Stripped back to a bare host: no path left to be a video.
+    return bool(re.fullmatch(r"https?://[^/]+/?", lowered))
+
+
+# --------------------------------------------------------------------
+# What to check, and when
+# --------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Target:
+    platform: str
+    video_id: str
+    url: str
+    author_handle: str | None
+    #: Earliest moment this video is known to have existed.
+    first_seen: datetime
+
+
+#: Checks get sparser as a video ages, because removals cluster early
+#: and every request is borrowed from someone else's servers. Each
+#: entry is (age of the video, minimum gap between checks).
+CADENCE: tuple[tuple[timedelta, timedelta], ...] = (
+    (timedelta(hours=48), timedelta(hours=8)),
+    (timedelta(days=14), timedelta(hours=20)),
+    (timedelta(days=90), timedelta(days=6)),
+)
+#: Anything older than the last tier.
+CADENCE_FLOOR = timedelta(days=27)
+
+
+def minimum_gap(age: timedelta) -> timedelta:
+    for limit, gap in CADENCE:
+        if age <= limit:
+            return gap
+    return CADENCE_FLOOR
+
+
+def collected_targets(session: Session) -> list[Target]:
+    """Every video with an id, from posts and from links alike."""
+    found: dict[str, Target] = {}
+
+    for platform, (model, _) in PLATFORM_TABLES.items():
+        for post in session.scalars(
+            select(model).where(model.video_id.isnot(None)).order_by(model.captured_at)
+        ):
+            found.setdefault(
+                post.video_id,
+                Target(
+                    platform=platform,
+                    video_id=post.video_id,
+                    url=post.video_url
+                    or canonical_url_for(platform, post.video_id, post.author_handle),
+                    author_handle=post.author_handle,
+                    first_seen=post.captured_at,
+                ),
+            )
+
+    # A link that never paired to a post is still a video to re-check.
+    for link in session.scalars(
+        select(SharedLink).where(SharedLink.video_id.isnot(None)).order_by(SharedLink.shared_at)
+    ):
+        found.setdefault(
+            link.video_id,
+            Target(
+                platform=link.platform,
+                video_id=link.video_id,
+                url=link.canonical_url
+                or canonical_url_for(link.platform, link.video_id, link.author_handle),
+                author_handle=link.author_handle,
+                first_seen=link.shared_at,
+            ),
+        )
+
+    return sorted(found.values(), key=lambda target: target.first_seen)
+
+
+def last_checked(session: Session) -> dict[str, datetime]:
+    checks: dict[str, datetime] = {}
+    for check in session.scalars(
+        select(LinkCheck)
+        .where(LinkCheck.target_kind == "video")
+        .order_by(LinkCheck.checked_at)
+    ):
+        if check.video_id:
+            checks[check.video_id] = check.checked_at
+    return checks
+
+
+def due_targets(
+    session: Session, now: datetime | None = None, targets: Iterable[Target] | None = None
+) -> list[Target]:
+    """Targets whose last check is older than their cadence allows."""
+    moment = now or _utcnow()
+    seen = last_checked(session)
+    due = []
+    for target in targets if targets is not None else collected_targets(session):
+        previous = seen.get(target.video_id)
+        if previous is None:
+            due.append(target)
+            continue
+        if moment - previous >= minimum_gap(moment - target.first_seen):
+            due.append(target)
+    return due
+
+
+# --------------------------------------------------------------------
+# Running a round
+# --------------------------------------------------------------------
+
+
+@dataclass
+class RecheckReport:
+    checked: int = 0
+    verdicts: dict[str, int] = field(default_factory=dict)
+
+    def record(self, verdict: str) -> None:
+        self.checked += 1
+        self.verdicts[verdict] = self.verdicts.get(verdict, 0) + 1
+
+    def __str__(self) -> str:
+        if not self.checked:
+            return "nothing due"
+        counts = ", ".join(f"{name} {count}" for name, count in sorted(self.verdicts.items()))
+        return f"checked {self.checked}: {counts}"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _record(
+    session: Session,
+    target: Target,
+    kind: str,
+    url: str,
+    result: FetchResult,
+    now: datetime,
+) -> LinkCheck:
+    check = LinkCheck(
+        platform=target.platform,
+        target_kind=kind,
+        video_id=target.video_id if kind == "video" else None,
+        author_handle=target.author_handle,
+        url=url,
+        checked_at=now,
+        http_status=result.status,
+        final_url=result.final_url,
+        page_title=page_title(result.body),
+        excerpt=excerpt(result.body) or None,
+        body_bytes=len(result.body) or None,
+        error=result.error,
+    )
+    check.markers = (
+        ",".join(name for name, _ in matched_markers(searchable_text(check))) or None
+    )
+    session.add(check)
+    session.commit()
+    return check
+
+
+def author_url(platform: str, handle: str) -> str:
+    handle = handle.lstrip("@")
+    if platform.startswith("tiktok"):
+        return f"https://www.tiktok.com/@{handle}"
+    return f"https://www.douyin.com/user/{handle}"
+
+
+def run_round(
+    session: Session,
+    fetcher: Fetcher = fetch,
+    now: datetime | None = None,
+    limit: int | None = None,
+    pause_seconds: float = 2.0,
+    targets: Iterable[Target] | None = None,
+    ignore_cadence: bool = False,
+) -> RecheckReport:
+    """Check everything due once, recording each response.
+
+    The pause is deliberate and the default is not zero: a study that
+    gets itself blocked partway through has lost observations it cannot
+    go back for -- the videos it was measuring may be gone by the time
+    access returns.
+    """
+    moment = now or _utcnow()
+    report = RecheckReport()
+    if ignore_cadence:
+        due = list(targets) if targets is not None else collected_targets(session)
+    else:
+        due = due_targets(session, moment, targets)
+    if limit is not None:
+        due = due[:limit]
+
+    for index, target in enumerate(due):
+        if index and pause_seconds:
+            time.sleep(pause_seconds)
+
+        check = _record(session, target, "video", target.url, fetcher(target.url), moment)
+        verdict = classify(check)
+        report.record(verdict)
+
+        # Only then, and only when it would distinguish something: if
+        # the video is missing, whether the account is still there is
+        # what separates one removal from a whole account disappearing.
+        if verdict in (GONE, WITHHELD, UNKNOWN) and target.author_handle:
+            if pause_seconds:
+                time.sleep(pause_seconds)
+            url = author_url(target.platform, target.author_handle)
+            _record(session, target, "author", url, fetcher(url), moment)
+
+    return report
+
+
+def main() -> None:  # pragma: no cover - thin CLI wrapper
+    import argparse
+
+    from .db import SessionLocal, init_db
+
+    parser = argparse.ArgumentParser(description="Re-check collected video links.")
+    parser.add_argument("--limit", type=int, default=None, help="stop after N videos")
+    parser.add_argument("--pause", type=float, default=2.0, help="seconds between requests")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="check every collected link, ignoring the cadence",
+    )
+    args = parser.parse_args()
+
+    init_db()
+    with SessionLocal() as session:
+        print(
+            run_round(
+                session,
+                limit=args.limit,
+                pause_seconds=args.pause,
+                ignore_cadence=args.all,
+            )
+        )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

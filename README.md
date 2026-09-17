@@ -21,7 +21,7 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend, dashboard, install page | Complete, 39 tests passing |
+| Backend, dashboard, install page | Complete, 116 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
@@ -68,7 +68,8 @@ Defaults to SQLite. For MySQL, set `DATABASE_URL` in `.env`.
 | POST | `/api/links/shared` | participant key | Submit a shared link, pair it to a post |
 | GET | `/api/export/posts.csv?platform=douyin` | admin key | Export structured rows |
 | GET | `/` | none | Setup page for a phone: APK download and this server's address |
-| GET | `/dashboard?platform=douyin` | admin key | Web view of what has been captured |
+| GET | `/dashboard?platform=douyin` | admin key | One row per video: publication time, ID, handle, caption, counts |
+| GET | `/dashboard/takedowns?platform=douyin` | admin key | Survival findings per video |
 
 The dashboard also accepts the admin key as `?key=...`, since a browser cannot
 set a header from the address bar. That puts the key in browser history and
@@ -78,6 +79,25 @@ server logs — serve it over HTTPS and treat the URL as a credential.
 curl -H "X-API-Key: $ADMIN_API_KEY" \
   "http://localhost:8000/api/export/posts.csv?platform=douyin" -o douyin.csv
 ```
+
+### The two commands you run by hand
+
+Both make outbound requests to the platforms, so neither runs on a timer.
+
+```bash
+cd backend
+
+# Follow copied short links to their real video ID and @handle.
+./.venv/bin/python -m app.resolve
+
+# Revisit collected links and record whether each video is still there.
+./.venv/bin/python -m app.recheck                  # everything due
+./.venv/bin/python -m app.recheck --all --limit 50 # ignore the cadence
+```
+
+`recheck` stores what the server returned, not a verdict — see
+`docs/METHODOLOGY.md` §8 for why, and for what it cannot distinguish
+(regional blocking, and author deletion versus platform removal).
 
 ## Getting the app onto a phone
 
