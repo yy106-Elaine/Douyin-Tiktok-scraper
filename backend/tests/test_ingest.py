@@ -9,7 +9,9 @@ _CAPTURE = {
     "captured_at": "2026-09-14T12:00:00Z",
     "payload": {
         "author_handle": "someuser",
-        "caption": "hello world",
+        # On topic, so the corpus export lists it; the filter is
+        # exercised in tests/test_relevance.py.
+        "caption": "我们是拉拉，女朋友日常",
         "like_raw": "74.9K",
         "comment_raw": "1,234",
         "share_raw": "88",
@@ -67,7 +69,7 @@ def test_ingest_structures_counts_and_flags_approximation(client, api_key):
         assert post.video_id is None
 
         event = session.query(CaptureEvent).one()
-        assert json.loads(event.payload)["caption"] == "hello world"
+        assert json.loads(event.payload)["caption"] == "我们是拉拉，女朋友日常"
 
 
 def test_same_post_same_day_is_deduplicated(client, api_key):

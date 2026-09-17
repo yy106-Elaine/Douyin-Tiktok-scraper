@@ -493,7 +493,10 @@ are approximate wherever flagged.</p>
 
 <footer>
 Showing the most recent {_ROW_LIMIT} rows.
-Full data: <a href="/api/export/posts.csv?platform={escape(platform)}&key={escape(ctx["key"])}">download CSV</a>.
+Download the corpus as
+<a href="/api/export/posts.csv?platform={escape(platform)}&key={escape(ctx["key"])}">CSV</a>,
+or <a href="/api/export/posts.csv?platform={escape(platform)}&show=all&key={escape(ctx["key"])}">everything
+collected</a>.
 </footer>
 </div></body></html>"""
 

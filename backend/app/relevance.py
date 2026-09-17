@@ -37,55 +37,64 @@ from __future__ import annotations
 import re
 
 #: Any CJK ideograph. Used for the "not in Chinese" check.
-_CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+#: Any CJK ideograph. Necessary but nowhere near sufficient: Japanese
+#: uses the same block, so this alone called 百合ヶ浜 Chinese.
+_CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 
-#: Terms that place a video on topic. One of these must appear, so
-#: this list decides recall: a term missing here means a real video is
-#: excluded as "no topic term", which is why they stay visible under
-#: `?show=all` and why the list is worth revisiting as data arrives.
-#:
-#: Several need boundaries of their own, because they are both the term
-#: searched for and a substring of something else. Listed bare, 拉拉
-#: matched inside 拉拉裤 and then overrode the very exclusion meant to
-#: catch it, so every packet of adult nappies stayed in the corpus.
-#:
-#:   拉拉  not after 货/巴/芭/沙, not before 裤/队/操/手
-#:   女同  not before 学/事/胞/僚/桌
-#:   百合  not before 花/粥/汤/干/片 and not after 鲜/干 -- it is also
-#:         the lily, and a flower or a soup recipe is not the topic
-#:
-#: 彩虹 was removed: on its own it is a weak signal and it brought in
-#: 彩虹糖 and 彩虹屁.
-STRONG = re.compile(
-    r"女同性[恋戀]|女同志|蕾[丝絲][边邊]|"
-    r"出[柜櫃]|女女|les\b|lesbian|lgbt|wlw|"
-    r"(?<![货貨巴芭沙])拉拉(?![裤褲队隊操手])|"
-    r"女同(?![学學事胞僚桌])",
+#: Hiragana and katakana, which Chinese does not use at all. This is
+#: what actually separates the two languages, and it had to be added
+#: after a real run returned a hundred Japanese yuri videos: 百合 is
+#: the Japanese word for the same genre, so every one of them matched
+#: the topic term and passed a "contains CJK" test.
+_KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
+
+#: Terms that place a video on topic on their own. Unambiguous: no
+#: ordinary sentence uses these to mean something else.
+ALONE = re.compile(
+    r"女同性[恋戀]|蕾[丝絲][边邊]|出[柜櫃]|女女|女同志|"
+    r"lesbian|wlw|\bles\b|"
+    # Self-identification, which is unambiguous even though it contains
+    # an otherwise ambiguous term: no tour bus is 是拉拉.
+    r"是拉拉|做拉拉|[当當]拉拉|[作]?[为為]拉拉|拉拉身份",
     re.IGNORECASE,
 )
 
-#: 百合 is the GL/yuri term and one of the most productive signals
-#: there is -- and it is also the lily, and a cooking ingredient.
-#: Boundaries cannot separate those: the collision is context, not an
-#: adjacent character ("西芹百合炒虾仁" has neither a suffix nor a
-#: prefix to key on). So it counts as a topic term only when no
-#: cooking or horticulture context appears beside it.
-WEAK = re.compile(r"百合", re.IGNORECASE)
+#: The search keywords that are also fragments of unrelated words. A
+#: blocklist for these does not converge. One real run produced 拉拉車,
+#: 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉, 烤拉拉,
+#: 拉拉草莓, and 女同 inside 父女同框, 母女同囚, 仔女同住, 呀女同我講
+#: -- a list that grows with every run and never finishes.
+#:
+#: So these count only alongside a second signal. That is what actually
+#: separates them: every genuinely relevant row in that run carried
+#: something else as well (les, lesbian, 女生, 情侣, 意定监护), and not
+#: one of the collisions carried anything.
+AMBIGUOUS = re.compile(r"拉拉|女同|百合|姬", re.IGNORECASE)
+
+#: Not enough on its own, but enough to confirm an ambiguous term.
+COMPANION = re.compile(
+    # Not bare 女生: "港女同內地女生有咩分別" is about girls from two
+    # cities, and matched it. What signals the topic is a relation to
+    # women, not a mention of them.
+    r"喜[欢歡]女|[爱愛]女|和女生|跟女生|女生在一起|"
+    r"女友|女朋友|情[侣侶]|彩虹|同性|[两兩][个個]女|姬[圈吧]|拉圈|"
+    r"lgbt|[恋戀]爱|老婆|媳[妇婦]|伴[侣侶]|[结結]婚|[监監][护護]",
+    re.IGNORECASE,
+)
+
+#: Male-only terms, admitted only beside a female marker.
+MALE_ONLY = re.compile(r"男同志|男同(?![学學事])|男男|gay\b|bl\b|耽美", re.IGNORECASE)
+FEMALE = re.compile(r"女|les\b|lesbian|wlw|百合|拉拉", re.IGNORECASE)
+
+#: Cooking and horticulture. 百合 is the lily and an ingredient, and
+#: 女同志 also reads as "female comrades" in a recipe addressed to them
+#: ("女同志一定要学会的十种营养蒸菜"), so both are gated on this.
 FOOD = re.compile(
     r"[炒煮炖燉蒸煎焖燜拌]|食[谱譜]|菜[谱譜]|做法|[汤湯羹粥]|[莲蓮]子|"
     r"[种種][植]|盆栽|花[语語]|[鲜鮮]花|插花|[虾蝦][仁]|西芹|[药藥]膳|"
-    r"[润潤]肺|食材|[营營][养養]",
+    r"[润潤]肺|食材|[营營][养養]|甜品|[红紅]豆沙|[陈陳]皮|花束|花店",
     re.IGNORECASE,
 )
-
-#: Male-only terms. 同性恋 alone cannot be a topic term, because it
-#: covers gay men equally, so it is admitted only beside a female
-#: marker -- checked in classify().
-MALE_ONLY = re.compile(r"男同志|男同(?![学學事])|男男|gay\b|bl\b|耽美", re.IGNORECASE)
-FEMALE = re.compile(r"女|les\b|lesbian|wlw|百合|拉拉", re.IGNORECASE)
-SAME_SEX = re.compile(r"同性[恋戀爱愛]|同志", re.IGNORECASE)
-
-#: Exclusions nothing overrides: the video is not community content
 #: regardless of which words appear beside it.
 HARD: tuple[tuple[str, str], ...] = (
     # Escort and paid-contact advertising, which uses these keywords as
@@ -100,6 +109,11 @@ HARD: tuple[tuple[str, str], ...] = (
     # Divination and fortune-telling, a whole genre that uses 女同志 to
     # mean "female client". Hard rather than soft because the case that
     # prompted it carried a topic term and still had to go.
+    # Japanese. 百合 is the Japanese word for the same genre, so a
+    # search for it returns Japanese yuri content matching the topic
+    # term perfectly -- a hundred rows of Vtubers, anime and 百合ヶ浜
+    # in one run. Kana is the reliable separator: Chinese uses none.
+    ("japanese", r"[\u3040-\u309f\u30a0-\u30ff]"),
     ("divination", r"紫微|斗[数數]|命[盘盤]|八字|塔[罗羅]|占卜|六爻|奇[门門]|"
                    r"[风風]水|生肖|[面手][相]|星座運勢|星座运势|[算批]命|"
                    r"[开開]運|改運|改运"),
@@ -122,7 +136,7 @@ HARD: tuple[tuple[str, str], ...] = (
                        r"[盲]盒|开箱|[开開]箱|保安[队隊][长長]|小院"),
 )
 
-#: Exclusions a STRONG term overrides -- the keyword matched something
+#: Exclusions an on-topic reading overrides -- the keyword matched
 #: incidental rather than the topic.
 SOFT: tuple[tuple[str, str], ...] = (
     # 女同 inside an ordinary word about school or work.
@@ -144,6 +158,7 @@ HIDDEN = frozenset(
         "advertising",
         "ai generated",
         "divination",
+        "japanese",
         "fiction",
         "games and toys",
         "unrelated product",
@@ -164,10 +179,17 @@ def classify(*parts: object) -> str | None:
     """None when the text is Chinese-language WLW content, else why not.
 
     Takes the title and description together, since either can carry
-    the signal. Order matters: a hard exclusion wins over everything,
-    the language requirement is checked before any Latin-script topic
-    term so that "les" in a Spanish sentence cannot qualify, and a
-    topic term is required last.
+    the signal. The order is deliberate: a hard exclusion wins over
+    everything, the language requirement is checked before any
+    Latin-script topic term so "les" in a Spanish sentence cannot
+    qualify, and a topic term is required last.
+
+    A term qualifies either on its own (`ALONE`) or as an ambiguous
+    term confirmed by a second signal (`AMBIGUOUS` plus `COMPANION`).
+    That two-signal rule replaced a growing blocklist: 拉拉 and 女同 are
+    fragments of too many ordinary words for naming the collisions ever
+    to finish, and in a real run every genuinely relevant row carried a
+    second marker while not one of the collisions did.
     """
     text = "\n".join(str(part) for part in parts if part)
     if not text.strip():
@@ -177,24 +199,24 @@ def classify(*parts: object) -> str | None:
         if pattern.search(text):
             return reason
 
-    # The study is of Chinese-language content.
-    if not _CJK.search(text):
+    # Chinese, and not Japanese wearing the same characters.
+    if not _CJK.search(text) or _KANA.search(text):
         return "not in chinese"
 
-    strong = bool(STRONG.search(text))
-    # 同性恋 / 同志 on their own cover gay men equally, so they count
-    # only beside a female marker.
-    if not strong and SAME_SEX.search(text) and FEMALE.search(text):
-        strong = True
-    # 百合 counts unless the text is about the flower or the vegetable.
-    if not strong and WEAK.search(text) and not FOOD.search(text):
-        strong = True
+    # 百合 is a lily and an ingredient; 女同志 also reads as "female
+    # comrades" in a recipe addressed to them. Neither counts here.
+    food = bool(FOOD.search(text))
+    on_topic = False
+    if not food:
+        on_topic = bool(ALONE.search(text)) or (
+            bool(AMBIGUOUS.search(text)) and bool(COMPANION.search(text))
+        )
 
     for reason, pattern in _SOFT:
-        if pattern.search(text) and not strong:
+        if pattern.search(text) and not on_topic:
             return reason
 
-    if not strong:
+    if not on_topic:
         return "no topic term"
 
     # Male-only content that reached here through a shared term.
@@ -258,8 +280,10 @@ def explain(text: str) -> dict[str, object]:
     return {
         "verdict": "in scope" if reason is None else f"excluded: {reason}",
         "hidden": reason in HIDDEN,
-        "chinese": bool(_CJK.search(text)),
-        "topic terms": sorted({m.group(0) for m in STRONG.finditer(text)}),
+        "chinese": bool(_CJK.search(text)) and not bool(_KANA.search(text)),
+        "alone": sorted({m.group(0) for m in ALONE.finditer(text)}),
+        "ambiguous": sorted({m.group(0) for m in AMBIGUOUS.finditer(text)}),
+        "companion": sorted({m.group(0) for m in COMPANION.finditer(text)}),
         "hard matches": [name for name, p in _HARD if p.search(text)],
         "soft matches": [name for name, p in _SOFT if p.search(text)],
     }

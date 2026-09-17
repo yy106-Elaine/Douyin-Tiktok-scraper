@@ -95,8 +95,47 @@ def test_games_and_toys_are_excluded(text):
 
 
 def test_a_topic_term_overrides_an_incidental_collision():
-    """"女同学" beside "拉拉" is a video about being a 拉拉."""
+    """"女同学" beside a self-identification is a video about being 拉拉."""
     assert classify("我和女同学一起复习，顺便聊了聊我们是拉拉这件事") is None
+
+
+def test_an_ambiguous_term_alone_is_not_enough():
+    """The cost of the two-signal rule, stated as a test.
+
+    These are real titles. 拉拉 and 女同 are fragments of too many
+    ordinary words to be trusted alone, so a genuinely relevant video
+    whose text carries nothing else is excluded. That is a recall loss
+    accepted for precision, and it is visible under ?show=all.
+    """
+    for text in (
+        "池上長虹拉拉車 2026/9/14",
+        "拉拉山景區24顆神木全逛一遍",
+        "拉拉秧 花椒",
+        "傲拉拉 迦厄司 我好喜歡我自己",
+        "父女同框有多甜 父女情深意濃",
+        "母女同囚一座监狱",
+        "港女同內地女生有咩分別？",
+    ):
+        assert classify(text) is not None, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "百合ヶ浜レベチ",
+        "【百合アニメ #同時視聴】RELEASE THE SPYCE 1～6話",
+        "百合の間に挟まる殺人鬼を許すな！",
+        "百合ヶ丘駅に到着 #鉄道 #電車",
+    ],
+)
+def test_japanese_yuri_content_is_excluded(text):
+    """The bug that put a hundred Japanese videos in scope.
+
+    百合 is the Japanese word for the same genre, and Japanese shares
+    the CJK ideographs, so a "contains Chinese characters" test passed
+    every one of them. Kana is what separates the languages.
+    """
+    assert classify(text) == "japanese"
 
 
 def test_the_search_term_does_not_override_its_own_collision():
@@ -204,16 +243,15 @@ class TestRemarking:
         from app import relevance
 
         with SessionLocal() as session:
-            self._collect(session, "我是拉拉，分享一个新词 甲甲")
+            self._collect(session, "我是拉拉，出柜了，分享一个新词 甲甲")
             assert remark_reason(session) is None
 
             # A collision discovered later.
             monkeypatch.setattr(
                 relevance,
-                "_SOFT",
-                relevance._SOFT + (("unrelated product", re.compile("甲甲")),),
+                "_HARD",
+                relevance._HARD + (("unrelated product", re.compile("甲甲")),),
             )
-            monkeypatch.setattr(relevance, "STRONG", re.compile("女同性恋"))
             relevance.remark(session)
             assert remark_reason(session) == "unrelated product"
 
@@ -464,3 +502,62 @@ class TestReviewingByCategory:
         assert "show=fiction" in body
         assert "show=games+and+toys" in body or "show=games and toys" in body
         assert "excluded 3" in body
+
+
+class TestTheExport:
+    """What analysis reads should be the corpus, not everything seen."""
+
+    def _collect(self, session):
+        from app import youtube
+
+        titles = ["我是拉拉，出柜五年了", "池上長虹拉拉車", "百合ヶ浜"]
+
+        def caller(endpoint, params):
+            if endpoint == "search":
+                return {"items": [{"id": {"videoId": f"v{i}"}} for i in range(3)]}
+            out = []
+            for video_id in params["id"].split(","):
+                index = int(video_id[1:])
+                out.append(
+                    {
+                        "id": video_id,
+                        "snippet": {
+                            "channelId": f"UC{index}",
+                            "channelTitle": "c",
+                            "title": titles[index],
+                            "description": "",
+                            "publishedAt": "2026-09-16T08:30:00Z",
+                        },
+                        "statistics": {},
+                        "status": {"privacyStatus": "public"},
+                    }
+                )
+            return {"items": out}
+
+        youtube.collect(session, ["拉拉"], caller=caller)
+
+    def test_the_csv_carries_only_the_rows_in_scope(self, client):
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session)
+        csv = client.get(
+            "/api/export/posts.csv?platform=youtube",
+            headers={"X-API-Key": "test-admin-key"},
+        ).text
+        assert "出柜五年" in csv
+        assert "拉拉車" not in csv
+        assert "百合ヶ浜" not in csv
+
+    def test_everything_collected_is_still_exportable(self, client):
+        """Excluded from a deliverable is not the same as deleted."""
+        from app.db import SessionLocal
+
+        with SessionLocal() as session:
+            self._collect(session)
+        csv = client.get(
+            "/api/export/posts.csv?platform=youtube&show=all",
+            headers={"X-API-Key": "test-admin-key"},
+        ).text
+        for title in ("出柜五年", "拉拉車", "百合ヶ浜"):
+            assert title in csv

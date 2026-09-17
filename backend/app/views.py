@@ -183,6 +183,25 @@ SHOW_ALL = "all"
 SHOW_EXCLUDED = "excluded"
 
 
+def in_scope_filter(model, platform: str):
+    """The corpus condition, for any query against a post table.
+
+    One definition because there are two callers -- the dashboard and
+    the CSV export -- and they had already drifted: the export was
+    dropping hand-collected rows the dashboard kept.
+
+    A phone row with an id is one whose link a person copied by hand,
+    one video at a time. Its caption is often truncated to "...more"
+    or absent, so the text is no evidence about the video, and these
+    are the rows that cost the most to collect. YouTube gets no such
+    exemption: the API chose those results.
+    """
+    condition = model.relevance.notin_(HIDDEN) | model.relevance.is_(None)
+    if platform not in API_PLATFORMS:
+        condition = condition | model.video_id.isnot(None)
+    return condition
+
+
 def video_rows(
     session: Session, platform: str, limit: int, show: str = ""
 ) -> list[VideoRow]:
@@ -211,14 +230,7 @@ def video_rows(
     }
 
     statement = select(model).order_by(model.captured_at.desc())
-    in_scope = model.relevance.notin_(HIDDEN) | model.relevance.is_(None)
-    if platform not in API_PLATFORMS:
-        # A phone row with an id is one whose link a person copied by
-        # hand, one video at a time. Its caption is often truncated to
-        # "...more" or absent, so the text is no evidence about the
-        # video -- and these are the rows that cost the most to
-        # collect.
-        in_scope = in_scope | model.video_id.isnot(None)
+    in_scope = in_scope_filter(model, platform)
 
     if show == SHOW_ALL:
         pass

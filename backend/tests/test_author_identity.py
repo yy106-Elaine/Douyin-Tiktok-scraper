@@ -63,7 +63,7 @@ def test_both_appear_in_the_dashboard(client, api_key):
         {
             "author_handle": "leinliv",
             "author_name": "lei n liv",
-            "caption": "我们是拉拉，在一起三年了",
+            "caption": "我和女朋友的日常，我们是拉拉",
         },
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
@@ -76,7 +76,11 @@ def test_both_appear_in_the_csv_export(client, api_key):
     _ingest(
         client,
         api_key,
-        {"author_handle": "leinliv", "author_name": "lei n liv", "caption": "hi there"},
+        {
+            "author_handle": "leinliv",
+            "author_name": "lei n liv",
+            "caption": "我和女朋友的日常，我们是拉拉",
+        },
     )
     response = client.get(
         "/api/export/posts.csv?platform=tiktok",
@@ -234,7 +238,10 @@ def test_a_mismatched_author_is_not_paired_at_all(client, api_key):
                     "platform_package": "com.zhiliaoapp.musically",
                     "fingerprint": "tiktok::seen::hi",
                     "captured_at": "2026-09-14T12:00:00Z",
-                    "payload": {"author_handle": "seenonscreen", "caption": "hi"},
+                    "payload": {
+                        "author_handle": "seenonscreen",
+                        "caption": "女同性恋情侣日常",
+                    },
                 }
             ],
         },

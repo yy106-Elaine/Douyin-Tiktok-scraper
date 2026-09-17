@@ -266,17 +266,39 @@ large, because the search terms are substrings of ordinary words:
 | 百合 | the lily, and a cooking ingredient (西芹百合炒虾仁) |
 | 同性恋 / 同志 | gay men equally; and 同志 means "comrade" or "client" in divination lessons |
 
-`女同性恋` is unambiguous; every other term needs a qualification, and two
-kinds were necessary:
+`女同性恋` is unambiguous; every other term needs a qualification. Two attempts
+were needed, and the first one failed instructively.
 
-- **Adjacent-character boundaries** for 拉拉 and 女同. This is where the first
-  version was wrong: listed bare as a topic term, 拉拉 matched inside 拉拉裤
-  and then *overrode* the exclusion written to catch it, so every packet of
-  nappies stayed in the corpus. A term cannot be both the signal and the
-  collision without boundaries.
-- **Context** for 百合 and for 同性恋/同志, where no adjacent character helps.
-  百合 counts unless cooking or horticulture words appear beside it; 同性恋 and
-  同志 count only beside a female marker.
+**Attempt one: name the collisions.** Adjacent-character boundaries for 拉拉 and
+女同, plus context rules for 百合. This is also where an earlier version was
+outright wrong: listed bare as a topic term, 拉拉 matched inside 拉拉裤 and then
+*overrode* the exclusion written to catch it, so every packet of nappies stayed
+in the corpus. But the deeper problem was that the list does not converge. One
+real run produced 拉拉車 (a tour trolley), 拉拉山 (a mountain), 拉拉秧 (a weed),
+傲拉拉 and 朵拉拉 (channel names), 拉諾拉拉庫 (Rano Raraku), 鬍子拉拉, 烤拉拉,
+拉拉草莓, and 女同 inside 父女同框, 母女同囚, 仔女同住 and 呀女同我講. Every
+run adds more.
+
+**Attempt two: require two signals.** A term either qualifies on its own
+(`女同性恋`, `女同志`, `蕾丝边`, `出柜`, `女女`, `lesbian`, `les`, `wlw`, and
+self-identifications like `是拉拉`) or it is ambiguous (`拉拉`, `女同`, `百合`,
+`姬`) and needs a companion beside it (`喜欢女`, `女朋友`, `情侣`, `彩虹`,
+`同性`, `两个女生`, `监护`…). This is what actually separates them: in that run
+every genuinely relevant row carried a second marker and not one of the
+collisions did. A blocklist chases instances; this states what on-topic text
+looks like.
+
+The companion list had to be narrowed once already: bare `女生` admitted
+`港女同內地女生有咩分別` — girls from two cities. What signals the topic is a
+*relation* to women, not a mention of them.
+
+**Japanese was the largest single error, and the subtlest.** 百合 is the
+Japanese word for the same genre, and Japanese writes it with the same
+characters, so a "contains CJK ideographs" test called every Japanese yuri
+video Chinese. One run put about a hundred of them in scope — Vtubers, anime,
+and 百合ヶ浜, a beach. Kana is the reliable separator: Chinese uses no hiragana
+or katakana at all. A methods section should name this, because "the text
+contains Chinese characters" is a test that looks correct and is not one.
 
 Exclusion reasons, all of which hide the row:
 
@@ -303,6 +325,13 @@ reason with its count and lets one be read on its own (`?show=fiction`,
 `?show=excluded`, `?show=all`), because a filter is only worth trusting once
 someone has read what it removed — and reading 500 mixed rows is not reading.
 
+The **CSV export carries the corpus**, not everything collected: it is what an
+analysis actually reads, and `?show=all` still exports the rest. Excluded from
+a deliverable is not the same as deleted, and `app/views.py::in_scope_filter`
+is the single definition both the dashboard and the export use — they had
+already drifted once, with the export dropping hand-collected rows the
+dashboard kept.
+
 **One carve-out**, in `app/views.py`: a Douyin or TikTok row whose link was
 copied by hand is never hidden. Those were chosen one at a time by a person,
 and their captions are frequently truncated to `...more` or absent, so the text
@@ -310,8 +339,11 @@ is no evidence about the video. They are also the rows that cost the most to
 collect. YouTube gets no such exemption — the API chose those results, not a
 person.
 
-**Recall is the risk this design takes on.** A term missing from the topic list
-excludes real videos. It is survivable because the verbatim payload is kept for
+**Recall is the risk this design takes on**, and the two-signal rule raises it
+deliberately: a genuinely relevant video whose text carries only `拉拉` and
+nothing else is excluded. That price was accepted for precision, and it is
+visible — the excluded rows are listed by reason. A term missing from the topic
+list excludes real videos too. It is survivable because the verbatim payload is kept for
 every observation: `python -m app.relevance` re-marks the whole corpus from it,
 so a corrected rule reaches rows collected weeks earlier and nothing has to be
 collected again. Check a rule against text without touching the database:

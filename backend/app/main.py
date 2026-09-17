@@ -23,7 +23,7 @@ from .models import CaptureEvent, Participant, SharedLink
 from .pairing import pair_shared_link
 from .parsers import PLATFORM_TABLES, base
 from .platforms import family_for_platform, platform_for_package
-from .views import publication
+from .views import in_scope_filter, publication
 from .schemas import (
     BatchResponse,
     CaptureBatch,
@@ -202,7 +202,8 @@ _DERIVED_COLUMNS = ["posted_at_exact", "posted_at_source"]
 
 @app.get("/api/export/posts.csv", dependencies=[Depends(require_admin_view)])
 def export_posts(
-    platform: str = Query(description="douyin or tiktok"),
+    platform: str = Query(description="douyin, tiktok or youtube"),
+    show: str = Query(default="", description="'all' also exports off-topic rows"),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
     family = family_for_platform(platform) or platform
@@ -213,10 +214,18 @@ def export_posts(
         )
     model, _ = registered
 
+    # The export is what analysis actually reads, so it carries the
+    # corpus rather than everything collected. Off-topic rows stay in
+    # the database and are still exportable with show=all -- excluded
+    # from a deliverable is not the same as deleted.
+    statement = select(model).order_by(model.captured_at)
+    if show != "all":
+        statement = statement.where(in_scope_filter(model, family))
+
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(_EXPORT_COLUMNS + _DERIVED_COLUMNS)
-    for post in session.scalars(select(model).order_by(model.captured_at)):
+    for post in session.scalars(statement):
         exact, _, source = publication(
             post.video_id, post.posted_on, post.posted_at_raw, family
         )
