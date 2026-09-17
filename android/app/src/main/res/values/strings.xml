@@ -24,4 +24,11 @@
     <string name="clipboard_saved">Copied link saved</string>
     <string name="clipboard_failed">Could not save the copied link</string>
     <string name="paste_help">Copy a link in Douyin or TikTok and open this app — it is saved automatically. You can also paste one here.</string>
+    <string name="clipboard_empty">Nothing copied yet</string>
+    <string name="clipboard_already_saved">That link is already saved</string>
+    <string name="save_button_title">Floating save button</string>
+    <string name="save_button_help">Shows a small button over Douyin and TikTok. Copy a link there, tap the button, and it is recorded without leaving the app.</string>
+    <string name="save_button_enable">Turn on the floating button</string>
+    <string name="save_button_disable">Turn off the floating button</string>
+    <string name="save_button_needs_permission">Allow "display over other apps", then tap again</string>
 </resources>

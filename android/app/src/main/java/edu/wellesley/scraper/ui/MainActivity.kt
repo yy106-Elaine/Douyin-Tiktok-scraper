@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         binding.pasteButton.setOnClickListener { saveTypedLink() }
         binding.selfCheckRefresh.setOnClickListener { showSelfCheck() }
         binding.selfCheckCopy.setOnClickListener { copySelfCheck() }
+        binding.saveButtonToggle.setOnClickListener { toggleSaveButton() }
 
         lifecycleScope.launch {
             CaptureDatabase.get(this@MainActivity).captureDao().pendingCount()
@@ -57,17 +59,15 @@ class MainActivity : AppCompatActivity() {
     /**
      * Record a link copied out of Douyin or TikTok, with no typing.
      *
-     * The interface never exposes a video id, so the id has to come
-     * from a link, and the only way to get one without the app driving
-     * the platform's share sheet itself is for the operator to share
-     * it. Making that cost one app switch rather than a copy-paste is
-     * the difference between doing it for every post and not doing it.
+     * Measured on a device: no video id appears anywhere in TikTok's
+     * accessibility tree, in 58 frames. So an id can only come from a
+     * link, and a link only from someone copying one. What is left to
+     * decide is what recording it costs per video -- hence this, and
+     * the floating button, which removes the app switch as well.
      *
-     * Deliberately not automated: opening a share sheet and copying a
-     * link are engagement actions, and software performing them on
-     * every post would alter the feed under study. A person choosing to
-     * share is a decision they can document; a background process doing
-     * it is a confound.
+     * The copying itself stays a person's action. This app does not
+     * drive another app's interface; it observes the result of someone
+     * choosing to share.
      */
     private fun captureCopiedLink() {
         val prefs = Prefs(this)
@@ -105,6 +105,40 @@ class MainActivity : AppCompatActivity() {
                 toast(getString(R.string.clipboard_failed))
             }
         }
+    }
+
+    /**
+     * Turn the floating button on, asking for the overlay permission
+     * first if it has not been granted.
+     */
+    private fun toggleSaveButton() {
+        val prefs = Prefs(this)
+        if (prefs.showSaveButton) {
+            prefs.showSaveButton = false
+            refreshSaveButtonLabel()
+            return
+        }
+
+        if (!Settings.canDrawOverlays(this)) {
+            toast(getString(R.string.save_button_needs_permission))
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName"),
+                )
+            )
+            return
+        }
+
+        prefs.showSaveButton = true
+        refreshSaveButtonLabel()
+    }
+
+    private fun refreshSaveButtonLabel() {
+        binding.saveButtonToggle.setText(
+            if (Prefs(this).showSaveButton) R.string.save_button_disable
+            else R.string.save_button_enable
+        )
     }
 
     private fun copySelfCheck() {
@@ -173,6 +207,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.status_not_registered)
         }
+        refreshSaveButtonLabel()
         showSelfCheck()
         captureCopiedLink()
     }

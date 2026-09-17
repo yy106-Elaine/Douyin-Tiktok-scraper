@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        For the floating "save the copied link" button. It is this app's
+        own window: it reads nothing from the app beneath it and performs
+        no action in it.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="false"
@@ -26,6 +32,19 @@
         <activity
             android:name=".ui.RegisterActivity"
             android:exported="false" />
+
+        <!--
+            Comes forward for an instant to read the clipboard, because
+            from Android 10 only a focused app may. Translucent and
+            noHistory, so the system returns to the app underneath.
+        -->
+        <activity
+            android:name=".ui.ClipboardReaderActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!--
             Receives links the participant shares out of Douyin/TikTok.

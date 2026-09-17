@@ -43,6 +43,12 @@ class CaptureAccessibilityService : AccessibilityService() {
     /** Reads the search grid; see where it is consulted below. */
     private val searchParser = TikTokSearchParser()
 
+    /**
+     * Shown only while a target app is in front, so it is never
+     * floating over anything unrelated.
+     */
+    private val saveButton by lazy { SaveLinkButton(this) }
+
     private val parsers: Map<String, PostParser> = mapOf(
         "com.ss.android.ugc.aweme" to DouyinParser(),
         "com.ss.android.ugc.aweme.lite" to DouyinParser(),
@@ -99,9 +105,11 @@ class CaptureAccessibilityService : AccessibilityService() {
         val parser = parsers[activePackage]
         if (activePackage == null || parser == null) {
             CaptureStats.onSkip(eventPackage, "active window is $activePackage")
+            saveButton.hide()
             return
         }
         lastPackage = activePackage
+        if (Prefs(applicationContext).showSaveButton) saveButton.show()
 
         val nodes = NodeTools.flatten(root)
         if (nodes.isEmpty()) {
@@ -180,6 +188,7 @@ class CaptureAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        saveButton.hide()
         idleHandler.removeCallbacks(idleFlush)
         flush(force = true)
         scope.cancel()

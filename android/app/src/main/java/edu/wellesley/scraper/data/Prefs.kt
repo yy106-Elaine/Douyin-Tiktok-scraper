@@ -37,6 +37,11 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_CLIPBOARD, null)
         set(value) = prefs.edit { putString(KEY_CLIPBOARD, value) }
 
+    /** Whether the floating save-link button is wanted. */
+    var showSaveButton: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_BUTTON, false)
+        set(value) = prefs.edit { putBoolean(KEY_SAVE_BUTTON, value) }
+
     val isRegistered: Boolean
         get() = !apiKey.isNullOrBlank()
 
@@ -48,5 +53,6 @@ class Prefs(context: Context) {
         const val KEY_BACKEND = "backend_url"
         const val KEY_DEVICE = "device_id"
         const val KEY_CLIPBOARD = "last_saved_clipboard"
+        const val KEY_SAVE_BUTTON = "show_save_button"
     }
 }
