@@ -107,8 +107,40 @@ class TikTokParserTest {
 
     @Test
     fun `an open comment sheet is skipped`() {
-        assertFalse(parser.shouldSkip(onePost()))
-        assertTrue(parser.shouldSkip(onePost() + node(text = "Add comment")))
+        assertNull(parser.skipReason(onePost()))
+
+        // Only markers a sheet actually produces.
+        for (marker in listOf("View 12 replies", "Reply to @someone", "1,204 comments")) {
+            val reason = parser.skipReason(onePost() + node(text = marker))
+            assertTrue("$marker should skip", reason != null)
+        }
+    }
+
+    @Test
+    fun `the feed's own comment affordances do not skip the frame`() {
+        // A live session lost 24 of 31 frames to a guard that matched
+        // the feed's own comment button and inline comment entry.
+        for (onFeed in listOf("Add comment", "Read or add comments. 1,234 comments")) {
+            assertNull(onFeed, parser.skipReason(onePost() + node(text = onFeed)))
+        }
+    }
+
+    @Test
+    fun `a skip names which marker fired`() {
+        val reason = parser.skipReason(onePost() + node(text = "View 3 replies"))
+        assertTrue(reason!!, reason.contains("reply thread"))
+    }
+
+    @Test
+    fun `one visible tab label is taken as the active feed`() {
+        // Not every build reports isSelected on the tab.
+        assertEquals("recommend", parser.feed(listOf(node(text = "For You"))))
+    }
+
+    @Test
+    fun `several visible tabs with none selected stays unknown`() {
+        val nodes = listOf(node(text = "For You"), node(text = "Following"))
+        assertNull(parser.feed(nodes))
     }
 
     @Test

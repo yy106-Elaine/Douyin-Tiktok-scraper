@@ -27,7 +27,17 @@ class DouyinParser : PostParser {
         val AUTHOR = Regex("""@\s*([^\s，,。]+)""")
         val MUSIC = Regex("""@?(.+?)创作的原声|原声[：: ]\s*(.+)""")
 
-        val COMMENT_SHEET = Regex("""(?:留下你的精彩评论|说点什么|全部评论|条评论)""")
+        /**
+         * Narrow markers of an open comment sheet, each named so a skip
+         * says which fired. "条评论" is deliberately absent: it also
+         * appears on the feed's own comment button, and the TikTok side
+         * lost three quarters of a session to exactly that mistake.
+         */
+        val COMMENT_SHEET_MARKERS = listOf(
+            "comment box" to Regex("""留下你的精彩评论|善语结善缘"""),
+            "all comments header" to Regex("""^全部评论"""),
+            "reply target" to Regex("""回复\s*@"""),
+        )
         val AD_MARKER = Regex("""(?:广告|推广|品牌合作)""")
         val AI_MARKER = Regex("""(?:AI生成|AI创作|疑似AI)""")
 
@@ -47,14 +57,22 @@ class DouyinParser : PostParser {
     override fun isPostBoundary(node: FlatNode): Boolean =
         node.viewId?.contains(POST_CONTAINER) == true
 
+    /** Same fallback as TikTok: one visible tab label is the active one. */
     override fun feed(nodes: List<FlatNode>): String? {
-        val label = nodes.firstOrNull { it.selected && it.text in FEEDS }?.text
-            ?: nodes.firstOrNull { it.selected && it.description in FEEDS }?.description
-        return FEED_SLUGS[label] ?: label
+        val selected = nodes.firstOrNull { it.selected && labelOf(it) != null }?.let(::labelOf)
+        if (selected != null) return FEED_SLUGS[selected] ?: selected
+
+        val only = nodes.mapNotNull(::labelOf).distinct().singleOrNull() ?: return null
+        return FEED_SLUGS[only] ?: only
     }
 
-    override fun shouldSkip(nodes: List<FlatNode>): Boolean =
-        NodeTools.anyMatches(nodes, COMMENT_SHEET)
+    private fun labelOf(node: FlatNode): String? =
+        node.text?.takeIf { it in FEEDS } ?: node.description?.takeIf { it in FEEDS }
+
+    override fun skipReason(nodes: List<FlatNode>): String? =
+        COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
+            NodeTools.anyMatches(nodes, pattern)
+        }?.let { (name, _) -> "comment sheet open ($name)" }
 
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(

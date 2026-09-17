@@ -62,9 +62,8 @@ class CaptureAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val packageName = event?.packageName?.toString() ?: return
-        val parser = parsers[packageName] ?: return
-        lastPackage = packageName
+        val eventPackage = event?.packageName?.toString() ?: return
+        if (eventPackage !in parsers.keys) return
 
         idleHandler.removeCallbacks(idleFlush)
         idleHandler.postDelayed(idleFlush, IDLE_FLUSH_MILLIS)
@@ -73,21 +72,41 @@ class CaptureAccessibilityService : AccessibilityService() {
         if (now - lastScanAt < SCAN_INTERVAL_MILLIS) return
         lastScanAt = now
 
-        val nodes = NodeTools.flatten(rootInActiveWindow)
-        if (nodes.isEmpty()) {
-            CaptureStats.onSkip(packageName, "screen returned no nodes")
+        // An event's package name says which app produced the event, not
+        // which window is currently on top: an event can arrive from the
+        // feed while rootInActiveWindow has already moved on to the task
+        // switcher or a notification shade. Reading that window would
+        // both store nonsense and observe apps this service has no
+        // business seeing, so the window's own package has to agree.
+        val root = rootInActiveWindow
+        if (root == null) {
+            CaptureStats.onSkip(eventPackage, "no active window")
             return
         }
-        if (parser.shouldSkip(nodes)) {
-            CaptureStats.onSkip(packageName, "comment sheet open")
-            CaptureLog.skipped("comment sheet open")
+        val activePackage = root.packageName?.toString()
+        // Trust the window over the event for which parser to use.
+        val parser = parsers[activePackage]
+        if (activePackage == null || parser == null) {
+            CaptureStats.onSkip(eventPackage, "active window is $activePackage")
+            return
+        }
+        lastPackage = activePackage
+
+        val nodes = NodeTools.flatten(root)
+        if (nodes.isEmpty()) {
+            CaptureStats.onSkip(activePackage, "window returned no nodes")
+            return
+        }
+        parser.skipReason(nodes)?.let { reason ->
+            CaptureStats.onSkip(activePackage, reason)
+            CaptureLog.skipped(reason)
             return
         }
 
         // The feed tab belongs to the screen, not to any one post.
         val feed = parser.feed(nodes)
         val segments = NodeTools.segment(nodes, parser::isPostBoundary)
-        CaptureStats.onFrame(packageName, nodes.size, segments.size)
+        CaptureStats.onFrame(activePackage, nodes.size, segments.size)
         CaptureLog.segments(segments.size, nodes.size)
 
         // Whether either app puts a video id on screen decides how links

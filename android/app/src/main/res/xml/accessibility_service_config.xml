@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    packageNames is set deliberately: the system then delivers events
-    ONLY for these apps, so the service never observes anything else on
-    the participant's phone. This is both a privacy guarantee we can
-    state in a consent form and a meaningful battery saving.
+    packageNames is set deliberately: the system delivers events ONLY
+    for these apps, which saves meaningful battery and is the first of
+    two limits on what can be read.
+
+    It is not sufficient on its own. An event names the app that
+    produced it, not the window on top, so rootInActiveWindow can
+    return the task switcher while a feed event is being handled. The
+    service therefore also verifies the active window's package before
+    reading it. Both limits together are what a consent form should
+    describe.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewScrolled"

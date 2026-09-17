@@ -46,10 +46,19 @@ as `"12.3万"`, not as `123000`. Converting on the device would destroy the
 evidence that the value was abbreviated. The server converts and sets
 `counts_approximate`.
 
-**`packageNames` is set in the service config.** The system then delivers
-events only for Douyin and TikTok, so the service is structurally incapable of
-observing banking apps, messages, or anything else on the participant's phone.
-This is a claim you can make in a consent form and defend in an IRB review.
+**Two independent limits on what can be read.** `packageNames` in the service
+config makes the system deliver events only for Douyin and TikTok. That alone
+is not sufficient: an event's package name identifies the app that produced it,
+not the window currently on top, so `rootInActiveWindow` can return the task
+switcher or the notification shade while a feed event is still being handled. A
+first live session proved it — a captured frame turned out to be Android's
+recents screen, listing other installed apps.
+
+So the service now also checks the active window's own package before reading
+it, and discards the frame otherwise. The accurate claim for a consent form is
+that events are restricted by the OS **and** every frame is verified to belong
+to a target app before it is read — not that the restriction is structural on
+its own.
 
 **The device id is a random UUID**, generated on first launch. No IMEI, no
 advertising id, no hardware identifier.

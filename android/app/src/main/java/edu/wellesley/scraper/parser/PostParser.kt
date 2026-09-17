@@ -22,10 +22,13 @@ interface PostParser {
     fun parse(nodes: List<FlatNode>): ParsedPost?
 
     /**
-     * True when the reading context is unsafe -- e.g. the comment
-     * sheet is open, where a long comment is easily mistaken for the
-     * caption. The service skips the frame entirely rather than
-     * recording a wrong value.
+     * Why this frame must not be read, or null to read it.
+     *
+     * The comment sheet is the case that matters: a long comment is
+     * easily mistaken for a caption, so the frame is dropped rather
+     * than recorded wrongly. The reason is returned rather than a
+     * boolean because an over-broad guard silently discards most of a
+     * session, and the only way to notice is to see which rule fired.
      */
-    fun shouldSkip(nodes: List<FlatNode>): Boolean
+    fun skipReason(nodes: List<FlatNode>): String?
 }

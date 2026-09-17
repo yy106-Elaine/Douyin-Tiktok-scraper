@@ -108,8 +108,12 @@ census.
 
 ## Ethics and consent
 
-- Collection is limited at the OS level to the two target apps
-  (`android:packageNames`), so no other app is observable.
+- Collection is limited two ways: the OS delivers events only for the two
+  target apps (`android:packageNames`), and each frame is checked to belong to
+  one of them before it is read. The second check exists because the first is
+  not enough — an event from the feed can arrive while the task switcher is the
+  active window, and an early session captured exactly that. State both limits
+  rather than only the first.
 - Comment **text** is never collected — only counts.
 - Registration is gated on an approved-participant whitelist.
 - Participants can see what is pending and stop the service at any time via

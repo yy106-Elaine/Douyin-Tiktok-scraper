@@ -49,12 +49,21 @@ class TikTokParser : PostParser {
         val TRAILING_EXPAND = Regex("""\s*(?:\.{3}|…)?\s*more\s*$""", RegexOption.IGNORE_CASE)
         val MUSIC = Regex("""Sound:\s*(.+)""", RegexOption.IGNORE_CASE)
 
-        // The lookbehind matters: the comment BUTTON is described as
-        // "Read or add comments. N comments", which would otherwise match
-        // here and cause every ordinary frame to be skipped.
-        val COMMENT_SHEET = Regex(
-            """(?:(?<!or )Add comment|Reply to|Creator liked|View \d+ repl)""",
-            RegexOption.IGNORE_CASE,
+        /**
+         * Markers that only an open comment sheet produces, each named
+         * so a skip says which one fired.
+         *
+         * Kept deliberately narrow. A first live session skipped 24 of
+         * 31 frames on a broader set that included a bare "Add comment"
+         * -- which this build also renders on the feed itself -- and
+         * losing three quarters of a session is worse than the
+         * occasional comment misread as a caption, which the caption
+         * rule's length and position checks already make unlikely.
+         */
+        val COMMENT_SHEET_MARKERS = listOf(
+            "reply thread" to Regex("""View \d+ repl(?:y|ies)""", RegexOption.IGNORE_CASE),
+            "reply target" to Regex("""Reply to @""", RegexOption.IGNORE_CASE),
+            "comments header" to Regex("""^\d+(?:[.,]\d+)?[KMB]? comments$""", RegexOption.IGNORE_CASE),
         )
         val AD_MARKER = Regex("""(?:paid partnership|sponsored|promoted)""", RegexOption.IGNORE_CASE)
         val AI_MARKER = Regex("""AI[- ]generated""", RegexOption.IGNORE_CASE)
@@ -82,18 +91,38 @@ class TikTokParser : PostParser {
     override fun isPostBoundary(node: FlatNode): Boolean =
         node.viewId?.contains(POST_CONTAINER) == true
 
-    /** The feed tab is the selected one in the top tab bar. */
+    /**
+     * Which feed tab is showing.
+     *
+     * Preferred signal is the selected tab. Not every build reports
+     * isSelected on it, and a first live session returned null for
+     * every row, so a single visible tab label is accepted as the
+     * fallback: when only one is exposed, it is the active one.
+     * Several visible and none selected stays unknown rather than
+     * guessing.
+     */
     override fun feed(nodes: List<FlatNode>): String? {
-        val label = nodes.firstOrNull { node ->
-            node.selected && FEEDS.any { node.description?.contains(it, true) == true }
-        }?.description ?: nodes.firstOrNull { it.selected && it.text in FEEDS }?.text
+        val selected = nodes.firstOrNull { node ->
+            node.selected && labelOf(node) != null
+        }?.let(::labelOf)
+        if (selected != null) return FEED_SLUGS[selected] ?: selected
 
-        val matched = FEEDS.firstOrNull { label?.contains(it, ignoreCase = true) == true }
-        return FEED_SLUGS[matched] ?: matched
+        val visible = nodes.mapNotNull(::labelOf).distinct()
+        val only = visible.singleOrNull() ?: return null
+        return FEED_SLUGS[only] ?: only
     }
 
-    override fun shouldSkip(nodes: List<FlatNode>): Boolean =
-        NodeTools.anyMatches(nodes, COMMENT_SHEET)
+    private fun labelOf(node: FlatNode): String? {
+        val text = node.text
+        if (text in FEEDS) return text
+        val description = node.description ?: return null
+        return FEEDS.firstOrNull { description.equals(it, ignoreCase = true) }
+    }
+
+    override fun skipReason(nodes: List<FlatNode>): String? =
+        COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
+            NodeTools.anyMatches(nodes, pattern)
+        }?.let { (name, _) -> "comment sheet open ($name)" }
 
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(
