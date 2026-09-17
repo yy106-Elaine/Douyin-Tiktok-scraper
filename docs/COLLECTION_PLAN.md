@@ -76,8 +76,9 @@ The terms overlap on purpose. A video found by several is one observation,
 recorded with all of the keywords that surfaced it, so a per-keyword count does
 not depend on the order of the file.
 
-`女同` on its own was dropped: it is a substring of 女同学, 女同事 and 女同桌,
-and a run with it returned mostly those.
+`女同` was dropped once and then restored: its collisions (女同学, 女同事,
+女同桌) cost only 2 of its 12 results, which the filter catches, and at 33% in
+scope it outperformed 女同性恋 tenfold.
 
 A row is in scope only if its text is **in Chinese** and carries a **topic
 term** — see `docs/METHODOLOGY.md` §10. Everything else is marked and hidden,
@@ -90,15 +91,19 @@ the keyword list or the rules:
 ./.venv/bin/python -m app.relevance --test "some caption"  # check a rule
 ```
 
-Watch the per-keyword numbers rather than the total. A term returning mostly
-excluded rows is spending quota to collect rows the filter removes; a term
-returning few but clean results is cheap. Drop on that basis, not on the
-overall share.
+Read the per-keyword numbers before pruning anything. Measured on the first
+150 results, 拉拉 yielded 57% in scope and 女同性恋 3%, because 女同性恋
+translates cleanly to "lesbian" and the search maps it across languages while
+community slang stays Chinese. Nothing was dropped on that basis: rows are
+marked rather than deleted and quota is not the constraint, so precision is
+cheap while lost recall is permanent.
 
 ### Search parameters
 
 `YOUTUBE_RELEVANCE_LANGUAGE=zh-Hans` is set in `backend/.env`, with no region
-code. These change which results the API returns, so they are part of the
+code. Measured over the first 340 rows, all collected with the hint in force,
+67% still had no Chinese in them: it is a ranking hint the API may ignore, not
+a language filter, so the requirement is enforced after collection instead. These change which results the API returns, so they are part of the
 sampling method: they are stored on every row, and changing one mid-study means
 the rows before and after are different samples. Override for one run with
 `--language` / `--region`; pass `--language ""` to search without one.
