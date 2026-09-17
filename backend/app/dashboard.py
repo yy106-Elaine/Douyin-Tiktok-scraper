@@ -16,8 +16,18 @@ from sqlalchemy.orm import Session
 from .auth import is_admin_key
 from .config import settings
 from .db import get_session
-from .models import CaptureEvent, Participant, SharedLink
+from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
+from .snowflake import derivation_is_verified
+from .views import (
+    ID_ON_SCREEN,
+    LINK_ONLY,
+    LINKED_BY_TIME,
+    NEEDS_RESOLVING,
+    NO_LINK,
+    VideoRow,
+    video_rows,
+)
 
 router = APIRouter()
 
@@ -52,12 +62,8 @@ def dashboard(
         )
     model, _ = PLATFORM_TABLES[platform]
 
-    totals = {
-        name: session.scalar(select(func.count()).select_from(table))
-        for name, (table, _) in PLATFORM_TABLES.items()
-    }
     posts = session.scalar(select(func.count()).select_from(model)) or 0
-    linked = (
+    with_id = (
         session.scalar(
             select(func.count()).select_from(model).where(model.video_id.isnot(None))
         )
@@ -69,40 +75,33 @@ def dashboard(
         )
         or 0
     )
-    participants = session.scalar(select(func.count()).select_from(Participant)) or 0
     events = session.scalar(select(func.count()).select_from(CaptureEvent)) or 0
 
-    shared_total = session.scalar(select(func.count()).select_from(SharedLink)) or 0
-    shared_paired = (
+    # Links whose short form has never been followed. This is the one
+    # number on the page that asks for an action, so it is a tile.
+    unresolved = (
         session.scalar(
             select(func.count())
             .select_from(SharedLink)
-            .where(SharedLink.matched_capture_id.isnot(None))
+            .where(SharedLink.platform == platform, SharedLink.video_id.is_(None))
         )
         or 0
     )
 
-    rows = session.scalars(
-        select(model).order_by(model.captured_at.desc()).limit(_ROW_LIMIT)
-    ).all()
-    links = session.scalars(
-        select(SharedLink).order_by(SharedLink.shared_at.desc()).limit(_ROW_LIMIT)
-    ).all()
+    rows = video_rows(session, platform, _ROW_LIMIT)
+    dated = sum(1 for row in rows if row.posted_display)
 
     return HTMLResponse(
         _page(
             key=key,
             platform=platform,
-            totals=totals,
             posts=posts,
-            linked=linked,
+            with_id=with_id,
             approximate=approximate,
-            participants=participants,
             events=events,
-            shared_total=shared_total,
-            shared_paired=shared_paired,
+            unresolved=unresolved,
             rows=rows,
-            links=links,
+            dated=dated,
         )
     )
 
@@ -119,8 +118,9 @@ def _compact(value: int) -> str:
     return f"{value:,}"
 
 
-def _tile(label: str, value: str, note: str = "") -> str:
-    note_html = f'<div class="note">{escape(note)}</div>' if note else ""
+def _tile(label: str, value: str, note: str = "", raw_note: bool = False) -> str:
+    text = note if raw_note else escape(note)
+    note_html = f'<div class="note">{text}</div>' if note else ""
     return (
         '<div class="tile">'
         f'<div class="label">{escape(label)}</div>'
@@ -141,68 +141,92 @@ def _num(value: object) -> str:
     return f'<td class="n">{escape(_compact(int(value)))}</td>'
 
 
-def _post_rows(rows) -> str:
-    if not rows:
-        return '<tr><td colspan="12" class="empty">No posts captured yet.</td></tr>'
+#: Colour carries how much a row's identity can be trusted: green for
+#: an exact match, amber for anything inferred or still pending.
+_STATE_CLASS = {
+    NEEDS_RESOLVING: "warn",
+    LINKED_BY_TIME: "warn",
+    LINK_ONLY: "crit",
+    NO_LINK: "muted",
+    ID_ON_SCREEN: "good",
+}
 
-    out = []
-    for post in rows:
-        if post.video_url:
-            link = (
-                f'<td><a href="{escape(post.video_url)}" rel="noreferrer noopener" '
-                f'target="_blank">{escape(post.video_id or "open")}</a></td>'
+_COLUMNS = 11
+
+
+def _posted_cell(row: VideoRow) -> str:
+    """The publication time, with where it came from underneath.
+
+    The provenance is on the row rather than in a footnote because the
+    two sources are not interchangeable: one is exact to the second,
+    the other is whatever the interface rounded it to.
+    """
+    if not row.posted_display:
+        return '<td class="muted">&mdash;</td>'
+    note = ""
+    if row.posted_source == "video id":
+        label = "from id" if derivation_is_verified(row.platform) else "from id?"
+        note = f'<div class="prov exact">{label}</div>'
+    elif row.posted_source == "screen":
+        note = '<div class="prov">from screen</div>'
+    elif row.posted_source == "as shown":
+        note = '<div class="prov">as shown</div>'
+    return f'<td class="when">{escape(row.posted_display)}{note}</td>'
+
+
+def _id_cell(row: VideoRow) -> str:
+    if not row.video_id:
+        # An unresolved short link has no id yet, but it does open, and
+        # a row with nothing clickable in it looks like a row with no
+        # data in it.
+        if row.video_url:
+            return (
+                f'<td><a href="{escape(row.video_url)}" rel="noreferrer noopener" '
+                'target="_blank">short link</a></td>'
             )
-        else:
-            link = '<td class="muted">not shared</td>'
-
-        flags = []
-        if post.counts_approximate:
-            flags.append('<span class="flag approx">≈ approximate</span>')
-        if post.is_ad:
-            flags.append('<span class="flag ad">▲ ad</span>')
-        if post.is_ai_generated:
-            flags.append('<span class="flag ai">◆ AI</span>')
-
-        flags_html = "".join(flags) or '<span class="muted">&mdash;</span>'
-        out.append(
-            "<tr>"
-            f"<td class=\"when\">{escape(post.captured_at.strftime('%m-%d %H:%M'))}</td>"
-            f"{_cell(post.participant_id)}"
-            f"{_cell(post.author_handle)}"
-            f"{_cell(post.author_name)}"
-            f"{_cell(post.posted_at_raw)}"
-            f"{_cell(post.feed)}"
-            f'<td class="caption">{escape((post.caption or "—")[:90])}</td>'
-            f"{_num(post.like_count)}{_num(post.comment_count)}"
-            f"{_num(post.share_count)}{_num(post.save_count)}"
-            f"{link}"
-            f"<td>{flags_html}</td>"
-            "</tr>"
+        return '<td class="muted">&mdash;</td>'
+    if row.video_url:
+        return (
+            f'<td class="vid"><a href="{escape(row.video_url)}" '
+            f'rel="noreferrer noopener" target="_blank">{escape(row.video_id)}</a></td>'
         )
-    return "".join(out)
+    return f'<td class="vid">{escape(row.video_id)}</td>'
 
 
-def _link_rows(links) -> str:
-    if not links:
-        return '<tr><td colspan="5" class="empty">No links shared yet.</td></tr>'
+def _notes_cell(row: VideoRow) -> str:
+    notes = [
+        f'<span class="flag {_STATE_CLASS.get(row.state, "good")}">'
+        f"{escape(row.state)}</span>"
+    ]
+    if row.counts_approximate:
+        notes.append('<span class="flag approx">&asymp; approximate</span>')
+    if row.is_ad:
+        notes.append('<span class="flag ad">&#9650; ad</span>')
+    if row.is_ai_generated:
+        notes.append('<span class="flag ai">&#9670; AI</span>')
+    return f'<td>{"".join(notes)}</td>'
+
+
+def _video_rows(rows) -> str:
+    if not rows:
+        return (
+            f'<tr><td colspan="{_COLUMNS}" class="empty">'
+            "Nothing captured for this platform yet.</td></tr>"
+        )
 
     out = []
-    for link in links:
-        if link.matched_capture_id is not None:
-            state = '<td><span class="flag good">● paired</span></td>'
-        elif link.video_id is None:
-            state = '<td><span class="flag warn">● needs resolving</span></td>'
-        else:
-            state = '<td><span class="flag crit">● unpaired</span></td>'
-
-        target = link.canonical_url or link.raw_text
+    for row in rows:
         out.append(
             "<tr>"
-            f"<td class=\"when\">{escape(link.shared_at.strftime('%m-%d %H:%M'))}</td>"
-            f"{_cell(link.participant_id)}"
-            f"{_cell(link.platform)}"
-            f'<td class="caption">{escape(target[:80])}</td>'
-            f"{state}"
+            f"{_posted_cell(row)}"
+            f"{_id_cell(row)}"
+            f"{_cell(row.author_handle)}"
+            f"{_cell(row.author_name)}"
+            f'<td class="caption">{escape((row.caption or "—")[:110])}</td>'
+            f"<td class=\"when\">{escape(row.when.strftime('%m-%d %H:%M'))}</td>"
+            f"{_cell(row.feed)}"
+            f"{_num(row.like_count)}{_num(row.comment_count)}{_num(row.share_count)}"
+            f"{_notes_cell(row)}"
             "</tr>"
         )
     return "".join(out)
@@ -218,25 +242,42 @@ def _page(**ctx) -> str:
 
     tiles = "".join(
         [
-            _tile("Posts captured", _compact(ctx["posts"]), f"{platform}"),
+            _tile("Videos captured", _compact(ctx["posts"]), platform),
             _tile(
-                "With a video link",
-                _pct(ctx["linked"], ctx["posts"]),
-                f"{ctx['linked']:,} of {ctx['posts']:,} posts",
+                "With a video ID",
+                _pct(ctx["with_id"], ctx["posts"]),
+                f"{ctx['with_id']:,} of {ctx['posts']:,} &mdash; re-checkable",
+                raw_note=True,
             ),
             _tile(
-                "Links paired",
-                _pct(ctx["shared_paired"], ctx["shared_total"]),
-                f"{ctx['shared_paired']:,} of {ctx['shared_total']:,} shared",
+                "Publication time known",
+                _pct(ctx["dated"], len(ctx["rows"])),
+                "of the rows below",
+            ),
+            _tile(
+                "Links to resolve",
+                _compact(ctx["unresolved"]),
+                "copied, not yet followed",
             ),
             _tile(
                 "Counts approximate",
                 _pct(ctx["approximate"], ctx["posts"]),
                 "abbreviated in the UI",
             ),
-            _tile("Participants", _compact(ctx["participants"])),
             _tile("Observations stored", _compact(ctx["events"]), "all platforms"),
         ]
+    )
+
+    # Resolving is a deliberate step -- it makes outbound requests from
+    # wherever the researcher runs it -- so the page asks for it by
+    # name instead of quietly doing it.
+    todo = (
+        f'<p class="todo"><strong>{ctx["unresolved"]:,} copied link(s)</strong> still '
+        "need following to their real video ID. On the machine running this server:"
+        "<code>cd backend &amp;&amp; ./.venv/bin/python -m app.resolve</code>"
+        "Then reload this page.</p>"
+        if ctx["unresolved"]
+        else ""
     )
 
     return f"""<!doctype html>
@@ -307,7 +348,22 @@ def _page(**ctx) -> str:
   .flag.good {{ color: var(--good); }}
   .flag.warn {{ color: var(--warn); }}
   .flag.crit {{ color: var(--crit); }}
-  .flag.approx, .flag.ad, .flag.ai {{ color: var(--ink-2); }}
+  .flag.approx, .flag.ad, .flag.ai, .flag.muted {{ color: var(--ink-3); }}
+  .prov {{ font-size: 11px; color: var(--ink-3); }}
+  .prov.exact {{ color: var(--good); }}
+  td.vid {{ font-variant-numeric: tabular-nums; white-space: nowrap; }}
+  .todo {{
+    background: var(--panel); border: 1px solid var(--warn);
+    border-radius: 10px; padding: 14px 16px; margin: 0 0 24px;
+    color: var(--ink-2);
+  }}
+  .todo code {{
+    display: block; margin-top: 8px; padding: 9px 11px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 7px; color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; word-break: break-all;
+  }}
   footer {{ color: var(--ink-3); font-size: 12px; }}
 </style>
 </head><body><div class="wrap">
@@ -319,22 +375,17 @@ are approximate wherever flagged.</p>
 <div class="tabs">{tabs}</div>
 <div class="tiles">{tiles}</div>
 
-<h2>Latest posts &mdash; {escape(platform)}</h2>
+{todo}
+
+<h2>Videos &mdash; {escape(platform)}</h2>
 <div class="panel"><table>
 <thead><tr>
-<th>Seen</th><th>Participant</th><th>@handle</th><th>Display name</th><th>Posted</th><th>Feed</th><th>Caption</th>
+<th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
+<th>Caption</th><th>Seen</th><th>Feed</th>
 <th class="n">Likes</th><th class="n">Comments</th><th class="n">Shares</th>
-<th class="n">Saves</th><th>Video link</th><th>Flags</th>
+<th>Notes</th>
 </tr></thead>
-<tbody>{_post_rows(ctx["rows"])}</tbody>
-</table></div>
-
-<h2>Shared links</h2>
-<div class="panel"><table class="narrow">
-<thead><tr>
-<th>Shared</th><th>Participant</th><th>Platform</th><th>Link</th><th>State</th>
-</tr></thead>
-<tbody>{_link_rows(ctx["links"])}</tbody>
+<tbody>{_video_rows(ctx["rows"])}</tbody>
 </table></div>
 
 <footer>

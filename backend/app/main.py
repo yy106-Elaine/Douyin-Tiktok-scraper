@@ -23,6 +23,7 @@ from .models import CaptureEvent, Participant, SharedLink
 from .pairing import pair_shared_link
 from .parsers import PLATFORM_TABLES, base
 from .platforms import family_for_platform, platform_for_package
+from .views import publication
 from .schemas import (
     BatchResponse,
     CaptureBatch,
@@ -192,6 +193,12 @@ _EXPORT_COLUMNS = [
     "video_url",
 ]
 
+#: Derived on the way out rather than stored. `video_id` is the fact;
+#: these are a pure function of it, so there is no second copy to drift
+#: and nothing to migrate. See app/snowflake.py for the decoding and
+#: its per-platform confidence.
+_DERIVED_COLUMNS = ["posted_at_exact", "posted_at_source"]
+
 
 @app.get("/api/export/posts.csv", dependencies=[Depends(require_admin_view)])
 def export_posts(
@@ -208,9 +215,13 @@ def export_posts(
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(_EXPORT_COLUMNS)
+    writer.writerow(_EXPORT_COLUMNS + _DERIVED_COLUMNS)
     for post in session.scalars(select(model).order_by(model.captured_at)):
-        writer.writerow([getattr(post, column) for column in _EXPORT_COLUMNS])
+        exact, _, source = publication(post.video_id, post.posted_on, post.posted_at_raw)
+        writer.writerow(
+            [getattr(post, column) for column in _EXPORT_COLUMNS]
+            + [exact.isoformat() if exact else "", source]
+        )
 
     buffer.seek(0)
     return StreamingResponse(

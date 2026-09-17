@@ -27,6 +27,19 @@ The accessibility tree gives engagement counts but **never a video id**. The
 share sheet gives a real URL but no counts. Neither is sufficient alone, so
 the system collects both and joins them afterwards (`app/pairing.py`).
 
+The split is a storage detail, not something a reader should have to
+reassemble. `app/views.py` merges the two back into one row per video — the
+captured metadata plus whatever identity is known — and that is what the
+dashboard and the CSV export both render. A copied link that no post row
+accounts for keeps a row of its own there: an unpaired link is still a video
+to re-check, and a link hidden in its own section is a link that gets
+forgotten.
+
+Publication time is recovered from the id itself rather than from the screen
+(`app/snowflake.py`). It is derived on read, not stored — see
+`docs/METHODOLOGY.md` §2b for the arithmetic, its per-platform confidence, and
+what to report.
+
 ## The three-step platform registry
 
 Adding a platform touches exactly three files:

@@ -55,6 +55,45 @@ Anything requiring a link (manual coding, retrieval of the video, checking
 whether it was later deleted) can only use the second tier. Say what fraction
 that was.
 
+### 2b. Publication time is recovered from the id, not from the screen
+
+Both platforms mint video ids Snowflake-style: the high 32 bits of the 64-bit
+id are the creation time in whole seconds since the Unix epoch. So once an id
+is known, so is the publication time — to the second, with no request to the
+platform and no dependence on what the interface happened to render.
+
+This matters because the rendered value is poor for this purpose. The feed
+shows publication as `11h ago`, or as a partial date with no year, or omits it
+entirely. A time-to-removal computed from `11h ago` inherits that rounding;
+one computed from the id does not.
+
+The value is therefore **derived, not stored**. `video_id` is the recorded
+fact; `posted_at_exact` and `posted_at_source` are a pure function of it,
+computed on read by `app/snowflake.py` and present in the CSV export. There is
+no second copy to fall out of date.
+
+Report which source each observation used — the dashboard labels every row,
+and the export carries `posted_at_source`:
+
+| `posted_at_source` | meaning | precision |
+| --- | --- | --- |
+| `video id` | decoded from the id | to the second |
+| `screen` | parsed from the rendered string, resolved against capture time | whatever the UI rounded to |
+| `as shown` | the rendered string, unparsed (e.g. a partial date) | not a timestamp |
+
+**Two caveats belong in a write-up.**
+
+The derivation is confirmed for TikTok and reproducible against any post whose
+date is independently known. Douyin runs on the same infrastructure and the
+same arithmetic yields plausible times, but no Douyin post has been checked
+here against a known publication date, so the dashboard marks a Douyin
+derivation `from id?` and `app.snowflake.derivation_is_verified` returns false
+for it. Verify it once — capture a post whose date the interface shows in full,
+then compare — and move `douyin` into the verified set.
+
+Second, an id decoding outside 2016–now is refused rather than returned. A
+wrong date silently becomes a data point; a missing one does not.
+
 ### 3. Pairing is heuristic
 
 A shared link is matched to a captured post by participant, platform, author

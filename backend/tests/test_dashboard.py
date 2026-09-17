@@ -49,8 +49,7 @@ def test_unknown_platform_is_rejected(client):
 
 def test_empty_state_is_shown_rather_than_a_blank_table(client):
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
-    assert "No posts captured yet." in body
-    assert "No links shared yet." in body
+    assert "Nothing captured for this platform yet." in body
 
 
 def test_captured_posts_appear_with_their_counts(client, api_key):
@@ -59,7 +58,7 @@ def test_captured_posts_appear_with_their_counts(client, api_key):
     assert "someuser" in body
     assert "74.9K" in body          # 74,900 rendered compactly
     assert "1,234" in body
-    assert "not shared" in body     # no video id yet
+    assert "no link yet" in body    # no video id yet
     assert "approximate" in body    # the abbreviation flag
 
 
@@ -75,7 +74,7 @@ def test_a_paired_link_is_rendered_as_a_clickable_url(client, api_key):
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
     assert 'href="https://www.tiktok.com/@someuser/video/7301234567890123456"' in body
-    assert "paired" in body
+    assert "linked (exact)" in body or "linked (by time)" in body
 
 
 def test_an_unresolved_short_link_is_flagged(client, api_key):
@@ -106,3 +105,70 @@ def test_export_still_accepts_a_header_key(client, api_key):
     )
     assert response.status_code == 200
     assert "someuser" in response.text
+
+
+def test_one_table_holds_both_halves_of_an_observation(client, api_key):
+    """A paired link must not also appear as a row of its own.
+
+    The two-table layout made the reader join a post to its link by
+    eye; merging them is only an improvement if the link stops being
+    listed twice.
+    """
+    _capture(client, api_key)
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@someuser/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:01:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert body.count("7301234567890123456") == 2  # the href and its text
+    assert "Shared links" not in body
+    # The caption proves it is the post's row that carries the id.
+    assert "hello world" in body
+
+
+def test_an_unpaired_link_still_gets_a_row(client, api_key):
+    """An unpaired link is a video to re-check, so it must stay visible."""
+    client.post(
+        "/api/links/shared",
+        json={"raw_text": "https://www.tiktok.com/t/ZP83TmDmq/"},
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "needs resolving" in body
+    assert "Links to resolve" in body
+    assert "app.resolve" in body  # the page says how to fix it
+
+
+def test_publication_time_is_decoded_from_the_video_id(client, api_key):
+    """The id is exact to the second; the rendered string is not.
+
+    7301234567890123456 >> 32 is 1699951143 = 2023-11-14 08:39:03 UTC.
+    """
+    _capture(client, api_key, {"payload": {**_CAPTURE["payload"], "posted_at_raw": "11h ago"}})
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@someuser/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:01:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "2023-11-14 08:39" in body
+    assert "from id" in body
+
+
+def test_an_unresolved_link_is_still_clickable(client, api_key):
+    """Before resolution the short URL is all there is, and it opens."""
+    client.post(
+        "/api/links/shared",
+        json={"raw_text": "look at this https://www.tiktok.com/t/ZP83TmDmq/ wow"},
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert 'href="https://www.tiktok.com/t/ZP83TmDmq/"' in body
+    assert "short link" in body
