@@ -1,5 +1,13 @@
 # One keyword per line. Lines starting with # are ignored.
-# Drives `python -m app.youtube collect --keywords keywords.txt`,
-# and is the same list to search by hand on TikTok and Douyin, so the
-# three platforms stay comparable.
+#
+# Drives `python -m app.youtube collect --keywords keywords.txt`, and is
+# the same list to search by hand on TikTok and Douyin, so the three
+# platforms stay comparable.
+#
+# These overlap heavily on purpose. A video found by more than one is
+# recorded with all of them (see `feed`), so a per-keyword count is not
+# distorted by the order of this file.
+女同性恋
 拉拉
+女同志
+女同

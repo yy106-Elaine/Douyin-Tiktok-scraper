@@ -302,7 +302,12 @@ def collect(
     since = window_start(hours, moment)
 
     report = CollectReport(keywords=len(keywords))
-    seen: dict[str, str] = {}
+    # Every keyword that surfaced a video, in the order searched. A
+    # video found by two keywords is one observation, but recording
+    # only the first would make a per-keyword count depend on the order
+    # of the keyword list -- and these lists overlap heavily by design
+    # ("女同" against "女同性恋").
+    seen: dict[str, list[str]] = {}
     for keyword in keywords:
         for video_id in search_ids(
             keyword,
@@ -313,17 +318,16 @@ def collect(
             region_code=region_code,
             relevance_language=relevance_language,
         ):
-            # First keyword to surface a video is recorded as the one
-            # that found it; a video matching two keywords is one
-            # observation, not two.
-            seen.setdefault(video_id, keyword)
+            matched = seen.setdefault(video_id, [])
+            if keyword not in matched:
+                matched.append(keyword)
 
     report.found = len(seen)
     records = details(list(seen), caller=caller, spend=report.spend)
 
     for video_id, item in records.items():
         payload = to_payload(item)
-        payload["feed"] = f"search:{seen[video_id]}"
+        payload["feed"] = "search:" + ",".join(seen[video_id])
 
         event = CaptureEvent(
             participant_id=participant_id,

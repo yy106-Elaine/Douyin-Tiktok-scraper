@@ -157,6 +157,21 @@ class TestCollecting:
             assert report.keywords == 3
             assert report.found == 2  # not 6
 
+    def test_every_matching_keyword_is_recorded_not_just_the_first(self, client):
+        """Otherwise a per-keyword count depends on the list's order.
+
+        The real lists overlap heavily -- "女同" is inside "女同性恋"
+        -- so whichever came first would absorb the other's videos.
+        """
+        from sqlalchemy import select
+
+        with SessionLocal() as session:
+            youtube.collect(
+                session, ["女同性恋", "拉拉", "女同"], caller=_caller(), now=NOW
+            )
+            feeds = {post.feed for post in session.scalars(select(YouTubePost))}
+            assert feeds == {"search:女同性恋,拉拉,女同"}
+
 
 class TestReChecking:
     def _target(self, video_id):

@@ -95,7 +95,11 @@ class _PostMixin:
     #: this device happened to scroll past.
     posted_on: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     music: Mapped[str | None] = mapped_column(Text)
-    feed: Mapped[str | None] = mapped_column(String(64))
+    #: Which surface a post was seen on: a feed tab, or
+    #: "search:<keyword>[,<keyword>...]". Wide enough for a whole
+    #: keyword list, since a YouTube row names every keyword that
+    #: surfaced it.
+    feed: Mapped[str | None] = mapped_column(String(255))
 
     like_count: Mapped[int | None] = mapped_column(Integer)
     comment_count: Mapped[int | None] = mapped_column(Integer)
