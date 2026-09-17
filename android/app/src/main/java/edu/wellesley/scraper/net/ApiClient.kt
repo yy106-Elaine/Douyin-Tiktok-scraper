@@ -45,10 +45,20 @@ class ApiClient(private val baseUrl: String) {
         return response.optInt("accepted", 0)
     }
 
-    fun shareLink(apiKey: String, rawText: String, sharedAt: Long): JSONObject {
+    /**
+     * Submit a link. [fingerprint] names the post it belongs to, when
+     * known, so the server pairs it exactly rather than by time window.
+     */
+    fun shareLink(
+        apiKey: String,
+        rawText: String,
+        sharedAt: Long,
+        fingerprint: String? = null,
+    ): JSONObject {
         val body = JSONObject()
             .put("raw_text", rawText)
             .put("shared_at", isoUtc(sharedAt))
+        fingerprint?.let { body.put("fingerprint", it) }
         return post("/api/links/shared", body.toString(), apiKey)
     }
 

@@ -21,4 +21,7 @@
     <string name="selfcheck_refresh">Refresh self-check</string>
     <string name="selfcheck_copy">Copy self-check</string>
     <string name="selfcheck_copied">Copied</string>
+    <string name="clipboard_saved">Copied link saved</string>
+    <string name="clipboard_failed">Could not save the copied link</string>
+    <string name="paste_help">Copy a link in Douyin or TikTok and open this app — it is saved automatically. You can also paste one here.</string>
 </resources>

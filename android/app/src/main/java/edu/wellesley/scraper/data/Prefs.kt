@@ -29,6 +29,14 @@ class Prefs(context: Context) {
             prefs.edit { putString(KEY_DEVICE, it) }
         }
 
+    /**
+     * The last clipboard text saved as a link, so opening the app twice
+     * does not record the same copy twice.
+     */
+    var lastSavedClipboard: String?
+        get() = prefs.getString(KEY_CLIPBOARD, null)
+        set(value) = prefs.edit { putString(KEY_CLIPBOARD, value) }
+
     val isRegistered: Boolean
         get() = !apiKey.isNullOrBlank()
 
@@ -39,5 +47,6 @@ class Prefs(context: Context) {
         const val KEY_PARTICIPANT = "participant_id"
         const val KEY_BACKEND = "backend_url"
         const val KEY_DEVICE = "device_id"
+        const val KEY_CLIPBOARD = "last_saved_clipboard"
     }
 }

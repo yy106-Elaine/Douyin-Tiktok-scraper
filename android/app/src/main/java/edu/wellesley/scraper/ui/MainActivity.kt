@@ -54,6 +54,59 @@ class MainActivity : AppCompatActivity() {
         binding.selfCheckText.text = CaptureStats.report()
     }
 
+    /**
+     * Record a link copied out of Douyin or TikTok, with no typing.
+     *
+     * The interface never exposes a video id, so the id has to come
+     * from a link, and the only way to get one without the app driving
+     * the platform's share sheet itself is for the operator to share
+     * it. Making that cost one app switch rather than a copy-paste is
+     * the difference between doing it for every post and not doing it.
+     *
+     * Deliberately not automated: opening a share sheet and copying a
+     * link are engagement actions, and software performing them on
+     * every post would alter the feed under study. A person choosing to
+     * share is a decision they can document; a background process doing
+     * it is a confound.
+     */
+    private fun captureCopiedLink() {
+        val prefs = Prefs(this)
+        val apiKey = prefs.apiKey ?: return
+
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = clipboard.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(this)
+            ?.toString()
+            ?.trim()
+            ?: return
+
+        if (text.isEmpty() || text == prefs.lastSavedClipboard) return
+        if (!LOOKS_LIKE_A_POST_LINK.containsMatchIn(text)) return
+
+        val fingerprint = CaptureStats.lastFingerprint
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    ApiClient(prefs.backendUrl).shareLink(
+                        apiKey = apiKey,
+                        rawText = text,
+                        sharedAt = System.currentTimeMillis(),
+                        fingerprint = fingerprint,
+                    )
+                }
+                prefs.lastSavedClipboard = text
+                toast(getString(R.string.clipboard_saved))
+                showSelfCheck()
+            } catch (error: Exception) {
+                // Nothing was typed, so say nothing on failure beyond
+                // this: a silent retry happens next time the app opens.
+                toast(getString(R.string.clipboard_failed))
+            }
+        }
+    }
+
     private fun copySelfCheck() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("self-check", CaptureStats.report()))
@@ -85,8 +138,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    ApiClient(prefs.backendUrl)
-                        .shareLink(apiKey, text, System.currentTimeMillis())
+                    ApiClient(prefs.backendUrl).shareLink(
+                        apiKey = apiKey,
+                        rawText = text,
+                        sharedAt = System.currentTimeMillis(),
+                        fingerprint = CaptureStats.lastFingerprint,
+                    )
                 }
                 binding.pasteInput.setText("")
                 toast(getString(R.string.share_saved))
@@ -117,5 +174,14 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.status_not_registered)
         }
         showSelfCheck()
+        captureCopiedLink()
+    }
+
+    private companion object {
+        /** Cheap pre-filter; the server does the real extraction. */
+        val LOOKS_LIKE_A_POST_LINK = Regex(
+            """(?:v\.douyin\.com|douyin\.com/video|tiktok\.com|vm\.tiktok|vt\.tiktok)""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

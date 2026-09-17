@@ -14,6 +14,7 @@ import edu.wellesley.scraper.parser.NodeTools
 import edu.wellesley.scraper.parser.ParsedPost
 import edu.wellesley.scraper.parser.PostParser
 import edu.wellesley.scraper.parser.TikTokParser
+import edu.wellesley.scraper.parser.TikTokSearchParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,17 +24,24 @@ import org.json.JSONObject
 import java.util.Calendar
 
 /**
- * Reads Douyin and TikTok feeds off the screen.
+ * Reads Douyin and TikTok off the screen -- both the feed and, where a
+ * keyword study samples from, the search results grid.
  *
- * The system only delivers events for the packages declared in
- * `accessibility_service_config.xml`, so this service is structurally
- * incapable of observing any other app.
+ * Two limits decide what can be read. The system delivers events only
+ * for the packages declared in `accessibility_service_config.xml`, and
+ * every frame is checked to belong to one of them before it is read.
+ * The second check is not redundant: an event names the app that
+ * produced it, not the window on top, and a live session captured the
+ * task switcher that way.
  */
 class CaptureAccessibilityService : AccessibilityService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val buffer = CaptureBuffer()
     private val idleHandler = Handler(Looper.getMainLooper())
+
+    /** Reads the search grid; see where it is consulted below. */
+    private val searchParser = TikTokSearchParser()
 
     private val parsers: Map<String, PostParser> = mapOf(
         "com.ss.android.ugc.aweme" to DouyinParser(),
@@ -100,6 +108,23 @@ class CaptureAccessibilityService : AccessibilityService() {
             CaptureStats.onSkip(activePackage, "window returned no nodes")
             return
         }
+        // A search results grid holds many posts at once and is the
+        // surface a keyword study samples from, so it is read whole and
+        // before the feed parser gets a look at it.
+        if (searchParser.recognises(nodes)) {
+            val found = searchParser.parseAll(nodes)
+            CaptureStats.onFrame(activePackage, nodes.size, found.size)
+            CaptureStats.onSearchFrame(found.size)
+            CaptureStats.onFrameDump(nodes)
+            found.forEach {
+                CaptureStats.onParsed(it)
+                buffer.observe(it)
+            }
+            CaptureStats.distinctPosts = buffer.size()
+            flush(force = false)
+            return
+        }
+
         parser.skipReason(nodes)?.let { reason ->
             CaptureStats.onSkip(activePackage, reason)
             CaptureLog.skipped(reason)
@@ -176,6 +201,7 @@ class CaptureAccessibilityService : AccessibilityService() {
                     )
                 )
                 stored++
+                CaptureStats.lastFingerprint = fingerprint
             }
             CaptureStats.onStored(stored, duplicates)
             if (stored > 0 && Prefs(applicationContext).isRegistered) {

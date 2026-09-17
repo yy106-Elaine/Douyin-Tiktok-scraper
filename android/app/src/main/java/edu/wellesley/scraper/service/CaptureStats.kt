@@ -35,6 +35,24 @@ object CaptureStats {
     @Volatile var lastSelectedNodes: List<String> = emptyList()
     @Volatile var distinctPosts: Int = 0
 
+    /**
+     * Fingerprint of the most recently stored post.
+     *
+     * A link copied out of the app moments later belongs to this post,
+     * so sending it along makes the pairing exact instead of a guess
+     * against a time window.
+     */
+    @Volatile var lastFingerprint: String? = null
+
+    /** Search-grid frames read, and tiles harvested from them. */
+    @Volatile var searchFrames: Int = 0
+    @Volatile var searchTiles: Int = 0
+
+    fun onSearchFrame(tiles: Int) {
+        searchFrames++
+        searchTiles += tiles
+    }
+
     /** What the passive id scan found on the last screen read. */
     @Volatile var lastIdScan: String? = null
     @Volatile var idsFoundTotal: Int = 0
@@ -142,6 +160,7 @@ object CaptureStats {
         lastIdScan?.let { lines += "  last scan: $it" }
 
         lines += "Distinct posts buffered: $distinctPosts"
+        lines += "Search frames: $searchFrames   tiles harvested: $searchTiles"
 
         if (lastSelectedNodes.isNotEmpty()) {
             lines += ""
