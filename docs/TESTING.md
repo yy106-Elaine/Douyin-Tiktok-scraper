@@ -101,7 +101,21 @@ network problem, back to step 2.
 ## 5. Turn on capture
 
 **Enable capture service** opens Android's accessibility settings. Find
-**Video Capture** under *Downloaded apps* and switch it on.
+**Video Capture** under *Installed apps* and switch it on.
+
+**Android 13 and later will refuse**, with a "Restricted setting" dialog:
+accessibility access cannot be granted to a sideloaded app until that app is
+explicitly exempted. Do this first:
+
+**Settings → Apps → Video Capture → ⋮ (top right) → Allow restricted
+settings**
+
+Then go back to accessibility and the switch will work. The menu item appears
+only for sideloaded apps, which is why it is easy to miss.
+
+If another accessibility-based collector is installed, switch it off while
+testing — two services reading the same screens makes it unclear which one
+produced a row, and costs noticeably more battery.
 
 Android will warn that the service can observe what you do. That is accurate:
 it reads screen contents. It is restricted at the OS level to Douyin and
