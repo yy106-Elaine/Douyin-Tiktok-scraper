@@ -118,8 +118,48 @@ class TikTokParserTest {
     }
 
     @Test
+    fun `the expand affordance is stripped from the caption`() {
+        // Real captures came back as "#kaicenat more" and "like oh ok ...more".
+        for ((raw, expected) in listOf(
+            "a caption that is long enough to be picked up more" to
+                "a caption that is long enough to be picked up",
+            "a caption that is long enough to be picked up ...more" to
+                "a caption that is long enough to be picked up",
+            "a caption that is long enough to be picked up…more" to
+                "a caption that is long enough to be picked up",
+        )) {
+            val nodes = onePost(caption = raw)
+            assertEquals(expected, parser.parse(nodes)!!.caption)
+        }
+    }
+
+    @Test
+    fun `a caption not ending in the affordance is left alone`() {
+        val raw = "a caption mentioning more than one thing here"
+        assertEquals(raw, parser.parse(onePost(caption = raw))!!.caption)
+    }
+
+    @Test
+    fun `favourites read from an inline count in the description`() {
+        val nodes = onePost() + node(description = "12.3K Favorites", depth = 2)
+        assertEquals("12.3K", parser.parse(nodes)!!.saveRaw)
+    }
+
+    @Test
+    fun `favourites read from a loosely labelled button`() {
+        val nodes = onePost() + listOf(
+            node(description = "Add to Favorites", depth = 2),
+            node(text = "4,201", depth = 3),
+        )
+        assertEquals("4,201", parser.parse(nodes)!!.saveRaw)
+    }
+
+    @Test
     fun `the longest undescribed text wins as the caption`() {
         val nodes = onePost() + node(text = "a substantially longer caption than the first one")
-        assertEquals("a substantially longer caption than the first one", parser.parse(nodes)!!.caption)
+        assertEquals(
+            "a substantially longer caption than the first one",
+            parser.parse(nodes)!!.caption,
+        )
     }
 }

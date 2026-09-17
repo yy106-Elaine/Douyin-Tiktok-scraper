@@ -21,12 +21,32 @@ class TikTokParser : PostParser {
         )
         val SHARE = Regex("""Share video\.\s*([\d.,]+[KMB]?)\s*shares""", RegexOption.IGNORE_CASE)
 
-        // Favourites carry no count in the description; the number sits in
-        // a child node of the button.
-        val SAVE_MARKER = Regex("""Favorites""", RegexOption.IGNORE_CASE)
+        // The favourites button is labelled inconsistently across builds
+        // and often carries no count in its own description, so this
+        // matches the label loosely and the count is taken from the
+        // button's subtree. Unverified against a device; if Saves comes
+        // back empty, read the self-check dump and correct it.
+        val SAVE_MARKER = Regex(
+            """(?:add to |remove from )?favou?rites?|bookmark|collect""",
+            RegexOption.IGNORE_CASE,
+        )
+        /** Some builds put the count straight in the description. */
+        val SAVE_INLINE = Regex(
+            """([\d.,]+[KMB]?)\s*(?:favou?rites?|bookmarks?)""", RegexOption.IGNORE_CASE
+        )
         val COUNT_SHAPED = Regex("""^\d{1,3}([.,]\d+)?[KMB]?$""", RegexOption.IGNORE_CASE)
 
         val AUTHOR = Regex("""(.+?)\s+profile""", RegexOption.IGNORE_CASE)
+
+        /**
+         * The caption TextView also renders the "expand" affordance, so
+         * the text arrives as "<caption> more" or "<caption>...more".
+         * Left in place it adds a meaningless token to every caption,
+         * which matters for text analysis. The trade-off is a caption
+         * genuinely ending in the word "more" losing that word; carrying
+         * a UI control into the data is the worse of the two.
+         */
+        val TRAILING_EXPAND = Regex("""\s*(?:\.{3}|…)?\s*more\s*$""", RegexOption.IGNORE_CASE)
         val MUSIC = Regex("""Sound:\s*(.+)""", RegexOption.IGNORE_CASE)
 
         // The lookbehind matters: the comment BUTTON is described as
@@ -44,6 +64,9 @@ class TikTokParser : PostParser {
 
         /** Below this length a stray label is more likely than a caption. */
         const val CAPTION_MIN_LENGTH = 30
+
+        /** Guard against stripping a short caption into uselessness. */
+        const val MIN_STRIPPED_LENGTH = 3
 
         val FEEDS = setOf("For You", "Following", "Friends", "Explore", "Shop", "LIVE")
         val FEED_SLUGS = mapOf(
@@ -82,7 +105,9 @@ class TikTokParser : PostParser {
             likeRaw = NodeTools.firstGroup(nodes, LIKE),
             commentRaw = NodeTools.firstGroup(nodes, COMMENT),
             shareRaw = NodeTools.firstGroup(nodes, SHARE),
-            saveRaw = NodeTools.countUnderMarker(nodes, SAVE_MARKER, COUNT_SHAPED),
+            saveRaw = NodeTools.firstGroup(nodes, SAVE_INLINE)
+                ?: NodeTools.countUnderMarker(nodes, SAVE_MARKER, COUNT_SHAPED)
+                ?: NodeTools.byViewId(nodes, "collect_count", "favorite_count")?.text,
             isAd = NodeTools.anyMatches(nodes, AD_MARKER),
             isAiGenerated = NodeTools.anyMatches(nodes, AI_MARKER),
         )
@@ -96,10 +121,18 @@ class TikTokParser : PostParser {
      * that same shape.
      */
     private fun caption(nodes: List<FlatNode>): String? {
-        NodeTools.byViewId(nodes, "desc")?.text?.let { return it }
-        return nodes
-            .filter { it.description == null && (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH }
-            .maxByOrNull { it.text!!.length }
-            ?.text
+        val raw = NodeTools.byViewId(nodes, "desc")?.text
+            ?: nodes
+                .filter { it.description == null && (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH }
+                .maxByOrNull { it.text!!.length }
+                ?.text
+        return raw?.let(::stripExpandAffordance)
+    }
+
+    /** Drop the trailing "more" / "...more" the expand control contributes. */
+    private fun stripExpandAffordance(caption: String): String {
+        val stripped = TRAILING_EXPAND.replace(caption, "").trim()
+        // Never strip a caption down to nothing, or near it.
+        return if (stripped.length >= MIN_STRIPPED_LENGTH) stripped else caption.trim()
     }
 }
