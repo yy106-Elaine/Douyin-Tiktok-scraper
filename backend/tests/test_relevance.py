@@ -20,9 +20,9 @@ from app.relevance import HIDDEN, classify
         ("我的女同事天天迟到", "not about the topic"),
         ("成人拉拉裤 护理用品 老人失禁", "unrelated product"),
         ("货拉拉搬家多少钱", "unrelated product"),
-        # 全集 makes this fiction, which is checked before the brand
-        # collision; either answer excludes it.
-        ("巴拉拉小魔仙全集", "fiction"),
+        # 巴拉拉 is the brand collision; 小魔仙 would also make it
+        # children's media. Either answer excludes it.
+        ("巴拉拉小魔仙全集", "unrelated product"),
         ("拉拉队舞蹈教学", "unrelated product"),
         ("100%純陀港女，精通穴位按摩 速預約: t.me/BabyM666", "advertising"),
         ("AI虚拟女同志 AI生成美女", "ai generated"),
@@ -60,24 +60,24 @@ def test_community_content_is_in_scope(text):
 @pytest.mark.parametrize(
     "text",
     [
-        # Short dramas, the largest single category in a real run.
-        "百合短剧《错位红妆》ep 2 #古风 #百合 #治愈女同#女女恋",
-        "【百合】失业遇失忆富家女，被她死死纠缠 | 治愈女同 GL",
-        "甜宠短剧",
-        "宠文推荐",
-        "女同小说推荐 完结",
-        "百合广播剧 第3集",
+        "🌈百合短剧Fall for You Again EP12",
+        "【百合】遭匪掳走 治愈女同 Girlslove lesbian GL",
+        "这是我画的百合漫画潮夏",
     ],
 )
-def test_fiction_is_excluded_even_carrying_a_topic_term(text):
-    """Fiction has no author to interview about their own removal.
+def test_fiction_is_in_the_corpus_but_labelled(text):
+    """WLW fiction is WLW content, and its removal is the same event.
 
-    This is the largest category by far, and it is a hard exclusion for
-    that reason rather than because the text is off topic: 百合短剧 is
-    on topic and still useless to a study that follows up with the
-    people who posted.
+    It was excluded for a while on the argument that fiction has no
+    author to interview. That argument bears on the interview half of
+    the study, not on what counts as a takedown, so the corpus is the
+    wrong place to enforce it. The label stays so an analysis that
+    needs real accounts can filter on it.
     """
+    from app.relevance import HIDDEN
+
     assert classify(text) == "fiction"
+    assert "fiction" not in HIDDEN
 
 
 @pytest.mark.parametrize(
@@ -454,7 +454,7 @@ class TestReviewingByCategory:
 
     TITLES = [
         "我是拉拉，出柜五年了",          # in scope
-        "百合短剧 第2集",                 # fiction
+        "谷中百合花 钢琴演奏",            # no topic term
         "拉拉管玩具开箱",                 # games and toys
         "货拉拉搬家",                     # unrelated product
     ]
@@ -472,7 +472,7 @@ class TestReviewingByCategory:
             self._collect(session, self.TITLES)
         body = self._body(client)
         assert "出柜五年" in body
-        for off_topic in ("百合短剧", "玩具开箱", "货拉拉"):
+        for off_topic in ("百合花", "玩具开箱", "货拉拉"):
             assert off_topic not in body
 
     def test_one_category_can_be_read_on_its_own(self, client):
@@ -481,9 +481,9 @@ class TestReviewingByCategory:
 
         with SessionLocal() as session:
             self._collect(session, self.TITLES)
-        body = self._body(client, "fiction")
-        assert "百合短剧" in body
-        assert "玩具开箱" not in body
+        body = self._body(client, "games and toys")
+        assert "玩具开箱" in body
+        assert "货拉拉" not in body
         assert "出柜五年" not in body
 
     def test_excluded_lists_every_hidden_row_and_no_others(self, client):
@@ -492,7 +492,7 @@ class TestReviewingByCategory:
         with SessionLocal() as session:
             self._collect(session, self.TITLES)
         body = self._body(client, "excluded")
-        for off_topic in ("百合短剧", "玩具开箱", "货拉拉"):
+        for off_topic in ("百合花", "玩具开箱", "货拉拉"):
             assert off_topic in body
         assert "出柜五年" not in body
 
@@ -502,7 +502,7 @@ class TestReviewingByCategory:
         with SessionLocal() as session:
             self._collect(session, self.TITLES)
         body = self._body(client)
-        assert "show=fiction" in body
+        assert "show=no+topic+term" in body or "show=no topic term" in body
         assert "show=games+and+toys" in body or "show=games and toys" in body
         assert "excluded 3" in body
 
@@ -644,10 +644,10 @@ class TestCorpusCounting:
 
         now = datetime(2026, 9, 18, 12, 0)
         with SessionLocal() as session:
-            self._collect(session, ["女同情侣日常", "百合ヶ浜"], now - timedelta(days=2))
-            self._collect(session, ["#女同 记录我们的生活"], now - timedelta(days=1), 10)
+            self._collect(session, ["我们是拉拉 女朋友日常", "百合ヶ浜"], now - timedelta(days=2))
+            self._collect(session, ["女同情侣的日常 #les"], now - timedelta(days=1), 10)
             # An overlapping window re-finds the first two.
-            self._collect(session, ["女同情侣日常", "百合ヶ浜"], now)
+            self._collect(session, ["我们是拉拉 女朋友日常", "百合ヶ浜"], now)
 
             assert unique_in_scope(session, "youtube") == 2
             # Re-finding the first video today does not make it new.
@@ -663,9 +663,9 @@ class TestCorpusCounting:
 
         now = datetime(2026, 9, 18, 12, 0)
         with SessionLocal() as session:
-            self._collect(session, ["女同情侣日常"], now - timedelta(days=2))
-            self._collect(session, ["#女同 记录我们的生活"], now, 10)
-            self._collect(session, ["女同情侣日常"], now)  # re-found, not new
+            self._collect(session, ["我们是拉拉 女朋友日常"], now - timedelta(days=2))
+            self._collect(session, ["女同情侣的日常 #les"], now, 10)
+            self._collect(session, ["我们是拉拉 女朋友日常"], now)  # re-found, not new
 
             counts = dict(daily_counts(session, "youtube", days=3, now=now))
             assert counts["2026-09-16"] == 1
@@ -716,7 +716,7 @@ def test_rows_are_numbered(client):
                     "snippet": {
                         "channelId": "UC1",
                         "channelTitle": "c",
-                        "title": "女同情侣日常",
+                        "title": "我们是拉拉 女朋友日常",
                         "description": "",
                         "publishedAt": "2026-09-16T08:30:00Z",
                     },

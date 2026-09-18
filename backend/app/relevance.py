@@ -55,32 +55,33 @@ ALONE = re.compile(
     r"lesbian|wlw|\bles\b|"
     # Self-identification, unambiguous even though it contains an
     # otherwise ambiguous term: no tour bus is 是拉拉.
-    r"是拉拉|做拉拉|[当當]拉拉|[作]?[为為]拉拉|拉拉身份|"
-    # 百合 counts alone again. Requiring a companion cost far more than
-    # it saved -- in-scope fell from 267 rows to 6 -- because its two
-    # real polluters are handled elsewhere now: Japanese yuri by the
-    # kana rule, lilies and recipes by FOOD, and 百合短剧 by `fiction`.
-    r"百合|"
-    # 女同 likewise, once the words it hides inside are named. The
-    # daughter cases are a lookbehind (父女同框, 母女同囚, 仔女同住,
-    # 呀女同我講) and the school and work ones a lookahead; both were
-    # observed in one run.
-    # The lookahead also covers 同 meaning "with": 港女同內地女生 is
-    # about girls from two cities, 呀女同我講 about someone's daughter.
-    r"(?<![父母仔子兒儿孫孙呀姪侄外])"
-    r"女同(?![学學事胞僚桌住框台囚行班窗游遊内內我你他她它佢齡龄款])",
+    r"是拉拉|做拉拉|[当當]拉拉|[作]?[为為]拉拉|拉拉身份",
     re.IGNORECASE,
 )
 
-#: A keyword too polluted to count on its own, admitted only
-#: alongside a second signal from COMPANION. Every genuinely relevant
-#: 拉拉 row in a real run carried something else as well (les,
-#: lesbian, 喜欢女生, 情侣, 意定监护) and not one of the collisions did.
-#: 拉拉 stays here alone. Its collisions are names and places --
-#: 拉拉車, 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉,
-#: 烤拉拉, 李拉拉 -- and no boundary separates them: 来问问拉拉 is on
-#: topic and 拉拉車 is not, and neither has a clean edge to key on.
-AMBIGUOUS = re.compile(r"拉拉|姬", re.IGNORECASE)
+#: Keywords too polluted to count on their own, admitted only
+#: alongside a second signal from COMPANION. This is the reader's own
+#: observation, and it holds: the relevant rows carry several related
+#: terms at once, the collisions carry exactly one.
+#:
+#:   拉拉  names and places -- 拉拉車, 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉,
+#:         拉諾拉拉庫, 鬍子拉拉, 烤拉拉, 李拉拉
+#:   百合  the lily, in gardening, cooking, Chinese medicine, church
+#:         hymns, a Go tournament sponsor (梦百合杯), a dance troupe,
+#:         jewellery, and as a person's name (百合才有家)
+#:   女同  ordinary words -- 女同学, 女同事, 女同桌 -- and 同 meaning
+#:         "with" in Cantonese: 個女同肚入面個B, 呀女同我講
+#:
+#: 百合 was briefly allowed to count alone, on the reasoning that its
+#: polluters all had rules of their own. They did not: FOOD catches
+#: recipes but not gardening, hymns, mattresses or people's names, and
+#: a review of 47 in-scope rows found 3 correct.
+AMBIGUOUS = re.compile(
+    r"拉拉|姬|百合|"
+    r"(?<![父母仔子兒儿孫孙呀姪侄外])"
+    r"女同(?![学學事胞僚桌住框台囚行班窗游遊内內我你他她它佢齡龄款肚])",
+    re.IGNORECASE,
+)
 
 #: Not enough on its own, but enough to confirm an ambiguous term.
 COMPANION = re.compile(
@@ -89,7 +90,31 @@ COMPANION = re.compile(
     # women, not a mention of them.
     r"喜[欢歡]女|[爱愛]女|和女生|跟女生|女生在一起|"
     r"女友|女朋友|情[侣侶]|彩虹|同性|[两兩][个個]女|姬[圈吧]|拉圈|"
-    r"lgbt|[恋戀]爱|老婆|媳[妇婦]|伴[侣侶]|[结結]婚|[监監][护護]",
+    r"lgbt|[恋戀]爱|老婆|媳[妇婦]|伴[侣侶]|[结結]婚|[监監][护護]|"
+    # Genre markers. 百合 beside 短剧, GL or 双女主 is the topic; 百合
+    # beside nothing is a flower. This is the overlap pattern in
+    # practice, and it is why fiction is in the corpus rather than
+    # excluded from it.
+    r"短[剧劇]|[漫][画畫]|\bgl\b|girls?\s*love|[双雙]女主|番外|同人|"
+    r"[广廣]播[剧劇]|[动動]漫|\bcp\b|百合[姬漫]|治愈女同",
+    re.IGNORECASE,
+)
+
+#: Scripted fiction: short dramas, novels, audio dramas, comics,
+#: edits. Kept in the corpus, not excluded from it -- WLW fiction is
+#: Chinese WLW content and its removal is the same event this study
+#: measures. It was excluded for a while on the argument that fiction
+#: has no author to interview; that argument bears on the interview
+#: half of the study, not on what counts as a takedown, and the corpus
+#: is the wrong place to enforce it. The label stays so the two can be
+#: separated in analysis.
+FICTION = re.compile(
+    r"短[剧劇]|小[说說]|[广廣]播[剧劇]|有[声聲][书書]|[漫画畫]{2}|[条條]漫|"
+    r"[动動]漫|番外|[连連][载載]|完[结結]|全集|合集|"
+    r"\bgl\b|girls?\s*love|bg[文向]|甜[宠寵]|[宠寵]文|"
+    r"虐[恋戀]|追妻|重生|穿[书書越]|[总總]裁|替身|豪[门門]|"
+    r"第\d+集|ep\s*\d+|[剧劇]情|演[绎繹]|混剪|解[说說]|"
+    r"女主|男主|男二|女二|原著",
     re.IGNORECASE,
 )
 
@@ -128,18 +153,6 @@ HARD: tuple[tuple[str, str], ...] = (
     ("divination", r"紫微|斗[数數]|命[盘盤]|八字|塔[罗羅]|占卜|六爻|奇[门門]|"
                    r"[风風]水|生肖|[面手][相]|星座運勢|星座运势|[算批]命|"
                    r"[开開]運|改運|改运"),
-    # Scripted fiction: short dramas, novels, audio dramas, comics,
-    # edits. Hard, not soft, because 百合短剧 carries a topic term and
-    # is still fiction -- and for this study fiction has no author who
-    # can be interviewed about why their own video disappeared. `GL`
-    # and `girls love` moved here from the topic terms for the same
-    # reason: they label a genre, not a person.
-    ("fiction", r"短[剧劇]|小[说說]|[广廣]播[剧劇]|有[声聲][书書]|[漫画畫]{2}|[条條]漫|"
-                r"[动動]漫|番外|[连連][载載]|完[结結]|全集|合集|"
-                r"\bgl\b|girls?\s*love|bg[文向]|甜[宠寵]|[宠寵]文|"
-                r"虐[恋戀]|追妻|重生|穿[书書越]|[总總]裁|替身|豪[门門]|"
-                r"第\d+集|ep\s*\d+|[剧劇]情|演[绎繹]|混剪|解[说說]|"
-                r"女主|男主|男二|女二|原著"),
     # Games, toys and children's media, which is where 拉拉 turns up as
     # a character or a brand: 拉拉公主, 拉拉管玩具, NPC walkthroughs.
     ("games and toys", r"玩具|公主|npc|[游遊][戏戲]|攻略|[联聯]机|沙盒|"
@@ -170,7 +183,6 @@ HIDDEN = frozenset(
         "ai generated",
         "divination",
         "japanese",
-        "fiction",
         "games and toys",
         "unrelated product",
         "not about the topic",
@@ -233,6 +245,11 @@ def classify(*parts: object) -> str | None:
     # Male-only content that reached here through a shared term.
     if MALE_ONLY.search(text) and not FEMALE.search(text):
         return "not wlw"
+
+    # In the corpus, but labelled: fiction is not excluded, and an
+    # analysis that needs real accounts can filter on this.
+    if FICTION.search(text):
+        return "fiction"
     return None
 
 
@@ -288,8 +305,15 @@ def explain(text: str) -> dict[str, object]:
     together, without collecting anything.
     """
     reason = classify(text)
+    if reason is None:
+        verdict = "in scope"
+    elif reason in HIDDEN:
+        verdict = f"excluded: {reason}"
+    else:
+        # A label rather than an exclusion: in the corpus, tagged.
+        verdict = f"in scope, labelled {reason}"
     return {
-        "verdict": "in scope" if reason is None else f"excluded: {reason}",
+        "verdict": verdict,
         "hidden": reason in HIDDEN,
         "chinese": bool(_CJK.search(text)) and not bool(_KANA.search(text)),
         "alone": sorted({m.group(0) for m in ALONE.finditer(text)}),

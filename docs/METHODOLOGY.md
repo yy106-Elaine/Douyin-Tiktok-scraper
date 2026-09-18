@@ -286,19 +286,28 @@ carried a second marker and not one of the collisions did. A blocklist chases
 instances; this states what on-topic text looks like.
 
 **Attempt three: apply it only where it is needed.** Attempt two was applied to
-`拉拉`, `女同` and `百合` alike, and that was too much — in-scope fell from 267
-rows to 6 out of 561. The rule was doing work that other rules already did:
-`百合`'s bulk polluters are Japanese yuri, fiction and lilies, each of which now
-has its own rule, and `女同`'s are a nameable list of ordinary words. So both
-count on their own again, `女同` behind lookarounds that cover the daughter
-cases (父女同框, 母女同囚, 仔女同住, 呀女同我講), the school and work ones
-(女同学, 女同事, 女同桌), and `同` meaning *with* (港女同內地女生 — girls from
-two cities).
+`拉拉`, `女同` and `百合` alike, and in-scope fell from 267 rows to 6 out of 561.
+So `女同` and `百合` were allowed to count alone again, on the reasoning that
+their polluters had rules of their own.
 
-Only `拉拉` still needs a companion. Its collisions are names and places —
-拉拉車, 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉, 烤拉拉, 李拉拉
-— and no boundary separates them, because `来问问拉拉` is on topic and `拉拉車`
-is not and neither has a clean edge to key on.
+**Attempt four: they did not.** Reading the 47 rows that reading admitted found
+3 correct. `百合` is the ordinary Chinese word for the lily, and `FOOD` catches
+recipes but not gardening, church hymns, a dance troupe, jewellery, a Go
+tournament sponsor (梦百合杯), or a person's name (百合建房进度 · 百合才有家).
+`女同` likewise appears inside Cantonese `同` meaning *with*: 個女同肚入面個B.
+
+So `拉拉`, `女同` and `百合` all need a companion, and the reason is the
+reader's own observation rather than a rule of thumb: **the relevant rows carry
+several related terms at once and the collisions carry exactly one.**
+`百合 + 短剧`, `百合 + GL`, `拉拉 + lesbian`, `女同 + 情侣` are the topic;
+`百合` beside nothing is a flower. Genre markers are therefore companions, not
+exclusions.
+
+Four attempts, three of which over- or under-corrected. Each was a reasonable
+reading of the errors then visible, and the corrections came from reading
+sampled captions rather than from reasoning about the terms. This is calibration
+against observed data and should be described that way, with the review counts
+(47 in scope, 3 correct) reported as the evidence for the final rule.
 
 The sequence is worth reporting as it happened. Each attempt was a reasonable
 reading of the errors then visible, and each over- or under-corrected until the
@@ -323,7 +332,7 @@ Exclusion reasons, all of which hide the row:
 | --- | --- |
 | `advertising` | escort bait: a booking phrase plus a Telegram or WeChat contact |
 | `ai generated` | synthetic, so no author an interview could follow up |
-| `fiction` | short dramas, novels, audio dramas, comics, edits. The largest single category in a real run, and a hard exclusion for the same reason as `ai generated` rather than because the text is off topic: 百合短剧 *is* on topic, and still has no author who can be interviewed about why their own video disappeared. `GL` and `girls love` label a genre, not a person, so they were moved here from the topic terms |
+| `fiction` | **a label, not an exclusion.** Short dramas, novels, audio dramas, comics, edits. WLW fiction is Chinese WLW content and its removal is the same event this study measures, so it belongs in the corpus. It was excluded for a while on the argument that fiction has no author to interview — an argument that bears on the interview half of the study, not on what counts as a takedown, and the corpus is the wrong place to enforce it. The label stays so the two can be separated in analysis |
 | `games and toys` | where 拉拉 turns up as a character or a brand: 拉拉公主, 拉拉管玩具, NPC walkthroughs |
 | `divination` | 紫微斗数, 八字, 塔罗, 风水 — a genre where 女同志 means "female client". Hard rather than soft, because the case that prompted it carried a topic term and still had to go |
 | `unrelated product` | 拉拉 inside a brand or product name |
@@ -333,6 +342,9 @@ Exclusion reasons, all of which hide the row:
 | `not in chinese` | the study is of Chinese-language content |
 | `no topic term` | nothing placed it on topic |
 | `no text` | the parser read no caption |
+
+Not every reason hides a row: `fiction` is a label, and rows carrying it are in
+the corpus. `HIDDEN` is the set that hides.
 
 **Rows are marked, never dropped.** A video a filter deletes is a video whose
 disappearance can never be observed, and nothing in the data would show it had
