@@ -93,6 +93,7 @@ class AutoCapture(private val service: AccessibilityService) {
         val copy = ShareSheet.findCopyLink(roots)
 
         CaptureStats.onAutoStep("looked in ${roots.size} window(s)")
+        CaptureStats.onAutoStep("share sheet open: ${ShareSheet.isSheetOpen(roots)}")
 
         CaptureStats.onAutoStep(
             "share control: " + (share?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
@@ -182,20 +183,69 @@ class AutoCapture(private val service: AccessibilityService) {
 
     private fun nextVideo() {
         if (!keepGoing()) return
+        waitForApp(0) { closeSheet(0) }
+    }
 
-        // Back out of the sheet, whether or not it is still open --
-        // BACK on the feed itself is harmless and this avoids needing
-        // to tell the two states apart.
+    /**
+     * Wait for the app being collected from to be in front again.
+     *
+     * Reading the clipboard brings this app's own activity forward, and
+     * it stays there until its upload finishes -- seconds, on a slow
+     * connection. Pressing BACK then would close that activity and
+     * cancel the save; swiping then would swipe over this app. So the
+     * next step waits for the feed rather than assuming it.
+     */
+    private fun waitForApp(attempt: Int, then: () -> Unit) {
+        if (!keepGoing()) return
+        if (frontPackage() == startedIn) {
+            then()
+            return
+        }
+        if (attempt >= RETURN_TRIES) {
+            CaptureStats.onAutoFailure(
+                "${startedIn ?: "the app"} did not come back to the front",
+                ShareSheet.describe(roots()),
+            )
+            stop("did not return to ${startedIn ?: "the app"}")
+            return
+        }
+        CaptureStats.onAutoStep("waiting for ${startedIn ?: "the app"}")
+        handler.postDelayed({ waitForApp(attempt + 1, then) }, SETTLE_MILLIS)
+    }
+
+    /**
+     * Press BACK until no sheet is covering the feed, and no more.
+     *
+     * Douyin opens two sheets for one copy: 分享给, then 链接已复制成功.
+     * One BACK leaves the first still up, and a swipe then scrolls the
+     * sheet rather than the feed. Pressing BACK a fixed number of times
+     * is worse: a BACK that reaches the feed itself leaves Douyin, and
+     * the run would be walking backwards out of the app it is reading.
+     */
+    private fun closeSheet(attempt: Int) {
+        if (!keepGoing()) return
+
+        if (!ShareSheet.isSheetOpen(roots())) {
+            advance()
+            return
+        }
+        if (attempt >= CLOSE_TRIES) {
+            CaptureStats.onAutoFailure(
+                "the share sheet would not close",
+                ShareSheet.describe(roots()),
+            )
+            stop("share sheet would not close")
+            return
+        }
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        handler.postDelayed({ closeSheet(attempt + 1) }, BACK_MILLIS)
+    }
 
+    private fun advance() {
         remaining--
         CaptureStats.onAutoStep("next video, $remaining left")
-
-        handler.postDelayed({
-            if (!keepGoing()) return@postDelayed
-            swipeUp()
-            handler.postDelayed(::openShare, SETTLE_MILLIS)
-        }, BACK_MILLIS)
+        swipeUp()
+        handler.postDelayed(::openShare, SETTLE_MILLIS)
     }
 
     // ----------------------------------------------------------------
@@ -217,7 +267,11 @@ class AutoCapture(private val service: AccessibilityService) {
         // Anything else means a notification, a phone call, or the
         // person navigating away -- none of which should be tapped on.
         val front = frontPackage()
-        if (front != startedIn) {
+        // This app's own clipboard reader comes forward on purpose for
+        // every video, so its being in front is part of the loop, not
+        // someone walking away. Nothing is ever pressed there: roots()
+        // only ever returns windows belonging to startedIn.
+        if (front != startedIn && front != service.packageName) {
             stop("left ${startedIn ?: "the app"} (now ${front ?: "nothing"})")
             return false
         }
@@ -293,5 +347,11 @@ class AutoCapture(private val service: AccessibilityService) {
         const val BACK_MILLIS = 700L
         const val SETTLE_MILLIS = 1_600L
         const val SWIPE_MILLIS = 250L
+
+        /** ~10s for the clipboard upload to finish and the feed to return. */
+        const val RETURN_TRIES = 6
+
+        /** Douyin stacks two sheets; three presses is one spare. */
+        const val CLOSE_TRIES = 3
     }
 }
