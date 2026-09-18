@@ -732,3 +732,29 @@ def test_rows_are_numbered(client):
     body = client.get("/dashboard?key=test-admin-key&platform=youtube").text
     assert '<td class="rank">1</td>' in body
     assert '<td class="rank">2</td>' in body
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Adult nappies, from a channel posting them daily.
+        "#卧床老人 #护理用品 #成人拉拉裤 #乐余年拉拉裤",
+        # A children's cartoon whose title contains 拉拉, which reached
+        # in through 动漫 as a companion.
+        "第86集：巴拉拉小魔仙 #巴拉拉小魔仙 #我在抖音看动漫 #童年回忆",
+    ],
+)
+def test_a_confirmed_guess_cannot_override_its_own_collision(text):
+    """The third time this shape has bitten.
+
+    A soft exclusion names a word the keyword hides inside, so letting
+    an ambiguous term that a companion merely confirmed override it
+    re-creates the original bug: 拉拉 overriding 拉拉裤. Only an
+    unambiguous term (lesbian, 女同性恋, 出柜, 是拉拉) may override.
+    """
+    assert classify(text) == "unrelated product"
+
+
+def test_an_unambiguous_term_still_overrides_a_collision():
+    """"女同学" beside "我们是拉拉" is a video about being 拉拉."""
+    assert classify("我和女同学一起复习，顺便聊了聊我们是拉拉这件事") is None

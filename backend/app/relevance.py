@@ -95,8 +95,10 @@ COMPANION = re.compile(
     # beside nothing is a flower. This is the overlap pattern in
     # practice, and it is why fiction is in the corpus rather than
     # excluded from it.
+    # Not 动漫: any cartoon is animation, and it rescued 巴拉拉小魔仙,
+    # a children's show whose title merely contains 拉拉.
     r"短[剧劇]|[漫][画畫]|\bgl\b|girls?\s*love|[双雙]女主|番外|同人|"
-    r"[广廣]播[剧劇]|[动動]漫|\bcp\b|百合[姬漫]|治愈女同",
+    r"[广廣]播[剧劇]|\bcp\b|百合[姬漫]|治愈女同",
     re.IGNORECASE,
 )
 
@@ -229,17 +231,23 @@ def classify(*parts: object) -> str | None:
     # 百合 is a lily and an ingredient; 女同志 also reads as "female
     # comrades" in a recipe addressed to them. Neither counts here.
     food = bool(FOOD.search(text))
-    on_topic = False
-    if not food:
-        on_topic = bool(ALONE.search(text)) or (
-            bool(AMBIGUOUS.search(text)) and bool(COMPANION.search(text))
-        )
+    unambiguous = bool(ALONE.search(text)) and not food
+    confirmed = (
+        not food
+        and bool(AMBIGUOUS.search(text))
+        and bool(COMPANION.search(text))
+    )
 
+    # A soft exclusion names a word the keyword hides inside, so only
+    # an unambiguous term may override it. A merely confirmed
+    # ambiguous term may not: 巴拉拉小魔仙 beside 动漫 was reading as
+    # on topic and overriding the very rule written to catch 巴拉拉 --
+    # the same shape as 拉拉 once overriding 拉拉裤.
     for reason, pattern in _SOFT:
-        if pattern.search(text) and not on_topic:
+        if pattern.search(text) and not unambiguous:
             return reason
 
-    if not on_topic:
+    if not (unambiguous or confirmed):
         return "no topic term"
 
     # Male-only content that reached here through a shared term.

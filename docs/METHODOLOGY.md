@@ -301,7 +301,17 @@ reader's own observation rather than a rule of thumb: **the relevant rows carry
 several related terms at once and the collisions carry exactly one.**
 `百合 + 短剧`, `百合 + GL`, `拉拉 + lesbian`, `女同 + 情侣` are the topic;
 `百合` beside nothing is a flower. Genre markers are therefore companions, not
-exclusions.
+exclusions — except `动漫`, which is any cartoon and rescued 巴拉拉小魔仙, a
+children's show whose title merely contains 拉拉.
+
+**Only an unambiguous term may override a collision rule.** A soft exclusion
+names a word the keyword hides inside, so a term that a companion merely
+*confirmed* must not overrule it. Letting it re-created the original bug in a
+new place: 拉拉 beside 动漫 read as on topic and overrode the very rule written
+to catch 巴拉拉. `lesbian`, `女同性恋`, `出柜`, `是拉拉` may override a
+collision; `拉拉` plus a companion may not. This shape — a term serving as both
+the signal and the collision — has now caused three separate bugs, and it is
+worth naming as a category rather than fixing case by case.
 
 Four attempts, three of which over- or under-corrected. Each was a reasonable
 reading of the errors then visible, and the corrections came from reading
