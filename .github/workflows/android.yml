@@ -68,6 +68,16 @@ jobs:
                   for key, count in collections.Counter(names).items():
                       if count > 1:
                           bad.append(f"{path}: {key[0]} '{key[1]}' defined {count} times")
+          # Kotlin allows exactly one companion object per class. Adding
+          # a second one further up a file that already has a private
+          # constants companion at the bottom compiles nowhere and cost
+          # a build; the compiler reports it as three errors, two of
+          # which name the constants rather than the duplicate.
+          for path in pathlib.Path("android/app/src/main").rglob("*.kt"):
+              text = path.read_text(encoding="utf-8")
+              count = len(re.findall(r"^\s*(?:private |internal )?companion object\b", text, re.M))
+              if count > 1:
+                  bad.append(f"{path}: {count} companion objects; Kotlin allows one")
           for line in bad:
               print(line)
           sys.exit(1 if bad else 0)

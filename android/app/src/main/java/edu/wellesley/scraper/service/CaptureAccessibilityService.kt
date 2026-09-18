@@ -92,6 +92,12 @@ class CaptureAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        /** Feeds repaint constantly; one read every half second is plenty. */
+        private const val SCAN_INTERVAL_MILLIS = 500L
+
+        /** Slightly longer than the buffer's own settle window. */
+        private const val IDLE_FLUSH_MILLIS = 6_000L
+
         /**
          * The live service, so the app can start and stop an assisted
          * run. Null whenever the service is off, which is the only
@@ -324,12 +330,4 @@ class CaptureAccessibilityService : AccessibilityService() {
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
-
-    private companion object {
-        /** Feeds repaint constantly; one read every half second is plenty. */
-        const val SCAN_INTERVAL_MILLIS = 500L
-
-        /** Slightly longer than the buffer's own settle window. */
-        const val IDLE_FLUSH_MILLIS = 6_000L
-    }
 }
