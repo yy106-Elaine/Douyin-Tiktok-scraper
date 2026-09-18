@@ -39,5 +39,9 @@
     <string name="auto_started">Running. Switch to the app now.</string>
     <string name="auto_dry_started">Dry run. Switch to the app and open one share sheet.</string>
     <string name="auto_stopped">Run stopped</string>
+    <string name="auto_state_service_off">Capture service is off — turn it on first</string>
+    <string name="auto_state_idle">Idle — no run</string>
+    <string name="auto_state_armed">Armed — switch to Douyin or TikTok now</string>
+    <string name="auto_state_running">Running — switch away to stop it</string>
     <string name="auto_first">Do the first video by hand first, so the run starts from a video and not a menu.</string>
 </resources>

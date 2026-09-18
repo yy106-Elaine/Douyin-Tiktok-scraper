@@ -58,6 +58,9 @@ class CaptureAccessibilityService : AccessibilityService() {
     /** A run requested from the app, waiting for a target app in front. */
     private data class Armed(val mode: AutoCapture.Mode, val minutes: Int, val videos: Int)
 
+    /** What a run is doing, for the app to show and to enable buttons by. */
+    enum class State { SERVICE_OFF, IDLE, ARMED, RUNNING }
+
     @Volatile
     private var armed: Armed? = null
 
@@ -131,6 +134,16 @@ class CaptureAccessibilityService : AccessibilityService() {
         fun stopAssisted() {
             instance?.armed = null
             instance?.auto?.stop("stopped by hand")
+        }
+
+        /** What a run is doing, in the four words the app can show. */
+        fun runState(): State {
+            val service = instance ?: return State.SERVICE_OFF
+            return when {
+                service.auto.isRunning() -> State.RUNNING
+                service.armed != null -> State.ARMED
+                else -> State.IDLE
+            }
         }
     }
 

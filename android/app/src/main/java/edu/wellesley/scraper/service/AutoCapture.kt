@@ -88,9 +88,11 @@ class AutoCapture(private val service: AccessibilityService) {
      * either confirmed or the report says what was there instead.
      */
     private fun inspect() {
-        val root = service.rootInActiveWindow
-        val share = ShareSheet.findShare(root)
-        val copy = ShareSheet.findCopyLink(root)
+        val roots = roots()
+        val share = ShareSheet.findShare(roots)
+        val copy = ShareSheet.findCopyLink(roots)
+
+        CaptureStats.onAutoStep("looked in ${roots.size} window(s)")
 
         CaptureStats.onAutoStep(
             "share control: " + (share?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
@@ -102,7 +104,7 @@ class AutoCapture(private val service: AccessibilityService) {
             CaptureStats.onAutoFailure(
                 "see the screen below; run this on a video, then again with the " +
                     "share sheet open",
-                ShareSheet.describe(root),
+                ShareSheet.describe(roots),
             )
         }
         stop("dry run finished")
@@ -127,11 +129,11 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun openShare() {
         if (!keepGoing()) return
 
-        val found = ShareSheet.findShare(service.rootInActiveWindow)
+        val found = ShareSheet.findShare(roots())
         if (found == null) {
             CaptureStats.onAutoFailure(
                 "no share control",
-                ShareSheet.describe(service.rootInActiveWindow),
+                ShareSheet.describe(roots()),
             )
             stop("share control not found")
             return
@@ -145,11 +147,11 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun pressCopyLink() {
         if (!keepGoing()) return
 
-        val found = ShareSheet.findCopyLink(service.rootInActiveWindow)
+        val found = ShareSheet.findCopyLink(roots())
         if (found == null) {
             CaptureStats.onAutoFailure(
                 "no copy-link entry",
-                ShareSheet.describe(service.rootInActiveWindow),
+                ShareSheet.describe(roots()),
             )
             stop("copy-link entry not found")
             return
@@ -214,12 +216,47 @@ class AutoCapture(private val service: AccessibilityService) {
         // The app in front must still be the one the run started in.
         // Anything else means a notification, a phone call, or the
         // person navigating away -- none of which should be tapped on.
-        val front = service.rootInActiveWindow?.packageName?.toString()
+        val front = frontPackage()
         if (front != startedIn) {
-            stop("left ${startedIn ?: "the app"} (now $front)")
+            stop("left ${startedIn ?: "the app"} (now ${front ?: "nothing"})")
             return false
         }
         return true
+    }
+
+    /**
+     * Which app is in front, preferring the active window and falling
+     * back to whichever window the system marks active.
+     *
+     * `rootInActiveWindow` goes null for a moment during a transition,
+     * and reading that as "the person left" ends a run that is fine.
+     */
+    private fun frontPackage(): String? =
+        service.rootInActiveWindow?.packageName?.toString()
+            ?: service.windows.firstOrNull { it.isActive }?.root?.packageName?.toString()
+
+    /**
+     * Every window belonging to the app the run started in.
+     *
+     * Not `rootInActiveWindow`: Douyin's comment input is its own
+     * window, and while it holds focus that call returns three nodes
+     * with the entire feed -- share control included -- in a window it
+     * does not mention. A dry run reported both controls missing that
+     * way while they were on screen the whole time.
+     *
+     * Windows from any other app are left out rather than searched, so
+     * a notification banner or another app's overlay is never a place
+     * this looks for something to press.
+     */
+    private fun roots(): List<AccessibilityNodeInfo> {
+        val wanted = startedIn
+        val out = service.windows.mapNotNull { window ->
+            window.root?.takeIf { it.packageName?.toString() == wanted }
+        }
+        if (out.isNotEmpty()) return out
+        // getWindows() can come back empty right after a transition.
+        val active = service.rootInActiveWindow
+        return if (active?.packageName?.toString() == wanted) listOf(active) else emptyList()
     }
 
     private fun tap(node: AccessibilityNodeInfo) {

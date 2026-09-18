@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -51,6 +53,7 @@ class MainActivity : AppCompatActivity() {
             CaptureAccessibilityService.stopAssisted()
             toast(getString(R.string.auto_stopped))
             showSelfCheck()
+            refreshRunState()
         }
 
         lifecycleScope.launch {
@@ -141,6 +144,37 @@ class MainActivity : AppCompatActivity() {
                 else R.string.auto_started
             )
         )
+        refreshRunState()
+    }
+
+    /**
+     * Put the run's state on screen, and let only the buttons that mean
+     * something be pressed.
+     *
+     * A run ends on its own -- the time limit, the video limit, leaving
+     * the app -- and nothing told this screen, so after one run it was
+     * impossible to tell from here whether a second one had started.
+     * Three always-enabled buttons and a self-check panel still naming
+     * the previous run read as "stuck on stop".
+     *
+     * It refreshes on a tick as well as on each press, because the end
+     * of a run arrives while this activity is in the background.
+     */
+    private fun refreshRunState() {
+        val state = CaptureAccessibilityService.runState()
+        binding.autoStatus.setText(
+            when (state) {
+                CaptureAccessibilityService.State.SERVICE_OFF -> R.string.auto_state_service_off
+                CaptureAccessibilityService.State.IDLE -> R.string.auto_state_idle
+                CaptureAccessibilityService.State.ARMED -> R.string.auto_state_armed
+                CaptureAccessibilityService.State.RUNNING -> R.string.auto_state_running
+            }
+        )
+        val idle = state == CaptureAccessibilityService.State.IDLE
+        binding.autoDryRun.isEnabled = idle
+        binding.autoStart.isEnabled = idle
+        binding.autoStop.isEnabled = !idle &&
+            state != CaptureAccessibilityService.State.SERVICE_OFF
     }
 
     /**
@@ -237,6 +271,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ticker.removeCallbacks(stateTicker)
+        stateTicker.run()
         val prefs = Prefs(this)
         binding.statusText.text = if (prefs.isRegistered) {
             getString(R.string.status_registered, prefs.participantId.orEmpty())
@@ -245,6 +281,20 @@ class MainActivity : AppCompatActivity() {
         }
         refreshSaveButtonLabel()
         showSelfCheck()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ticker.removeCallbacks(stateTicker)
+    }
+
+    private val ticker = Handler(Looper.getMainLooper())
+
+    private val stateTicker = object : Runnable {
+        override fun run() {
+            refreshRunState()
+            ticker.postDelayed(this, STATE_TICK_MILLIS)
+        }
     }
 
     /**
@@ -260,6 +310,9 @@ class MainActivity : AppCompatActivity() {
         /** How long a run may last, and how many videos it may step through. */
         const val MINUTES = 30
         const val VIDEOS = 300
+
+        /** Only redraws four views; a second is unnoticeable and enough. */
+        const val STATE_TICK_MILLIS = 1_000L
 
         /** Cheap pre-filter; the server does the real extraction. */
         val LOOKS_LIKE_A_POST_LINK = Regex(

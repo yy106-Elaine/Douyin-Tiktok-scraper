@@ -16,6 +16,13 @@ import android.view.accessibility.AccessibilityNodeInfo
  * caller decide, which is what makes a dry run possible: the same
  * search without the press, so the selectors can be checked on a real
  * screen before anything is tapped.
+ *
+ * Every search takes a list of window roots rather than one. A dry run
+ * on Douyin reported both controls missing while the feed was plainly
+ * on screen: `rootInActiveWindow` had returned the comment-input
+ * overlay, a separate window holding three nodes, and the feed -- with
+ * `分享，按钮` in it -- was in a window nobody looked at. One window is
+ * not the screen.
  */
 object ShareSheet {
 
@@ -38,9 +45,9 @@ object ShareSheet {
     /** A node, and the label that matched, for the run's log. */
     data class Found(val node: AccessibilityNodeInfo, val label: String)
 
-    fun findShare(root: AccessibilityNodeInfo?): Found? = find(root, SHARE)
+    fun findShare(roots: List<AccessibilityNodeInfo>): Found? = find(roots, SHARE)
 
-    fun findCopyLink(root: AccessibilityNodeInfo?): Found? = find(root, COPY_LINK)
+    fun findCopyLink(roots: List<AccessibilityNodeInfo>): Found? = find(roots, COPY_LINK)
 
     /**
      * What is on screen, for when a search failed.
@@ -50,32 +57,39 @@ object ShareSheet {
      * useful thing is a list of what was there instead. This is what
      * turns "it did not work" into a selector fix.
      */
-    fun describe(root: AccessibilityNodeInfo?, limit: Int = 30): List<String> {
+    fun describe(roots: List<AccessibilityNodeInfo>, limit: Int = 30): List<String> {
         val out = mutableListOf<String>()
-        walk(root) { node ->
-            val label = label(node)
-            if (label != null && label.length <= 40) {
-                out.add(if (node.isClickable) "[tap] $label" else label)
+        for ((index, root) in roots.withIndex()) {
+            if (out.size >= limit) break
+            out.add("-- window ${index + 1} of ${roots.size} --")
+            walk(root) { node ->
+                val label = label(node)
+                if (label != null && label.length <= 40) {
+                    out.add(if (node.isClickable) "[tap] $label" else label)
+                }
+                out.size < limit
             }
-            out.size < limit
         }
         return out
     }
 
-    private fun find(root: AccessibilityNodeInfo?, patterns: List<Regex>): Found? {
-        var hit: Found? = null
-        walk(root) { node ->
-            val label = label(node)
-            if (label != null && patterns.any { it.containsMatchIn(label) }) {
-                val target = clickableSelfOrAncestor(node)
-                if (target != null) {
-                    hit = Found(target, label.take(40))
-                    return@walk false
+    private fun find(roots: List<AccessibilityNodeInfo>, patterns: List<Regex>): Found? {
+        for (root in roots) {
+            var hit: Found? = null
+            walk(root) { node ->
+                val label = label(node)
+                if (label != null && patterns.any { it.containsMatchIn(label) }) {
+                    val target = clickableSelfOrAncestor(node)
+                    if (target != null) {
+                        hit = Found(target, label.take(40))
+                        return@walk false
+                    }
                 }
+                true
             }
-            true
+            if (hit != null) return hit
         }
-        return hit
+        return null
     }
 
     private fun label(node: AccessibilityNodeInfo): String? {
