@@ -279,14 +279,31 @@ real run produced 拉拉車 (a tour trolley), 拉拉山 (a mountain), 拉拉秧 
 拉拉草莓, and 女同 inside 父女同框, 母女同囚, 仔女同住 and 呀女同我講. Every
 run adds more.
 
-**Attempt two: require two signals.** A term either qualifies on its own
-(`女同性恋`, `女同志`, `蕾丝边`, `出柜`, `女女`, `lesbian`, `les`, `wlw`, and
-self-identifications like `是拉拉`) or it is ambiguous (`拉拉`, `女同`, `百合`,
-`姬`) and needs a companion beside it (`喜欢女`, `女朋友`, `情侣`, `彩虹`,
-`同性`, `两个女生`, `监护`…). This is what actually separates them: in that run
-every genuinely relevant row carried a second marker and not one of the
-collisions did. A blocklist chases instances; this states what on-topic text
-looks like.
+**Attempt two: require two signals.** A term either qualifies on its own or it
+is ambiguous and needs a companion beside it (`喜欢女`, `女朋友`, `情侣`,
+`彩虹`, `同性`, `两个女生`, `监护`…). In that run every genuinely relevant row
+carried a second marker and not one of the collisions did. A blocklist chases
+instances; this states what on-topic text looks like.
+
+**Attempt three: apply it only where it is needed.** Attempt two was applied to
+`拉拉`, `女同` and `百合` alike, and that was too much — in-scope fell from 267
+rows to 6 out of 561. The rule was doing work that other rules already did:
+`百合`'s bulk polluters are Japanese yuri, fiction and lilies, each of which now
+has its own rule, and `女同`'s are a nameable list of ordinary words. So both
+count on their own again, `女同` behind lookarounds that cover the daughter
+cases (父女同框, 母女同囚, 仔女同住, 呀女同我講), the school and work ones
+(女同学, 女同事, 女同桌), and `同` meaning *with* (港女同內地女生 — girls from
+two cities).
+
+Only `拉拉` still needs a companion. Its collisions are names and places —
+拉拉車, 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉, 烤拉拉, 李拉拉
+— and no boundary separates them, because `来问问拉拉` is on topic and `拉拉車`
+is not and neither has a clean edge to key on.
+
+The sequence is worth reporting as it happened. Each attempt was a reasonable
+reading of the errors then visible, and each over- or under-corrected until the
+categories were separated enough to treat differently. A filter arrived at this
+way should be described as calibrated against observed data, not derived.
 
 The companion list had to be narrowed once already: bare `女生` admitted
 `港女同內地女生有咩分別` — girls from two cities. What signals the topic is a
@@ -346,12 +363,20 @@ visible — the excluded rows are listed by reason. A term missing from the topi
 list excludes real videos too. It is survivable because the verbatim payload is kept for
 every observation: `python -m app.relevance` re-marks the whole corpus from it,
 so a corrected rule reaches rows collected weeks earlier and nothing has to be
-collected again. Check a rule against text without touching the database:
+collected again. Check a rule against text without touching the database, or read what a
+category actually caught:
 
 ```
 ./.venv/bin/python -m app.relevance --test "百合短剧 治愈女同"
 ./.venv/bin/python -m app.relevance --test-file captions.txt
+./.venv/bin/python -m app.relevance --sample "no topic term" --limit 40
 ```
+
+`--sample` exists because counts and captions answer different questions: the
+counts say how much each rule caught, and only the captions say whether it
+caught the right things. `no topic term` is the bucket to read first — it is
+where a real video lands when the rules do not recognise how it described
+itself.
 
 Report the rule set used and the counts per reason; running `app.relevance`
 with no arguments prints both, `--by-keyword` attributes them to the search term

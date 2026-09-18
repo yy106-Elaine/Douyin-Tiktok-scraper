@@ -53,23 +53,34 @@ _KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
 ALONE = re.compile(
     r"女同性[恋戀]|蕾[丝絲][边邊]|出[柜櫃]|女女|女同志|"
     r"lesbian|wlw|\bles\b|"
-    # Self-identification, which is unambiguous even though it contains
-    # an otherwise ambiguous term: no tour bus is 是拉拉.
-    r"是拉拉|做拉拉|[当當]拉拉|[作]?[为為]拉拉|拉拉身份",
+    # Self-identification, unambiguous even though it contains an
+    # otherwise ambiguous term: no tour bus is 是拉拉.
+    r"是拉拉|做拉拉|[当當]拉拉|[作]?[为為]拉拉|拉拉身份|"
+    # 百合 counts alone again. Requiring a companion cost far more than
+    # it saved -- in-scope fell from 267 rows to 6 -- because its two
+    # real polluters are handled elsewhere now: Japanese yuri by the
+    # kana rule, lilies and recipes by FOOD, and 百合短剧 by `fiction`.
+    r"百合|"
+    # 女同 likewise, once the words it hides inside are named. The
+    # daughter cases are a lookbehind (父女同框, 母女同囚, 仔女同住,
+    # 呀女同我講) and the school and work ones a lookahead; both were
+    # observed in one run.
+    # The lookahead also covers 同 meaning "with": 港女同內地女生 is
+    # about girls from two cities, 呀女同我講 about someone's daughter.
+    r"(?<![父母仔子兒儿孫孙呀姪侄外])"
+    r"女同(?![学學事胞僚桌住框台囚行班窗游遊内內我你他她它佢齡龄款])",
     re.IGNORECASE,
 )
 
-#: The search keywords that are also fragments of unrelated words. A
-#: blocklist for these does not converge. One real run produced 拉拉車,
-#: 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉, 烤拉拉,
-#: 拉拉草莓, and 女同 inside 父女同框, 母女同囚, 仔女同住, 呀女同我講
-#: -- a list that grows with every run and never finishes.
-#:
-#: So these count only alongside a second signal. That is what actually
-#: separates them: every genuinely relevant row in that run carried
-#: something else as well (les, lesbian, 女生, 情侣, 意定监护), and not
-#: one of the collisions carried anything.
-AMBIGUOUS = re.compile(r"拉拉|女同|百合|姬", re.IGNORECASE)
+#: A keyword too polluted to count on its own, admitted only
+#: alongside a second signal from COMPANION. Every genuinely relevant
+#: 拉拉 row in a real run carried something else as well (les,
+#: lesbian, 喜欢女生, 情侣, 意定监护) and not one of the collisions did.
+#: 拉拉 stays here alone. Its collisions are names and places --
+#: 拉拉車, 拉拉山, 拉拉秧, 傲拉拉, 朵拉拉, 拉諾拉拉庫, 鬍子拉拉,
+#: 烤拉拉, 李拉拉 -- and no boundary separates them: 来问问拉拉 is on
+#: topic and 拉拉車 is not, and neither has a clean edge to key on.
+AMBIGUOUS = re.compile(r"拉拉|姬", re.IGNORECASE)
 
 #: Not enough on its own, but enough to confirm an ambiguous term.
 COMPANION = re.compile(
@@ -358,6 +369,31 @@ def by_parameter(session) -> dict[str, dict[str, int]]:
     return table
 
 
+def sample(session, reason: str | None, limit: int = 25) -> list[tuple[str, str]]:
+    """Captions for one outcome, as (platform, caption) pairs.
+
+    The counts say how much each rule caught; only the captions say
+    whether it caught the right things. `no topic term` is the bucket
+    worth reading first -- it is where a real video lands when the
+    rules simply do not recognise how it described itself.
+    """
+    from sqlalchemy import select
+
+    from .parsers import PLATFORM_TABLES
+
+    out: list[tuple[str, str]] = []
+    for platform, (model, _) in PLATFORM_TABLES.items():
+        statement = select(model.caption).order_by(model.captured_at.desc())
+        statement = statement.where(
+            model.relevance.is_(None) if reason in (None, "in scope")
+            else model.relevance == reason
+        )
+        for (caption,) in session.execute(statement.limit(limit)):
+            if caption:
+                out.append((platform, caption))
+    return out[:limit]
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     import argparse
 
@@ -385,6 +421,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="show whether the relevanceLanguage hint changed the results",
     )
+    parser.add_argument(
+        "--sample",
+        metavar="REASON",
+        help='print captions for one outcome, e.g. "no topic term" or "in scope"',
+    )
+    parser.add_argument(
+        "--limit", type=int, default=25, help="how many captions to print"
+    )
     args = parser.parse_args()
 
     samples = list(args.test or [])
@@ -403,6 +447,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
     init_db()
+
+    if args.sample:
+        with SessionLocal() as session:
+            rows = sample(session, args.sample, args.limit)
+        print(f"{args.sample}: showing {len(rows)}\n")
+        for platform, caption in rows:
+            print(f"[{platform}] {caption}")
+        return
 
     if args.by_param:
         with SessionLocal() as session:

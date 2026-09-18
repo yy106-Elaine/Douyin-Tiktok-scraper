@@ -102,10 +102,13 @@ def test_a_topic_term_overrides_an_incidental_collision():
 def test_an_ambiguous_term_alone_is_not_enough():
     """The cost of the two-signal rule, stated as a test.
 
-    These are real titles. 拉拉 and 女同 are fragments of too many
-    ordinary words to be trusted alone, so a genuinely relevant video
-    whose text carries nothing else is excluded. That is a recall loss
-    accepted for precision, and it is visible under ?show=all.
+    These are real titles. 拉拉 is the one keyword too polluted to
+    count alone -- its collisions are names and places with no clean
+    edge to key on -- so a genuinely relevant video carrying only 拉拉
+    is excluded. That is a recall loss accepted for precision, and it
+    is visible under ?show=all. 女同 and 百合 no longer pay this price:
+    the words they hide inside are named, and their bulk polluters
+    (Japanese yuri, fiction, lilies) have rules of their own.
     """
     for text in (
         "池上長虹拉拉車 2026/9/14",
@@ -561,3 +564,39 @@ class TestTheExport:
         ).text
         for title in ("出柜五年", "拉拉車", "百合ヶ浜"):
             assert title in csv
+
+
+def test_a_category_can_be_sampled_from_the_command_line(client):
+    """Counts say how much a rule caught; captions say whether it was right."""
+    from app import youtube
+    from app.db import SessionLocal
+    from app.relevance import sample
+
+    titles = ["我们是拉拉，女朋友日常", "池上長虹拉拉車"]
+
+    def caller(endpoint, params):
+        if endpoint == "search":
+            return {"items": [{"id": {"videoId": f"v{i}"}} for i in range(2)]}
+        out = []
+        for video_id in params["id"].split(","):
+            index = int(video_id[1:])
+            out.append(
+                {
+                    "id": video_id,
+                    "snippet": {
+                        "channelId": "UC1",
+                        "channelTitle": "c",
+                        "title": titles[index],
+                        "description": "",
+                        "publishedAt": "2026-09-16T08:30:00Z",
+                    },
+                    "statistics": {},
+                    "status": {"privacyStatus": "public"},
+                }
+            )
+        return {"items": out}
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["拉拉"], caller=caller)
+        assert [c for _, c in sample(session, "in scope")] == ["我们是拉拉，女朋友日常"]
+        assert [c for _, c in sample(session, "no topic term")] == ["池上長虹拉拉車"]
