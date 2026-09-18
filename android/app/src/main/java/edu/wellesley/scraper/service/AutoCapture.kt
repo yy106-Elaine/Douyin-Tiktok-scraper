@@ -1,0 +1,260 @@
+package edu.wellesley.scraper.service
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.content.Intent
+import android.graphics.Path
+import android.os.Handler
+import android.os.Looper
+import android.view.accessibility.AccessibilityNodeInfo
+import edu.wellesley.scraper.ui.ClipboardReaderActivity
+
+/**
+ * Repeats the manual collection step for a bounded stretch of time.
+ *
+ * The step is: open the share sheet, press "copy link", let the app
+ * read the clipboard, close the sheet, scroll to the next video. Doing
+ * it by hand costs about four taps per video, which is what caps how
+ * much can be collected in a day.
+ *
+ * Three things keep this honest about what it is.
+ *
+ * **It is bounded and visible.** A run has a deadline and a video
+ * limit, both set when it starts. It stops the moment the foreground
+ * app is not the one it was started in, and it can be stopped by hand
+ * at any point. It performs no action except the ones a person
+ * performs to copy a link, it posts nothing, and it touches no other
+ * account.
+ *
+ * **It stops rather than guesses.** If the share control or the copy
+ * entry is not found, the run ends and records what was on screen
+ * instead. A loop that keeps tapping when it cannot see what it is
+ * tapping is how an automation starts pressing the wrong things.
+ *
+ * **It has a dry run.** [Mode.DRY_RUN] inspects one screen, reports
+ * what the selectors found, and presses nothing. The wording inside
+ * the share sheet has never been dumped from a device, so the first
+ * run should always be a dry one -- once on a video to check the share
+ * control, once with the sheet open to check the copy entry.
+ *
+ * Every step is recorded in [CaptureStats], so what the run did is
+ * readable afterwards rather than inferred.
+ */
+class AutoCapture(private val service: AccessibilityService) {
+
+    enum class Mode { DRY_RUN, LIVE }
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    @Volatile
+    private var running = false
+    private var mode = Mode.DRY_RUN
+    private var deadline = 0L
+    private var remaining = 0
+    private var startedIn: String? = null
+
+    fun isRunning(): Boolean = running
+
+    /**
+     * Start a run in the app currently in front.
+     *
+     * @param minutes how long it may run for
+     * @param videos how many videos it may step through
+     */
+    fun start(mode: Mode, minutes: Int, videos: Int, inPackage: String) {
+        if (running) return
+        this.mode = mode
+        this.deadline = System.currentTimeMillis() + minutes * 60_000L
+        this.remaining = videos
+        this.startedIn = inPackage
+        running = true
+        CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
+        if (mode == Mode.DRY_RUN) {
+            handler.postDelayed(::inspect, FIRST_STEP_MILLIS)
+        } else {
+            handler.postDelayed(::openShare, FIRST_STEP_MILLIS)
+        }
+    }
+
+    /**
+     * Report what the selectors find on the screen as it is now, and
+     * stop. Pressing nothing.
+     *
+     * A dry run cannot walk the loop, because after the first step it
+     * would be looking for a "copy link" entry on a feed with no sheet
+     * open. So it inspects one screen: run it on a video to check the
+     * share control, then open the share sheet by hand and run it
+     * again to check the copy entry. Two runs, and the selectors are
+     * either confirmed or the report says what was there instead.
+     */
+    private fun inspect() {
+        val root = service.rootInActiveWindow
+        val share = ShareSheet.findShare(root)
+        val copy = ShareSheet.findCopyLink(root)
+
+        CaptureStats.onAutoStep(
+            "share control: " + (share?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
+        )
+        CaptureStats.onAutoStep(
+            "copy-link entry: " + (copy?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
+        )
+        if (share == null || copy == null) {
+            CaptureStats.onAutoFailure(
+                "see the screen below; run this on a video, then again with the " +
+                    "share sheet open",
+                ShareSheet.describe(root),
+            )
+        }
+        stop("dry run finished")
+    }
+
+    fun stop(why: String) {
+        if (!running) return
+        running = false
+        handler.removeCallbacksAndMessages(null)
+        CaptureStats.onAutoStop(why)
+    }
+
+    // ----------------------------------------------------------------
+    // One video, as four steps on a timer
+    // ----------------------------------------------------------------
+    //
+    // A timer rather than a reaction to accessibility events: the
+    // sheet animates, and a step that fires while it is still moving
+    // presses whatever happens to be under it. The delays are long
+    // enough for the animation, not short enough to race it.
+
+    private fun openShare() {
+        if (!keepGoing()) return
+
+        val found = ShareSheet.findShare(service.rootInActiveWindow)
+        if (found == null) {
+            CaptureStats.onAutoFailure(
+                "no share control",
+                ShareSheet.describe(service.rootInActiveWindow),
+            )
+            stop("share control not found")
+            return
+        }
+
+        CaptureStats.onAutoStep("share: ${found.label}")
+        tap(found.node)
+        handler.postDelayed(::pressCopyLink, SHEET_OPEN_MILLIS)
+    }
+
+    private fun pressCopyLink() {
+        if (!keepGoing()) return
+
+        val found = ShareSheet.findCopyLink(service.rootInActiveWindow)
+        if (found == null) {
+            CaptureStats.onAutoFailure(
+                "no copy-link entry",
+                ShareSheet.describe(service.rootInActiveWindow),
+            )
+            stop("copy-link entry not found")
+            return
+        }
+
+        CaptureStats.onAutoStep("copy: ${found.label}")
+        tap(found.node)
+        handler.postDelayed(::readClipboard, COPY_MILLIS)
+    }
+
+    private fun readClipboard() {
+        if (!keepGoing()) return
+
+        // From Android 10 only a focused app may read the clipboard,
+        // so the same translucent activity the floating button uses
+        // comes forward for an instant and finishes.
+        service.startActivity(
+            Intent(service, ClipboardReaderActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                )
+            },
+        )
+        handler.postDelayed(::nextVideo, CLIPBOARD_MILLIS)
+    }
+
+    private fun nextVideo() {
+        if (!keepGoing()) return
+
+        // Back out of the sheet, whether or not it is still open --
+        // BACK on the feed itself is harmless and this avoids needing
+        // to tell the two states apart.
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+
+        remaining--
+        CaptureStats.onAutoStep("next video, $remaining left")
+
+        handler.postDelayed({
+            if (!keepGoing()) return@postDelayed
+            swipeUp()
+            handler.postDelayed(::openShare, SETTLE_MILLIS)
+        }, BACK_MILLIS)
+    }
+
+    // ----------------------------------------------------------------
+    // Guards
+    // ----------------------------------------------------------------
+
+    /** False, and stops the run, when any bound has been reached. */
+    private fun keepGoing(): Boolean {
+        if (!running) return false
+        if (remaining <= 0) {
+            stop("video limit reached")
+            return false
+        }
+        if (System.currentTimeMillis() >= deadline) {
+            stop("time limit reached")
+            return false
+        }
+        // The app in front must still be the one the run started in.
+        // Anything else means a notification, a phone call, or the
+        // person navigating away -- none of which should be tapped on.
+        val front = service.rootInActiveWindow?.packageName?.toString()
+        if (front != startedIn) {
+            stop("left ${startedIn ?: "the app"} (now $front)")
+            return false
+        }
+        return true
+    }
+
+    private fun tap(node: AccessibilityNodeInfo) {
+        if (!node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            CaptureStats.onAutoStep("tap refused by the view")
+        }
+    }
+
+    /** A short upward swipe: one video in a vertical feed. */
+    private fun swipeUp() {
+        val metrics = service.resources.displayMetrics
+        val x = metrics.widthPixels / 2f
+        val path = Path().apply {
+            moveTo(x, metrics.heightPixels * 0.72f)
+            lineTo(x, metrics.heightPixels * 0.28f)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, SWIPE_MILLIS)
+        service.dispatchGesture(
+            GestureDescription.Builder().addStroke(stroke).build(),
+            null,
+            null,
+        )
+    }
+
+    private companion object {
+        /** Long enough for the person to take their hand off the screen. */
+        const val FIRST_STEP_MILLIS = 1_500L
+
+        // The rest are animation budgets, not throttling: each step
+        // has to land after the previous one has finished drawing.
+        const val SHEET_OPEN_MILLIS = 1_400L
+        const val COPY_MILLIS = 900L
+        const val CLIPBOARD_MILLIS = 1_200L
+        const val BACK_MILLIS = 700L
+        const val SETTLE_MILLIS = 1_600L
+        const val SWIPE_MILLIS = 250L
+    }
+}

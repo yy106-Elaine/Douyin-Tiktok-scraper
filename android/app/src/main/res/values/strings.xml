@@ -30,4 +30,14 @@
     <string name="save_button_enable">Turn on the floating button</string>
     <string name="save_button_disable">Turn off the floating button</string>
     <string name="save_button_needs_permission">Allow "display over other apps", then tap again</string>
+
+    <string name="auto_title">Assisted collection</string>
+    <string name="auto_help">Repeats the copy-link step for you. Open Douyin or TikTok, search, filter to the last day, then come back and start a run. It stops on its own after the time or video limit, and the moment you leave the app.</string>
+    <string name="auto_dry_run">Dry run — find the buttons, press nothing</string>
+    <string name="auto_start">Start a 30-minute run</string>
+    <string name="auto_stop">Stop the run</string>
+    <string name="auto_started">Running. Switch to the app now.</string>
+    <string name="auto_dry_started">Dry run. Switch to the app and open one share sheet.</string>
+    <string name="auto_stopped">Run stopped</string>
+    <string name="auto_first">Do the first video by hand first, so the run starts from a video and not a menu.</string>
 </resources>

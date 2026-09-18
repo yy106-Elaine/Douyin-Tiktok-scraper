@@ -150,6 +150,48 @@ object CaptureStats {
                 if (it.selected) " | SELECTED" else ""
         }
 
+    // ----------------------------------------------------------------
+    // Assisted runs
+    // ----------------------------------------------------------------
+    //
+    // A run presses things, so what it pressed has to be readable
+    // afterwards rather than inferred from whether links turned up.
+
+    @Volatile var autoMode: String? = null
+    @Volatile var autoStartedAt: Long? = null
+    @Volatile var autoStoppedBecause: String? = null
+    @Volatile var autoStepsDone: Int = 0
+    @Volatile var autoFailure: String? = null
+    @Volatile var autoScreenAtFailure: List<String> = emptyList()
+    private val autoSteps = ArrayDeque<String>()
+
+    fun onAutoStart(mode: String, minutes: Int, videos: Int, inPackage: String) {
+        autoMode = "$mode, up to $minutes min / $videos videos, in $inPackage"
+        autoStartedAt = System.currentTimeMillis()
+        autoStoppedBecause = null
+        autoFailure = null
+        autoScreenAtFailure = emptyList()
+        autoStepsDone = 0
+        synchronized(autoSteps) { autoSteps.clear() }
+    }
+
+    fun onAutoStep(what: String) {
+        autoStepsDone++
+        synchronized(autoSteps) {
+            autoSteps.addLast("${time(System.currentTimeMillis())}  $what")
+            while (autoSteps.size > 20) autoSteps.removeFirst()
+        }
+    }
+
+    fun onAutoFailure(what: String, screen: List<String>) {
+        autoFailure = what
+        autoScreenAtFailure = screen
+    }
+
+    fun onAutoStop(why: String) {
+        autoStoppedBecause = why
+    }
+
     /** A block of text someone can read on screen, or paste into a message. */
     fun report(): String {
         val lines = mutableListOf<String>()
@@ -188,6 +230,23 @@ object CaptureStats {
 
         lines += "Distinct posts buffered: $distinctPosts"
         lines += "Search frames: $searchFrames   tiles harvested: $searchTiles"
+
+        if (autoMode != null) {
+            lines += ""
+            lines += "Assisted run: $autoMode"
+            lines += "  started ${time(autoStartedAt)}, $autoStepsDone step(s)"
+            lines += "  " + (autoStoppedBecause?.let { "stopped: $it" } ?: "still running")
+            autoFailure?.let { lines += "  FAILED: $it" }
+            val recent = synchronized(autoSteps) { autoSteps.toList() }
+            if (recent.isNotEmpty()) {
+                lines += "  steps:"
+                recent.forEach { lines += "    $it" }
+            }
+            if (autoScreenAtFailure.isNotEmpty()) {
+                lines += "  what was on screen when it failed:"
+                autoScreenAtFailure.forEach { lines += "    $it" }
+            }
+        }
 
         if (lastSelectedNodes.isNotEmpty()) {
             lines += ""

@@ -16,6 +16,8 @@ import edu.wellesley.scraper.data.Prefs
 import edu.wellesley.scraper.databinding.ActivityMainBinding
 import edu.wellesley.scraper.net.ApiClient
 import edu.wellesley.scraper.net.SyncWorker
+import edu.wellesley.scraper.service.AutoCapture
+import edu.wellesley.scraper.service.CaptureAccessibilityService
 import edu.wellesley.scraper.service.CaptureStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -43,6 +45,13 @@ class MainActivity : AppCompatActivity() {
         binding.selfCheckRefresh.setOnClickListener { showSelfCheck() }
         binding.selfCheckCopy.setOnClickListener { copySelfCheck() }
         binding.saveButtonToggle.setOnClickListener { toggleSaveButton() }
+        binding.autoDryRun.setOnClickListener { startAssisted(AutoCapture.Mode.DRY_RUN) }
+        binding.autoStart.setOnClickListener { startAssisted(AutoCapture.Mode.LIVE) }
+        binding.autoStop.setOnClickListener {
+            CaptureAccessibilityService.stopAssisted()
+            toast(getString(R.string.auto_stopped))
+            showSelfCheck()
+        }
 
         lifecycleScope.launch {
             CaptureDatabase.get(this@MainActivity).captureDao().pendingCount()
@@ -105,6 +114,33 @@ class MainActivity : AppCompatActivity() {
                 toast(getString(R.string.clipboard_failed))
             }
         }
+    }
+
+    /**
+     * Start an assisted run in whichever app is in front.
+     *
+     * The run cannot start from here, because "in front" means the
+     * feed and this app is in front right now. So it starts armed and
+     * the first step waits a moment -- long enough to switch back to
+     * Douyin or TikTok. The service refuses if the app in front then
+     * is not one of them.
+     *
+     * A dry run first, always: the wording inside the share sheet has
+     * never been read off a device, so the selectors are guesses until
+     * one run reports what it found.
+     */
+    private fun startAssisted(mode: AutoCapture.Mode) {
+        val refusal = CaptureAccessibilityService.armAssisted(mode, MINUTES, VIDEOS)
+        if (refusal != null) {
+            toast(refusal)
+            return
+        }
+        toast(
+            getString(
+                if (mode == AutoCapture.Mode.DRY_RUN) R.string.auto_dry_started
+                else R.string.auto_started
+            )
+        )
     }
 
     /**
@@ -221,6 +257,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        /** How long a run may last, and how many videos it may step through. */
+        const val MINUTES = 30
+        const val VIDEOS = 300
+
         /** Cheap pre-filter; the server does the real extraction. */
         val LOOKS_LIKE_A_POST_LINK = Regex(
             """(?:v\.douyin\.com|douyin\.com/video|tiktok\.com|vm\.tiktok|vt\.tiktok)""",

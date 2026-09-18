@@ -49,6 +49,18 @@ class CaptureAccessibilityService : AccessibilityService() {
      */
     private val saveButton by lazy { SaveLinkButton(this) }
 
+    /**
+     * Repeats the copy-link step for a bounded stretch. Idle unless
+     * started from the app, and it stops itself; see AutoCapture.
+     */
+    private val auto by lazy { AutoCapture(this) }
+
+    /** A run requested from the app, waiting for a target app in front. */
+    private data class Armed(val mode: AutoCapture.Mode, val minutes: Int, val videos: Int)
+
+    @Volatile
+    private var armed: Armed? = null
+
     private val parsers: Map<String, PostParser> = mapOf(
         "com.ss.android.ugc.aweme" to DouyinParser(),
         "com.ss.android.ugc.aweme.lite" to DouyinParser(),
@@ -76,6 +88,44 @@ class CaptureAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         CaptureStats.onServiceConnected()
+        instance = this
+    }
+
+    companion object {
+        /**
+         * The live service, so the app can start and stop an assisted
+         * run. Null whenever the service is off, which is the only
+         * state in which a run cannot be started -- deliberately, since
+         * a run needs to read the screen to know what it is pressing.
+         */
+        @Volatile
+        private var instance: CaptureAccessibilityService? = null
+
+        fun isConnected(): Boolean = instance != null
+
+        fun isRunning(): Boolean = instance?.auto?.isRunning() == true
+
+        /**
+         * Arm a run, to begin once Douyin or TikTok is in front.
+         *
+         * It cannot start immediately: the app that is in front when
+         * the button is pressed is this one. So the service holds the
+         * request and starts on the first frame from a target app,
+         * which is also the point at which there is a video on screen
+         * to find a share control on. Returns why not, or null.
+         */
+        fun armAssisted(mode: AutoCapture.Mode, minutes: Int, videos: Int): String? {
+            val service = instance ?: return "Turn on the capture service first"
+            if (service.auto.isRunning()) return "A run is already going"
+            service.armed = Armed(mode, minutes, videos)
+            CaptureStats.onAutoStep("armed: ${mode.name}, waiting for the app")
+            return null
+        }
+
+        fun stopAssisted() {
+            instance?.armed = null
+            instance?.auto?.stop("stopped by hand")
+        }
     }
 
     /**
@@ -131,6 +181,14 @@ class CaptureAccessibilityService : AccessibilityService() {
         }
         lastPackage = activePackage
         if (Prefs(applicationContext).showSaveButton) saveButton.show()
+
+        // A run armed from the app starts here, on the first frame
+        // from a target app -- which is also the first moment there is
+        // a video on screen to find a share control on.
+        armed?.let { request ->
+            armed = null
+            auto.start(request.mode, request.minutes, request.videos, activePackage)
+        }
 
         val nodes = NodeTools.flatten(root)
         if (nodes.isEmpty()) {
@@ -209,6 +267,8 @@ class CaptureAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        auto.stop("service stopped")
+        instance = null
         saveButton.hide()
         idleHandler.removeCallbacks(idleFlush)
         flush(force = true)
