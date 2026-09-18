@@ -21,7 +21,7 @@ from any other app.
 
 | Part | State |
 |---|---|
-| Backend, dashboards, install page | Complete, 207 tests passing |
+| Backend, dashboards, install page | Complete, 210 tests passing |
 | Android data flow, buffering, sync, share capture | Complete, 22 JVM tests passing |
 | TikTok parser selectors | Cross-checked against a working collector; re-verify per app version |
 | Douyin parser selectors | **Unverified — hypotheses only** |
@@ -82,7 +82,16 @@ curl -H "X-API-Key: $ADMIN_API_KEY" \
   "http://localhost:8000/api/export/posts.csv?platform=douyin" -o douyin.csv
 ```
 
-### The two commands you run by hand
+### Running it daily
+
+```bash
+cd backend && ./install-daily.sh     # launchd, 09:00 every day
+```
+
+`daily.sh` does the whole round: back up, collect YouTube, resolve links,
+re-mark relevance, re-check every link due. Safe to run by hand at any time.
+
+### The same steps individually
 
 Both make outbound requests to the platforms, so neither runs on a timer.
 

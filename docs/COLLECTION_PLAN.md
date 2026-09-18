@@ -44,7 +44,37 @@ For TikTok, then Douyin:
 A video with no copied link is metadata only. It cannot be re-checked, so it
 cannot be part of a takedown finding.
 
-### Then, on the Mac (~5 min, mostly waiting)
+### Automatically, on the Mac
+
+Schedule it once and it runs itself:
+
+```
+cd backend
+./install-daily.sh            # 09:00 every day; HOUR=7 ./install-daily.sh to change
+```
+
+`daily.sh` backs up the database, collects YouTube over a 72-hour window,
+resolves copied links, re-marks relevance and re-checks every link due. Each
+step is run separately and a failure is logged rather than fatal — a YouTube
+quota error must not stop the re-check, because the re-check is the
+measurement and a day missed there widens the removal window for every video
+due that day.
+
+```
+launchctl kickstart -k gui/$(id -u)/edu.wellesley.scraper.daily   # run it now
+tail -f backend/logs/daily-$(date +%F).log                        # watch it
+./install-daily.sh --remove                                       # unschedule
+```
+
+launchd rather than cron because launchd runs a job it missed once the Mac
+wakes. A laptop is asleep at most fixed times, and a skipped day cannot be
+recovered: the videos that disappeared that day are already gone. The Mac still
+has to be awake and online within a reasonable window of the scheduled time.
+
+Backups are kept for 30 days in `backend/backups/`. They are what makes a bad
+re-mark or a mistaken delete recoverable.
+
+### By hand, if you would rather (~5 min, mostly waiting)
 
 ```
 cd ~/Douyin-Tiktok-scraper/backend
@@ -62,6 +92,10 @@ cd ~/Douyin-Tiktok-scraper/backend
 # 4. Keep yesterday's database. Takes a second; there is no other copy.
 mkdir -p backups && cp scraper.db "backups/scraper-$(date +%F).db"
 ```
+
+Or just `./daily.sh`, which is those four steps in order. It is safe to run
+twice: every step de-duplicates, so a manual run after a scheduled one costs a
+little quota and changes nothing else.
 
 Then open the overview and check the numbers moved:
 `http://localhost:8000/dashboard/overview?key=...`

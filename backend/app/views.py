@@ -18,7 +18,7 @@ is reported alongside the value -- see `posted_source`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -200,6 +200,84 @@ def in_scope_filter(model, platform: str):
     if platform not in API_PLATFORMS:
         condition = condition | model.video_id.isnot(None)
     return condition
+
+
+def _identity(model):
+    """What counts as one video, for a distinct count.
+
+    The video id where there is one. Otherwise the capture
+    fingerprint, because a phone post with no copied link is still the
+    same post when it is seen again the next day -- the phone
+    platforms deliberately store one observation per post per day, so
+    counting rows there would count days, not videos.
+    """
+    from sqlalchemy import func
+
+    from .models import CaptureEvent
+
+    return func.coalesce(model.video_id, CaptureEvent.fingerprint)
+
+
+def first_seen(session: Session, platform: str) -> dict[str, datetime]:
+    """Earliest observation of each distinct video in scope.
+
+    Both counts below are about *new* videos, so both need first
+    observation rather than any observation. Filtering rows by time
+    instead would make a phone post seen every day look new every day
+    -- the phone platforms store one observation per post per day on
+    purpose.
+    """
+    from .models import CaptureEvent
+
+    registered = PLATFORM_TABLES.get(platform)
+    if registered is None:
+        return {}
+    model, _ = registered
+
+    earliest: dict[str, datetime] = {}
+    for identity, captured_at in session.execute(
+        select(_identity(model), model.captured_at)
+        .select_from(model)
+        .join(CaptureEvent, CaptureEvent.id == model.capture_event_id)
+        .where(in_scope_filter(model, platform))
+    ):
+        if identity is None:
+            continue
+        if identity not in earliest or captured_at < earliest[identity]:
+            earliest[identity] = captured_at
+    return earliest
+
+
+def unique_in_scope(
+    session: Session, platform: str, since: datetime | None = None
+) -> int:
+    """Distinct videos in scope, or those first seen since `since`."""
+    earliest = first_seen(session, platform)
+    if since is None:
+        return len(earliest)
+    return sum(1 for moment in earliest.values() if moment >= since)
+
+
+def daily_counts(
+    session: Session, platform: str, days: int = 7, now: datetime | None = None
+) -> list[tuple[str, int]]:
+    """Distinct in-scope videos first collected on each of the last `days`."""
+    moment = now or datetime.utcnow()
+    start = (moment - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    counts: dict[str, int] = {}
+    for captured_at in first_seen(session, platform).values():
+        if captured_at >= start:
+            key = captured_at.date().isoformat()
+            counts[key] = counts.get(key, 0) + 1
+
+    return [
+        ((start + timedelta(days=offset)).date().isoformat(),
+         counts.get((start + timedelta(days=offset)).date().isoformat(), 0))
+        for offset in range(days)
+    ]
 
 
 def video_rows(

@@ -7,6 +7,7 @@ whether data is actually arriving.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -24,6 +25,8 @@ from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
+    daily_counts,
+    unique_in_scope,
     ID_ON_SCREEN,
     LINK_ONLY,
     LINKED_BY_TIME,
@@ -108,6 +111,14 @@ def dashboard(
     rows = video_rows(session, platform, _ROW_LIMIT, show)
     dated = sum(1 for row in rows if row.posted_display)
 
+    # Distinct videos in scope, not rows: the phone platforms store one
+    # observation per post per day, so a row count there counts days.
+    now = datetime.utcnow()
+    unique = unique_in_scope(session, platform)
+    day = unique_in_scope(session, platform, now - timedelta(hours=24))
+    three = unique_in_scope(session, platform, now - timedelta(days=3))
+    per_day = daily_counts(session, platform, days=7, now=now)
+
     return HTMLResponse(
         _page(
             key=key,
@@ -122,6 +133,10 @@ def dashboard(
             filtered=filtered,
             reasons=reasons,
             show=show,
+            unique=unique,
+            day=day,
+            three=three,
+            per_day=per_day,
         )
     )
 
@@ -390,12 +405,13 @@ def _page(**ctx) -> str:
 
     tiles = "".join(
         [
-            _tile("Videos captured", _compact(ctx["posts"]), platform),
+            _tile("In the corpus", _compact(ctx["unique"]), "unique videos, on topic"),
+            _tile("New in 24 hours", _compact(ctx["day"]), "first seen"),
+            _tile("New in 3 days", _compact(ctx["three"]), "first seen"),
             _tile(
                 "With a video ID",
                 _pct(ctx["with_id"], ctx["posts"]),
-                f"{ctx['with_id']:,} of {ctx['posts']:,} &mdash; re-checkable",
-                raw_note=True,
+                f"{ctx['with_id']:,} of {ctx['posts']:,} collected",
             ),
             _tile(
                 "Publication time known",
@@ -412,13 +428,20 @@ def _page(**ctx) -> str:
                 _compact(ctx["filtered"]),
                 "hidden, not deleted",
             ),
-            _tile(
-                "Counts approximate",
-                _pct(ctx["approximate"], ctx["posts"]),
-                "abbreviated in the UI",
-            ),
-            _tile("Observations stored", _compact(ctx["events"]), "all platforms"),
         ]
+    )
+
+    # One series, so no legend: the heading names it. Counts are
+    # labelled directly rather than read off an axis.
+    peak = max((count for _, count in ctx["per_day"]), default=0)
+    bars = "".join(
+        f'<div class="day">'
+        f'<span class="dlabel">{escape(date[5:])}</span>'
+        f'<span class="dbar" style="width:{round(100 * count / peak) if peak else 0}%"'
+        f' title="{count} new on {escape(date)}"></span>'
+        f'<span class="dcount">{count}</span>'
+        "</div>"
+        for date, count in ctx["per_day"]
     )
 
     # Resolving is a deliberate step -- it makes outbound requests from
@@ -478,6 +501,11 @@ are approximate wherever flagged.</p>
 <div class="tiles">{tiles}</div>
 
 {todo}
+
+<h2>New videos per day &mdash; {escape(platform)}</h2>
+<p class="note-line">Unique videos in the corpus, counted on the day each was
+first collected. A video already held is not new data.</p>
+<div class="days">{bars}</div>
 
 <h2>Videos &mdash; {escape(platform)}</h2>
 {filter_note}

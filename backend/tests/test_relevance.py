@@ -600,3 +600,85 @@ def test_a_category_can_be_sampled_from_the_command_line(client):
         youtube.collect(session, ["拉拉"], caller=caller)
         assert [c for _, c in sample(session, "in scope")] == ["我们是拉拉，女朋友日常"]
         assert [c for _, c in sample(session, "no topic term")] == ["池上長虹拉拉車"]
+
+
+class TestCorpusCounting:
+    """What the dashboard reports as the corpus."""
+
+    def _collect(self, session, titles, when, offset=0):
+        from app import youtube
+
+        def caller(endpoint, params):
+            if endpoint == "search":
+                return {
+                    "items": [
+                        {"id": {"videoId": f"v{offset + i}"}} for i in range(len(titles))
+                    ]
+                }
+            out = []
+            for video_id in params["id"].split(","):
+                index = int(video_id[1:]) - offset
+                out.append(
+                    {
+                        "id": video_id,
+                        "snippet": {
+                            "channelId": "UC1",
+                            "channelTitle": "c",
+                            "title": titles[index],
+                            "description": "",
+                            "publishedAt": "2026-09-16T08:30:00Z",
+                        },
+                        "statistics": {},
+                        "status": {"privacyStatus": "public"},
+                    }
+                )
+            return {"items": out}
+
+        youtube.collect(session, ["拉拉"], caller=caller, now=when)
+
+    def test_the_corpus_counts_videos_not_rows(self, client):
+        from datetime import datetime, timedelta
+
+        from app.db import SessionLocal
+        from app.views import unique_in_scope
+
+        now = datetime(2026, 9, 18, 12, 0)
+        with SessionLocal() as session:
+            self._collect(session, ["女同情侣日常", "百合ヶ浜"], now - timedelta(days=2))
+            self._collect(session, ["#女同 记录我们的生活"], now - timedelta(days=1), 10)
+            # An overlapping window re-finds the first two.
+            self._collect(session, ["女同情侣日常", "百合ヶ浜"], now)
+
+            assert unique_in_scope(session, "youtube") == 2
+            # Re-finding the first video today does not make it new.
+            assert unique_in_scope(session, "youtube", now - timedelta(hours=6)) == 0
+            assert unique_in_scope(session, "youtube", now - timedelta(days=3)) == 2
+
+    def test_a_video_is_counted_on_the_day_it_first_arrived(self, client):
+        """Otherwise an overlapping window turns a flat corpus into a rising one."""
+        from datetime import datetime, timedelta
+
+        from app.db import SessionLocal
+        from app.views import daily_counts
+
+        now = datetime(2026, 9, 18, 12, 0)
+        with SessionLocal() as session:
+            self._collect(session, ["女同情侣日常"], now - timedelta(days=2))
+            self._collect(session, ["#女同 记录我们的生活"], now, 10)
+            self._collect(session, ["女同情侣日常"], now)  # re-found, not new
+
+            counts = dict(daily_counts(session, "youtube", days=3, now=now))
+            assert counts["2026-09-16"] == 1
+            assert counts["2026-09-17"] == 0
+            assert counts["2026-09-18"] == 1
+
+    def test_off_topic_videos_are_not_in_the_corpus_count(self, client):
+        from datetime import datetime
+
+        from app.db import SessionLocal
+        from app.views import unique_in_scope
+
+        now = datetime(2026, 9, 18, 12, 0)
+        with SessionLocal() as session:
+            self._collect(session, ["百合ヶ浜", "拉拉車", "南通花店 #百合花"], now)
+            assert unique_in_scope(session, "youtube") == 0
