@@ -186,7 +186,7 @@ _STATE_CLASS = {
     ID_ON_SCREEN: "good",
 }
 
-_COLUMNS = 11
+_COLUMNS = 12
 
 
 def _posted_cell(row: VideoRow) -> str:
@@ -250,9 +250,10 @@ def _video_rows(rows) -> str:
         )
 
     out = []
-    for row in rows:
+    for number, row in enumerate(rows, start=1):
         out.append(
             "<tr>"
+            f'<td class="rank">{number}</td>'
             f"{_posted_cell(row)}"
             f"{_id_cell(row)}"
             f"{_cell(row.author_handle)}"
@@ -392,6 +393,32 @@ _SHARED_CSS = """  :root {
   .caveats ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
   .caveats li { margin-bottom: 8px; }
   .caveats li:last-child { margin-bottom: 0; }
+  /* Review chips: one exclusion category each, with its count. */
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+  .chip {
+    padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--panel); color: var(--ink-2); text-decoration: none;
+    font-size: 12px; white-space: nowrap;
+  }
+  .chip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  /* New videos per day. One series, so the heading names it and the
+     counts are labelled directly rather than read off an axis. */
+  .days { margin-bottom: 26px; max-width: 520px; }
+  .day { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .dlabel {
+    width: 48px; font-size: 12px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; flex: none;
+  }
+  .dtrack { flex: 1; height: 14px; }
+  .dbar {
+    display: block; height: 14px; border-radius: 4px;
+    background: var(--accent); min-width: 2px;
+  }
+  .dcount {
+    width: 34px; font-size: 12px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; flex: none;
+  }
+  td.rank { color: var(--ink-3); font-variant-numeric: tabular-nums; width: 38px; }
   .empty code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
@@ -437,8 +464,9 @@ def _page(**ctx) -> str:
     bars = "".join(
         f'<div class="day">'
         f'<span class="dlabel">{escape(date[5:])}</span>'
-        f'<span class="dbar" style="width:{round(100 * count / peak) if peak else 0}%"'
-        f' title="{count} new on {escape(date)}"></span>'
+        f'<span class="dtrack"><span class="dbar" '
+        f'style="width:{round(100 * count / peak) if peak else 0}%" '
+        f'title="{count} new on {escape(date)}"></span></span>'
         f'<span class="dcount">{count}</span>'
         "</div>"
         for date, count in ctx["per_day"]
@@ -511,7 +539,7 @@ first collected. A video already held is not new data.</p>
 {filter_note}
 <div class="panel"><table>
 <thead><tr>
-<th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
+<th>#</th><th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
 <th>Caption</th><th>Seen</th>
 <th class="n">Likes</th><th class="n">Comments</th><th class="n">Shares</th>
 <th>Notes</th><th>Seen on</th>

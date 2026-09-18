@@ -682,3 +682,53 @@ class TestCorpusCounting:
         with SessionLocal() as session:
             self._collect(session, ["百合ヶ浜", "拉拉車", "南通花店 #百合花"], now)
             assert unique_in_scope(session, "youtube") == 0
+
+
+def test_the_dashboard_styles_its_own_components(client):
+    """Three CSS blocks were silently never inserted.
+
+    Each was added with a str.replace whose anchor used doubled braces,
+    left over from when the stylesheet lived inside an f-string. The
+    anchors matched nothing, the replaces did nothing, and the page
+    shipped with the review chips as a run-on line of links and the
+    day strip as digits with no bars. Nothing failed; it just looked
+    wrong on a screen I was not looking at.
+    """
+    body = client.get("/dashboard?key=test-admin-key&platform=youtube").text
+    for rule in (".chip {", ".chips {", ".dbar {", ".dlabel {", "td.rank {"):
+        assert rule in body, rule
+    # And no literal doubled braces anywhere in the stylesheet.
+    start = body.index("<style>")
+    assert "{{" not in body[start : body.index("</style>", start)]
+
+
+def test_rows_are_numbered(client):
+    from app import youtube
+    from app.db import SessionLocal
+
+    def caller(endpoint, params):
+        if endpoint == "search":
+            return {"items": [{"id": {"videoId": f"v{i}"}} for i in range(2)]}
+        return {
+            "items": [
+                {
+                    "id": video_id,
+                    "snippet": {
+                        "channelId": "UC1",
+                        "channelTitle": "c",
+                        "title": "女同情侣日常",
+                        "description": "",
+                        "publishedAt": "2026-09-16T08:30:00Z",
+                    },
+                    "statistics": {},
+                    "status": {"privacyStatus": "public"},
+                }
+                for video_id in params["id"].split(",")
+            ]
+        }
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["拉拉"], caller=caller)
+    body = client.get("/dashboard?key=test-admin-key&platform=youtube").text
+    assert '<td class="rank">1</td>' in body
+    assert '<td class="rank">2</td>' in body
