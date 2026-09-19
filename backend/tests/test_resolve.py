@@ -168,3 +168,74 @@ def test_each_link_reports_as_it_is_settled(client, api_key):
     assert [(done, total) for done, total, _ in seen] == [(1, 2), (2, 2)]
     assert "7123456789012345678" in seen[0][2]
     assert seen[1][2] == "could not be followed"
+
+
+def test_a_repeated_id_is_refused_and_stops_the_pass(client, api_key):
+    """Douyin answers a rate limit with a redirect, not a refusal.
+
+    One pass wrote the same id to 130 rows: past some number of
+    requests every short link landed on the same fallback page, and
+    an id read off it looks exactly like a real one. Every share link
+    names a different post, so the second sighting of an id is the
+    signal that the answers have stopped meaning anything.
+    """
+    for number in range(8):
+        _copy_link(
+            client,
+            api_key,
+            f"https://v.douyin.com/link{number}/",
+            fingerprint=f"fp-{number}",
+        )
+
+    followed: list[str] = []
+
+    def follower(url: str) -> str:
+        followed.append(url)
+        if url.endswith("link0/"):
+            return "https://www.iesdouyin.com/share/video/7686868494994886976/"
+        # The fallback page, handed to everything after the limit.
+        return "https://www.iesdouyin.com/share/video/7686345975925663411/"
+
+    with SessionLocal() as session:
+        report = resolve_pending(session, follower=follower, pause_seconds=0)
+
+    assert report.resolved == 2  # the real one, then the fallback once
+    assert report.rate_limited is True
+    # It stopped rather than working through the rest at one id each.
+    assert len(followed) == 5
+
+    with SessionLocal() as session:
+        ids = [
+            link.video_id
+            for link in session.query(SharedLink).all()
+            if link.video_id
+        ]
+        assert len(ids) == len(set(ids))
+
+
+def test_repair_returns_duplicated_ids_to_pending(client, api_key):
+    from app.resolve import unresolve_duplicates
+
+    _capture(client, api_key)
+    for number in range(3):
+        _copy_link(
+            client,
+            api_key,
+            f"https://v.douyin.com/link{number}/",
+            fingerprint="fp-1" if number == 0 else f"fp-{number}",
+        )
+
+    # Simulate the damage the guard now prevents.
+    with SessionLocal() as session:
+        for link in session.query(SharedLink).all():
+            link.video_id = "7686345975925663411"
+        session.commit()
+
+        assert unresolve_duplicates(session) == 3
+
+        for link in session.query(SharedLink).all():
+            assert link.video_id is None
+            assert link.canonical_url is None
+            assert link.matched_capture_id is None
+        # And the copied text, which is the observation, is still there.
+        assert all(link.raw_text for link in session.query(SharedLink).all())

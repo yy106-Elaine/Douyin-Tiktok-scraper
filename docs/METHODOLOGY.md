@@ -94,6 +94,21 @@ then compare — and move `douyin` into the verified set.
 Second, an id decoding outside 2016–now is refused rather than returned. A
 wrong date silently becomes a data point; a missing one does not.
 
+**Where the id comes from, and how it can be wrong.** A Douyin share link is
+`v.douyin.com/XXXX` and carries no id; following its redirect yields
+`iesdouyin.com/share/video/<id>/`, and that id is the record. Douyin rate-limits
+this by *redirecting* rather than refusing: past some number of requests every
+short link lands on the same fallback page, whose id is indistinguishable from
+a real one. One pass wrote a single id to 130 rows before this was understood.
+
+Every share link names a different post, so an id already held by another link
+is the signal. `app/resolve.py` refuses it, and stops the pass after three in a
+row rather than filling the table with one id. `python -m app.resolve --repair`
+returns any duplicated id to pending; the copied text is the observation and is
+never deleted. Two links *can* legitimately name one video, seen on two days,
+which is why the repair is a command someone runs after reading the counts and
+not something a pass decides on its own.
+
 ### 3. Pairing is heuristic
 
 A shared link is matched to a captured post by participant, platform, author
