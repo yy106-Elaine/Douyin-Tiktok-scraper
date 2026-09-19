@@ -78,6 +78,36 @@ class ProfilePageTest {
     }
 
     @Test
+    fun `a profile is recognised as still covering the feed`() {
+        // The screen that ended a run: the id had been read, one BACK
+        // had been pressed, and the profile was still up. The next
+        // swipe scrolled it, and the run looked for a share sheet on a
+        // page that has none.
+        for (label in listOf("薄荷骨钉、，复制名字", "抖音号：41435737586")) {
+            assertEquals(
+                "$label should mark a profile as open",
+                true,
+                ProfilePage.profileNameIn(label) != null ||
+                    ProfilePage.douyinIdIn(label) != null,
+            )
+        }
+    }
+
+    @Test
+    fun `the feed does not look like a profile`() {
+        for (label in listOf(
+            "分享，按钮", "未点赞，喜欢25，按钮", "@薄荷骨钉、", "玩同款", "进度条",
+        )) {
+            assertEquals(
+                "$label read as a profile",
+                false,
+                ProfilePage.profileNameIn(label) != null ||
+                    ProfilePage.douyinIdIn(label) != null,
+            )
+        }
+    }
+
+    @Test
     fun `feed controls are not author links`() {
         for (label in listOf(
             "未点赞，喜欢24，按钮",

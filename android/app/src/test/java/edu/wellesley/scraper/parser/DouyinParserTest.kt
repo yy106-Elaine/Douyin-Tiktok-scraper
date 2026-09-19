@@ -1,6 +1,7 @@
 package edu.wellesley.scraper.parser
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -244,6 +245,36 @@ class DouyinParserTest {
         assertEquals("咸鱼不闲（求推荐版）", parsed?.authorName)
         assertEquals("106", parsed?.likeRaw)
         assertEquals("4小时前", parsed?.postedAtRaw)
+    }
+
+    @Test
+    fun `the comment panel is not a post`() {
+        // A run ended up in this panel and the top comment was stored
+        // as a video: name=优乐美, caption=[舔屏][舔屏][舔屏]女神 首评.
+        // Three markers existed and none of them matched it.
+        val panel = listOf(
+            node("e9q", "评论 2", null),
+            node("title", "优乐美", null),
+            node("content", "[舔屏][舔屏][舔屏]女神 首评", null),
+            node("xwt", "回复", null),
+            node("gy_", null, "赞0,未选中"),
+            node("def", null, "踩,未选中"),
+            node("kmv", null, "放大评论区"),
+        )
+        assertNotNull(DouyinParser().skipReason(panel))
+    }
+
+    @Test
+    fun `the feed's own comment and save buttons are not the panel`() {
+        // These sit on every video. Mistaking them for an open panel
+        // would skip every frame and collect nothing -- the failure
+        // the TikTok side already lost a session to.
+        assertNull(DouyinParser().skipReason(post))
+        val withCounts = post + listOf(
+            node("e=0", null, "评论9，按钮"),
+            node("d_r", null, "未选中，收藏1，按钮"),
+        )
+        assertNull(DouyinParser().skipReason(withCounts))
     }
 
     @Test

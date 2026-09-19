@@ -100,6 +100,13 @@ class DouyinParser : PostParser {
             "comment box" to Regex("""留下你的精彩评论|善语结善缘"""),
             "all comments header" to Regex("""^全部评论"""),
             "reply target" to Regex("""回复\s*@"""),
+            // This panel got through all three and a comment was
+            // stored as a video: name=优乐美, caption=[舔屏][舔屏][舔屏]女神 首评.
+            // These three are unmistakable -- a feed has no enlarge
+            // control, no downvote, and no numbered comment header.
+            "enlarge control" to Regex("""放大[评評][论論]区"""),
+            "vote controls" to Regex("""[踩赞]\\d*[,，]未[选選]中"""),
+            "comment count header" to Regex("""^[评評][论論]\s*\d+$"""),
         )
         val SHARE_SHEET_OPEN = Regex("""^(?:分享给|分享給|[链連鏈]接已复制|去粘[贴貼]分享)""")
 

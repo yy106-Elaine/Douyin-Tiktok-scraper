@@ -77,6 +77,12 @@ object ShareSheet {
         Regex("""[链連鏈]接已复制"""),
         Regex("""^send to$""", RegexOption.IGNORE_CASE),
         Regex("""^share to$""", RegexOption.IGNORE_CASE),
+        // The comment panel belongs here for the same reason: it
+        // covers the feed, so the share control underneath is not
+        // reachable and a swipe scrolls comments. A run found itself
+        // in one and pressed on regardless.
+        Regex("""放大[评評][论論]区"""),
+        Regex("""[踩赞]\\d*[,，]未[选選]中"""),
     )
 
     /** A node, and the label that matched, for the run's log. */

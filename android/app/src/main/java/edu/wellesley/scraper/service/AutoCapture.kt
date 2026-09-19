@@ -66,6 +66,9 @@ class AutoCapture(private val service: AccessibilityService) {
     /** The author whose profile is being opened, if one is. */
     private var pendingAuthor: String? = null
 
+    /** Reset by [advance]; see [recover]. */
+    private var consecutiveFailures = 0
+
     // What a dry run has seen so far. The share control and the copy
     // entry are never on screen at the same time, so each is kept from
     // whichever look first found it.
@@ -90,6 +93,7 @@ class AutoCapture(private val service: AccessibilityService) {
         this.sawShare = null
         this.sawCopy = null
         this.tries = 0
+        this.consecutiveFailures = 0
         running = true
         CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
         if (mode == Mode.DRY_RUN) {
@@ -166,13 +170,24 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun openShare() {
         if (!keepGoing()) return
 
+        // Nothing is pressed while a panel covers the feed. A run
+        // ended up in a comment panel -- the share control underneath
+        // is not reachable from there, a swipe scrolls comments, and
+        // pressing on is how software starts tapping things nobody
+        // chose. Close it first; if it will not close, skip the video.
+        if (ShareSheet.isSheetOpen(roots()) || ProfilePage.isProfileOpen(roots())) {
+            CaptureStats.onAutoStep("something is covering the feed; closing it")
+            closeSheet(0) { closeProfile(0) }
+            return
+        }
+
         val found = ShareSheet.findShare(roots())
         if (found == null) {
             CaptureStats.onAutoFailure(
                 "no share control",
                 ShareSheet.describe(roots()),
             )
-            stop("share control not found")
+            recover("share control not found")
             return
         }
 
@@ -190,7 +205,7 @@ class AutoCapture(private val service: AccessibilityService) {
                 "no copy-link entry",
                 ShareSheet.describe(roots()),
             )
-            stop("copy-link entry not found")
+            recover("copy-link entry not found")
             return
         }
 
@@ -296,13 +311,32 @@ class AutoCapture(private val service: AccessibilityService) {
             CaptureStats.onAutoStep("no 抖音号 on this profile")
         }
 
-        // Back to the feed, then carry on. The profile is a page, so
-        // one BACK returns to the video that was in front.
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        handler.postDelayed({
-            if (!keepGoing()) return@postDelayed
+        closeProfile(0)
+    }
+
+    /**
+     * Press BACK until the profile is gone, and check rather than
+     * assume.
+     *
+     * One BACK and a fixed pause left it open: the next swipe scrolled
+     * the profile, and the run then looked for a share sheet on a page
+     * that has none and stopped. Same shape as [closeSheet] -- press
+     * only while something is detected, so a BACK never reaches the
+     * feed itself and walks out of Douyin.
+     */
+    private fun closeProfile(attempt: Int) {
+        if (!keepGoing()) return
+
+        if (!ProfilePage.isProfileOpen(roots())) {
             advance()
-        }, PROFILE_BACK_MILLIS)
+            return
+        }
+        if (attempt >= CLOSE_TRIES) {
+            recover("the profile would not close")
+            return
+        }
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        handler.postDelayed({ closeProfile(attempt + 1) }, PROFILE_BACK_MILLIS)
     }
 
     /**
@@ -349,11 +383,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         if (attempt >= CLOSE_TRIES) {
-            CaptureStats.onAutoFailure(
-                "the share sheet would not close",
-                ShareSheet.describe(roots()),
-            )
-            stop("share sheet would not close")
+            recover("the share sheet would not close")
             return
         }
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
@@ -362,9 +392,45 @@ class AutoCapture(private val service: AccessibilityService) {
 
     private fun advance() {
         remaining--
+        consecutiveFailures = 0
         CaptureStats.onAutoStep("next video, $remaining left")
         swipeUp()
         handler.postDelayed(::openShare, SETTLE_MILLIS)
+    }
+
+    /**
+     * Give up on this video, not on the run.
+     *
+     * A thirty-minute session ended on its third video because a
+     * profile had not closed in time. One step going wrong is not
+     * evidence that the next will, and ending the session costs every
+     * video that would have followed.
+     *
+     * It is still bounded, and still does not guess. Recovery is the
+     * same BACK-until-clear the loop already uses, then a swipe -- no
+     * new taps, nothing pressed that was not identified. What is
+     * guarded against is a run that fails on every video and keeps
+     * going regardless, so three in a row with nothing collected
+     * between them stops it and records the screen.
+     */
+    private fun recover(why: String) {
+        consecutiveFailures++
+        if (consecutiveFailures >= MAX_FAILURES) {
+            CaptureStats.onAutoFailure(
+                "$why, and $consecutiveFailures in a row",
+                ShareSheet.describe(roots()),
+            )
+            stop(why)
+            return
+        }
+        CaptureStats.onAutoStep("$why -- skipping this video")
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        handler.postDelayed({
+            if (!keepGoing()) return@postDelayed
+            remaining--
+            swipeUp()
+            handler.postDelayed(::openShare, SETTLE_MILLIS)
+        }, BACK_MILLIS)
     }
 
     // ----------------------------------------------------------------
@@ -477,6 +543,9 @@ class AutoCapture(private val service: AccessibilityService) {
         // generous. Only a first sighting of an author pays them.
         const val PROFILE_OPEN_MILLIS = 2_500L
         const val PROFILE_BACK_MILLIS = 1_200L
+
+        /** Consecutive failed videos before the run is the problem. */
+        const val MAX_FAILURES = 3
 
         // A dry run watches for half a minute: long enough to switch
         // apps, find the video again and open the share sheet by hand.

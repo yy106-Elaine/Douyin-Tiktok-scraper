@@ -88,6 +88,34 @@ object ProfilePage {
         return null
     }
 
+    /**
+     * Whether a profile is covering the feed.
+     *
+     * The feed never renders a 抖音号 or a 复制名字 control, so either
+     * is proof the page on top is a profile. Used to wait for it to
+     * close: one BACK and a fixed pause left it still open, and the
+     * next swipe then scrolled the profile while the run looked for a
+     * share sheet that could not be there.
+     */
+    fun isProfileOpen(roots: List<AccessibilityNodeInfo>): Boolean {
+        for (root in roots) {
+            var open = false
+            walk(root) { node ->
+                val label = label(node)
+                if (label != null &&
+                    (DOUYIN_ID.containsMatchIn(label) || PROFILE_NAME.containsMatchIn(label))
+                ) {
+                    open = true
+                    false
+                } else {
+                    true
+                }
+            }
+            if (open) return true
+        }
+        return false
+    }
+
     /** A profile is open when its own id line is on screen. */
     fun readDouyinId(roots: List<AccessibilityNodeInfo>): String? {
         for (root in roots) {
