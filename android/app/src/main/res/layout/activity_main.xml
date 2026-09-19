@@ -125,6 +125,18 @@
         android:layout_marginTop="4dp"
         android:text="@string/auto_stop" />
 
+    <!--
+        Needed after the corpus is cleaned. The visited-authors set
+        lives on the phone, so deleting rows on the server leaves the
+        run believing it already has ids it no longer has.
+    -->
+    <Button
+        android:id="@+id/autoForgetAuthors"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/auto_forget_authors" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

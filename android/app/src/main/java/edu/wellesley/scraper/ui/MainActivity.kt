@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         binding.autoStart.setOnClickListener {
             startAssisted(AutoCapture.Mode.LIVE, MINUTES, VIDEOS)
         }
+        binding.autoForgetAuthors.setOnClickListener { forgetVisitedAuthors() }
         binding.autoStop.setOnClickListener {
             CaptureAccessibilityService.stopAssisted()
             toast(getString(R.string.auto_stopped))
@@ -179,6 +180,29 @@ class MainActivity : AppCompatActivity() {
         binding.autoStart.isEnabled = idle
         binding.autoStop.isEnabled = !idle &&
             state != CaptureAccessibilityService.State.SERVICE_OFF
+    }
+
+    /**
+     * Forget which authors' profiles have been opened.
+     *
+     * A profile is visited once per author, because the 抖音号 belongs
+     * to the account and a visit is the most expensive step in the
+     * loop. That memory lives here rather than on the server, so
+     * deleting rows there leaves it claiming ids the corpus no longer
+     * holds -- and those authors are never revisited, so the ids are
+     * never collected again.
+     *
+     * A button rather than anything automatic: the phone cannot tell
+     * that a corpus was cleaned, and clearing this on its own would
+     * quietly spend fifteen seconds an author re-fetching what is
+     * already held.
+     */
+    private fun forgetVisitedAuthors() {
+        val prefs = Prefs(this)
+        val count = prefs.visitedAuthors.size
+        prefs.visitedAuthors = emptySet()
+        toast(getString(R.string.auto_forgot_authors, count))
+        showSelfCheck()
     }
 
     /**
