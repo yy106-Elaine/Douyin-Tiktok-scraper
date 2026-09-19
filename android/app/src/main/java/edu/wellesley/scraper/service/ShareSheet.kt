@@ -189,14 +189,37 @@ object ShareSheet {
      * Keyed on the caption node's own id rather than on "some long
      * text", so a comment bar or a hashtag banner does not pass for
      * one.
+     *
+     * And on *this* post's caption. The feed keeps the neighbouring
+     * videos in the tree, so the first version of this answered yes
+     * off the previous post's caption and opened the sheet over a
+     * blank one -- a run collected 614 posts and 33 rows. Screen
+     * position is what tells them apart, exactly as it does for the
+     * author line: the caption of the video in front sits low on the
+     * screen, the one above it has scrolled off the top, and the one
+     * below has not arrived.
+     *
+     * @param screenHeight pixels, to tell whose caption this is
      */
-    fun captionHasDrawn(roots: List<AccessibilityNodeInfo>): Boolean {
+    fun captionHasDrawn(
+        roots: List<AccessibilityNodeInfo>,
+        screenHeight: Int,
+    ): Boolean {
+        val bounds = android.graphics.Rect()
         for (root in roots) {
             var drawn = false
             walk(root) { node ->
                 val id = node.viewIdResourceName
-                if (id != null && id.endsWith(":id/desc") &&
-                    !node.text?.toString().isNullOrBlank()
+                if (id == null || !id.endsWith(":id/desc")) return@walk true
+                if (node.text?.toString().isNullOrBlank()) return@walk true
+
+                node.getBoundsInScreen(bounds)
+                // Wholly on screen and in its lower half: a caption
+                // sliding through the middle belongs to the post on
+                // its way out.
+                if (bounds.top >= 0 &&
+                    bounds.bottom <= screenHeight &&
+                    bounds.centerY() > screenHeight / 2
                 ) {
                     drawn = true
                     false

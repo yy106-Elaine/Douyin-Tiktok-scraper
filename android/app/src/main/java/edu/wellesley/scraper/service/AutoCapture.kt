@@ -556,7 +556,10 @@ class AutoCapture(private val service: AccessibilityService) {
      */
     private fun waitForCaption(attempt: Int) {
         if (!keepGoing()) return
-        if (attempt >= CAPTION_TRIES || ShareSheet.captionHasDrawn(roots())) {
+        val screenHeight = service.resources.displayMetrics.heightPixels
+        if (attempt >= CAPTION_TRIES ||
+            ShareSheet.captionHasDrawn(roots(), screenHeight)
+        ) {
             openShare()
             return
         }
