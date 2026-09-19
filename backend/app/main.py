@@ -6,6 +6,8 @@ import io
 import json
 from datetime import datetime, timezone
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -17,7 +19,7 @@ from sqlalchemy.orm import Session
 from . import participants as participant_registry
 from .auth import require_participant
 from .dashboard import require_admin_view, router as dashboard_router
-from .db import get_session, init_db
+from .db import SessionLocal, get_session, init_db
 from .links import canonical_url_for, extract
 from .models import CaptureEvent, Participant, SharedLink
 from .pairing import pair_shared_link, record_author_identity
@@ -35,11 +37,57 @@ from .schemas import (
     SharedLinkResponse,
 )
 
+async def _keep_links_resolved() -> None:
+    """Follow new short links a minute after they arrive.
+
+    Douyin's "copy link" yields `v.douyin.com/XXXX`, which carries no
+    video id: the id -- and with it the exact publication time, and
+    the URL a takedown check can revisit -- only exists after a
+    redirect is followed. Until then a row is a link and nothing else,
+    which is what the dashboard was showing after a collection run.
+
+    Doing it here rather than asking for a command after every run.
+    The daily job still runs it, and `python -m app.resolve` still
+    works; this only means nobody has to remember.
+
+    Deliberately not done during ingest: the phone should not wait on
+    an HTTP request to a platform to hand over a link it has already
+    collected, and a run uploads faster than redirects come back.
+    """
+    from .resolve import resolve_pending
+
+    while True:
+        await asyncio.sleep(RESOLVE_EVERY_SECONDS)
+        try:
+            def work() -> str:
+                with SessionLocal() as session:
+                    return str(resolve_pending(session))
+
+            report = await asyncio.to_thread(work)
+            logging.getLogger("resolve").info("%s", report)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A platform that is slow, rate-limiting or unreachable is
+            # a reason to try again in a minute, not to take the
+            # server down with it.
+            logging.getLogger("resolve").exception("resolve pass failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    yield
+    resolver = asyncio.create_task(_keep_links_resolved())
+    try:
+        yield
+    finally:
+        resolver.cancel()
 
+
+#: How often the background pass looks for unresolved links. Short
+#: enough that a dashboard opened after a collection run is already
+#: filled in, long enough to be nothing next to a redirect.
+RESOLVE_EVERY_SECONDS = 60
 
 app = FastAPI(
     title="Douyin/TikTok capture backend", version="0.1.0", lifespan=lifespan

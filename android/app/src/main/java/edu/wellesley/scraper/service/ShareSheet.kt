@@ -176,6 +176,39 @@ object ShareSheet {
         return false
     }
 
+    /**
+     * Whether the video's caption has drawn yet.
+     *
+     * A swipe lands before the post's text does: a frame caught in
+     * between holds the avatar and little else, which is why a
+     * thirty-minute run produced 174 links and only 45 rows with a
+     * caption. Waiting for this node is what gives the reader
+     * something to read -- the loop is not in a hurry, and a caption
+     * cannot be recovered later the way a video id can.
+     *
+     * Keyed on the caption node's own id rather than on "some long
+     * text", so a comment bar or a hashtag banner does not pass for
+     * one.
+     */
+    fun captionHasDrawn(roots: List<AccessibilityNodeInfo>): Boolean {
+        for (root in roots) {
+            var drawn = false
+            walk(root) { node ->
+                val id = node.viewIdResourceName
+                if (id != null && id.endsWith(":id/desc") &&
+                    !node.text?.toString().isNullOrBlank()
+                ) {
+                    drawn = true
+                    false
+                } else {
+                    true
+                }
+            }
+            if (drawn) return true
+        }
+        return false
+    }
+
     /** Whether a share sheet is covering the feed; see [SHEET]. */
     fun isSheetOpen(roots: List<AccessibilityNodeInfo>): Boolean =
         find(roots, Role.SHEET, matchUnclickable = true) != null

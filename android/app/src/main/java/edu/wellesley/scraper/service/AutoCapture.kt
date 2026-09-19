@@ -537,7 +537,30 @@ class AutoCapture(private val service: AccessibilityService) {
         consecutiveFailures = 0
         CaptureStats.onAutoStep("next video, $remaining left")
         swipeUp()
-        handler.postDelayed(::openShare, SETTLE_MILLIS)
+        handler.postDelayed({ waitForCaption(0) }, SETTLE_MILLIS)
+    }
+
+    /**
+     * Let the post's text draw before covering it with a sheet.
+     *
+     * The share sheet is opened about a second and a half after the
+     * swipe, and it hides the feed for the rest of the video. If the
+     * caption has not rendered in that window it is never read: a
+     * thirty-minute run collected 174 links and 45 captions.
+     *
+     * A caption cannot be recovered afterwards. The video id can --
+     * the link is followed later and yields it, along with the exact
+     * publication time -- but the text on the screen exists only
+     * while the screen shows it. So this waits, and gives up after a
+     * few seconds because some posts genuinely have no caption.
+     */
+    private fun waitForCaption(attempt: Int) {
+        if (!keepGoing()) return
+        if (attempt >= CAPTION_TRIES || ShareSheet.captionHasDrawn(roots())) {
+            openShare()
+            return
+        }
+        handler.postDelayed({ waitForCaption(attempt + 1) }, CAPTION_WAIT_MILLIS)
     }
 
     /**
@@ -593,7 +616,7 @@ class AutoCapture(private val service: AccessibilityService) {
         CaptureStats.onAutoStep("$why -- skipping this video")
         remaining--
         swipeUp()
-        handler.postDelayed(::openShare, SETTLE_MILLIS)
+        handler.postDelayed({ waitForCaption(0) }, SETTLE_MILLIS)
     }
 
     // ----------------------------------------------------------------
@@ -732,6 +755,16 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** Consecutive failed videos before the run is the problem. */
         const val MAX_FAILURES = 3
+
+        /**
+         * Up to three more seconds waiting for a caption to draw.
+         *
+         * Paid only by posts whose text is slow or absent, and worth
+         * it: a caption not read is gone, where a video id missed now
+         * is recovered from the link later.
+         */
+        const val CAPTION_TRIES = 6
+        const val CAPTION_WAIT_MILLIS = 500L
 
         /** One BACK, then this many waits for the feed to return. */
         const val PROFILE_WAIT_TRIES = 6
