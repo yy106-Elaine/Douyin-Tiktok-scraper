@@ -340,16 +340,39 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun closeProfile(attempt: Int) {
         if (!keepGoing()) return
 
-        if (!ProfilePage.isProfileOpen(roots())) {
+        // Wait for the video to come back, and recognise it by the
+        // share control being there again -- not by the profile
+        // appearing to be gone. A closing window lingers in the window
+        // list for a moment, so "still open" read true when it was
+        // already closing, a second BACK went in, and that one left
+        // the video entirely and landed on the search results.
+        //
+        // Exactly one BACK, then wait. Pressing again to hurry a page
+        // that is already leaving is what walked the run out of the
+        // feed, and there is nothing to hurry towards: the next step
+        // is a swipe.
+        if (onAVideo()) {
             advance()
             return
         }
-        if (attempt >= CLOSE_TRIES) {
-            recover("the profile would not close")
+        if (attempt == 0) {
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            handler.postDelayed({ closeProfile(1) }, PROFILE_BACK_MILLIS)
             return
         }
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        handler.postDelayed({ closeProfile(attempt + 1) }, PROFILE_BACK_MILLIS)
+        if (attempt < PROFILE_WAIT_TRIES) {
+            handler.postDelayed({ closeProfile(attempt + 1) }, PROFILE_BACK_MILLIS)
+            return
+        }
+        recover("the profile did not close")
+    }
+
+    /** The feed, with a video's own share control on it. */
+    private fun onAVideo(): Boolean {
+        val roots = roots()
+        if (ProfilePage.isProfileOpen(roots)) return false
+        if (ShareSheet.isSheetOpen(roots)) return false
+        return ShareSheet.findShare(roots) != null
     }
 
     /**
@@ -391,7 +414,10 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun closeSheet(attempt: Int, then: () -> Unit) {
         if (!keepGoing()) return
 
-        if (!ShareSheet.isSheetOpen(roots())) {
+        // Stop on the video being back, not on the sheet appearing to
+        // be gone: a closing window is still listed for a moment, and
+        // the extra BACK that buys goes through the feed.
+        if (onAVideo()) {
             then()
             return
         }
@@ -437,7 +463,12 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         CaptureStats.onAutoStep("$why -- skipping this video")
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        // BACK only to dismiss something that is demonstrably there.
+        // A BACK pressed on the feed itself leaves the video, which is
+        // how a run ended up scrolling the search results.
+        if (ShareSheet.isSheetOpen(roots()) || ProfilePage.isProfileOpen(roots())) {
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        }
         handler.postDelayed({
             if (!keepGoing()) return@postDelayed
             remaining--
@@ -559,6 +590,9 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** Consecutive failed videos before the run is the problem. */
         const val MAX_FAILURES = 3
+
+        /** One BACK, then this many waits for the feed to return. */
+        const val PROFILE_WAIT_TRIES = 6
 
         // A dry run watches for half a minute: long enough to switch
         // apps, find the video again and open the share sheet by hand.
