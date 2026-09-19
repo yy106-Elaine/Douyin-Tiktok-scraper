@@ -155,6 +155,54 @@ class DouyinParserTest {
     }
 
     @Test
+    fun `interface text with no author behind it is not a post`() {
+        // The first three were in the blocklist; the last two arrived
+        // in the next run from a part of the interface nobody had
+        // listed, which is why the test that matters is structural.
+        for (chrome in listOf(
+            "爱评论的人，运气不会差",
+            "期待你的评论",
+            "链接已复制成功，去粘贴分享：",
+            "发条评论，说说你的感受",
+            "未注册的手机号验证通过后将自动注册",
+        )) {
+            val frame = listOf(
+                node("e3n", chrome, null),
+                node("6o_", null, "进度条"),
+            )
+            assertNull("$chrome was stored as a post", DouyinParser().parse(frame))
+        }
+    }
+
+    @Test
+    fun `a post whose caption was not read is still a post`() {
+        // Real, from the corpus: 愛樂 with 77 likes and no caption node
+        // in that frame. An author and counts are enough.
+        val frame = listOf(
+            node("user_avatar", null, "愛樂"),
+            node("gzs", null, "未点赞，喜欢77，按钮"),
+            node("e=0", null, "评论6，按钮"),
+        )
+        val parsed = DouyinParser().parse(frame)
+        assertEquals("愛樂", parsed?.authorName)
+        assertEquals("77", parsed?.likeRaw)
+    }
+
+    @Test
+    fun `the at-name is the handle when no 抖音号 is on screen`() {
+        // Douyin does not render its stable id in the feed, so the
+        // column was always empty. The @name is the identifier the
+        // platform actually uses.
+        assertEquals("我爱吃葡萄", DouyinParser().parse(post)?.authorHandle)
+    }
+
+    @Test
+    fun `a 抖音号 on screen wins over the at-name`() {
+        val withId = post + node(null, "抖音号：grape_2024", null)
+        assertEquals("grape_2024", DouyinParser().parse(withId)?.authorHandle)
+    }
+
+    @Test
     fun `the rest of the post still parses`() {
         val parsed = DouyinParser().parse(post)
         assertEquals("我爱吃葡萄", parsed?.authorName)

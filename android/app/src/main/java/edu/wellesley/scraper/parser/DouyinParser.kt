@@ -36,6 +36,15 @@ class DouyinParser : PostParser {
          * feed does not show -- it lives on the profile page. Captured
          * when it happens to be on screen, since it is what makes an
          * account findable later.
+         *
+         * When it is not, the `@名字` beside the video is used as the
+         * handle instead. That is the identifier on this platform in
+         * practice: it is what the feed shows, what search accepts and
+         * what someone would be contacted through. It is a nickname
+         * and can be changed or shared with another account, so it is
+         * weaker than TikTok's `@handle` -- but an empty column is not
+         * the more honest answer, it is just an emptier one. The video
+         * link remains the identifier that cannot drift.
          */
         val DOUYIN_ID = Regex("""抖音号[：:\s]*([A-Za-z0-9._\-]{2,30})""")
 
@@ -161,7 +170,8 @@ class DouyinParser : PostParser {
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(
             platform = platform,
-            authorHandle = NodeTools.firstGroup(nodes, DOUYIN_ID),
+            authorHandle = NodeTools.firstGroup(nodes, DOUYIN_ID)
+                ?: NodeTools.firstGroup(nodes, AUTHOR),
             authorName = NodeTools.firstGroup(nodes, AUTHOR)
                 ?: NodeTools.byViewId(nodes, "author_name", "nickname", "title")?.text,
             caption = caption(nodes),
@@ -177,7 +187,31 @@ class DouyinParser : PostParser {
             isAiGenerated = NodeTools.anyMatches(nodes, AI_MARKER),
             videoIdHint = IdScanner.bestId(nodes),
         )
-        return post.takeIf { it.isUsable() }
+        return post.takeIf { it.isUsable() && isAPost(post) }
+    }
+
+    /**
+     * Whether this segment is a video rather than a piece of interface.
+     *
+     * Every real post in every dump carries an author beside it -- the
+     * avatar's contentDescription and the `title` node both name one --
+     * and almost all carry a count. Chrome carries neither: rows
+     * captioned 发条评论，说说你的感受 and 未注册的手机号验证通过后将自动注册
+     * reached the corpus with no author, no likes, no comments and no
+     * shares, and then took a video id from a link paired by time.
+     *
+     * A structural test rather than more wording. Naming the strings is
+     * the same losing game as naming the keyword collisions was: this
+     * blocklist was written from four observed placeholders and two
+     * more arrived in the next run, from a part of the interface --
+     * a login prompt -- nobody had thought to list. What does not
+     * change is that a video has an author.
+     */
+    private fun isAPost(post: ParsedPost): Boolean {
+        if (!post.authorName.isNullOrBlank() || !post.authorHandle.isNullOrBlank()) {
+            return true
+        }
+        return post.likeRaw != null || post.commentRaw != null || post.shareRaw != null
     }
 
     /** These patterns have two alternative capture groups; take whichever matched. */

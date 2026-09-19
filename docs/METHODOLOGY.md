@@ -105,6 +105,29 @@ long after viewing leaves the link unpaired.
 `shared_links.matched_capture_id` is null for every unpaired link — count
 them, and report the pairing rate.
 
+### 3b. On Douyin, the handle is a nickname
+
+`author_handle` means different things on the two phone platforms, and a
+write-up that treats the column as one thing will overstate what it has.
+
+TikTok renders an `@handle` that is unique and stable: it is the account, and
+it can be typed into a URL. Douyin's stable identifier is the 抖音号, which the
+feed never shows — it is on the profile page, one tap past anything this
+instrument sees. What the feed shows is `@昵称`, a display name.
+
+The column takes the 抖音号 when it happens to be on screen and the `@名字`
+otherwise. That is the identifier the platform uses in practice — it is what
+search accepts and what an author would be approached through — and leaving the
+column empty would not have been more honest, only emptier. But two Douyin
+accounts can carry the same nickname, and one account can change its nickname
+between the day a video was collected and the day someone tries to contact its
+author.
+
+So for recruitment: the **video link** is the identifier that cannot drift, and
+the handle is the human-readable route to the same place. Reach an author
+through the link, and read the 抖音号 off the profile page at that point if the
+account needs to be recorded stably.
+
 ### 4. Post identity can collide
 
 Without a video id, a post is identified by

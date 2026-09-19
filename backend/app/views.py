@@ -17,7 +17,7 @@ is reported alongside the value -- see `posted_source`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -340,4 +340,69 @@ def video_rows(
     rows.extend(_row_from_link(link) for link in unpaired)
 
     rows.sort(key=lambda row: row.when, reverse=True)
-    return rows[:limit]
+    return _one_row_per_video(rows)[:limit]
+
+
+def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
+    """Collapse rows that a video id proves are the same video.
+
+    A post is stored once per capture, and a caption that had not
+    rendered yet makes the second capture look like a different post:
+    the same author and the same counts under two identities, because
+    identity falls back to author plus caption. Once a link has given
+    both rows the same id, they are provably one video, and a table
+    that lists it twice is a table nobody can count.
+
+    Rows with no id are left alone. Without one there is no proof, and
+    guessing that two rows are the same video would silently merge two
+    videos by the same author -- a worse error than showing two rows.
+
+    The kept row is the fullest, field by field, so a caption read on
+    the second pass is not lost to a first pass that missed it.
+    """
+    at: dict[str, int] = {}
+    out: list[VideoRow] = []
+    for row in rows:
+        if not row.video_id:
+            out.append(row)
+            continue
+        index = at.get(row.video_id)
+        if index is None:
+            at[row.video_id] = len(out)
+            out.append(row)
+            continue
+        out[index] = _filled(out[index], row)
+
+    return out
+
+
+#: Filled from a second sighting when the first left them empty. Never
+#: `when` or `video_id`: the first sighting is the one first_seen means,
+#: and the id is what proved the two are the same row.
+_MERGEABLE = (
+    "posted_at",
+    "posted_display",
+    "posted_source",
+    "video_url",
+    "author_handle",
+    "author_name",
+    "caption",
+    "feed",
+    "like_count",
+    "comment_count",
+    "share_count",
+    "save_count",
+    "is_ad",
+    "is_ai_generated",
+)
+
+
+def _filled(held: VideoRow, other: VideoRow) -> VideoRow:
+    """`held` with its empty fields taken from `other`. Rows are frozen."""
+    gaps = {}
+    for field in _MERGEABLE:
+        if getattr(held, field, None) in (None, ""):
+            value = getattr(other, field, None)
+            if value not in (None, ""):
+                gaps[field] = value
+    return replace(held, **gaps) if gaps else held
