@@ -92,7 +92,7 @@ class ShareSheetTest {
         for (label in listOf(
             // Read off Douyin's sheet on the study phone: 合拍 posts a
             // duet with the video, 举报 files a report against it.
-            "转发到日常", "推荐", "合拍", "帮上热门", "举报", "取消",
+            "转发到日常", "推荐", "合拍", "帮上热门", "举报",
             // Read off Douyin on iOS, which offers a different set.
             "建群分享", "私信",
             "Repost", "Promote", "Create group", "Report", "Not interested",
@@ -101,6 +101,11 @@ class ShareSheetTest {
         )) {
             assertNull("$label must not match anything", ShareSheet.roleOf(label))
         }
+
+        // 取消 is the one entry in that row with a role, because the
+        // run taps it to close the sheet. What this test guards is
+        // unchanged: it must never be taken for a control that acts.
+        assertEquals(Role.DISMISS, ShareSheet.roleOf("取消"))
     }
 
     @Test
@@ -108,9 +113,18 @@ class ShareSheetTest {
         for (label in listOf(
             "未点赞，喜欢26，按钮", "评论8，按钮", "未选中，收藏收藏，按钮",
             "音乐，@姐姐创作的原声，按钮", "关注", "播放视频，按钮", "进度条",
-            "发布时间：5小时前", "期待你的评论", "返回",
+            "发布时间：5小时前", "期待你的评论",
         )) {
             assertNull("$label must not match anything", ShareSheet.roleOf(label))
         }
+    }
+
+    @Test
+    fun `the profile back arrow is not confused with back to top`() {
+        // 返回顶部 scrolls a long page; tapping it instead of the back
+        // arrow would leave the profile open and the run waiting.
+        assertEquals(true, ProfilePage.isAuthorLink("@someone"))
+        assertNull(ShareSheet.roleOf("返回"))
+        assertNull(ShareSheet.roleOf("返回顶部"))
     }
 }
