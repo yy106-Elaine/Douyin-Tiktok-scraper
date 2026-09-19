@@ -65,3 +65,31 @@ def test_a_profile_url_is_not_taken_for_a_video():
     # storing it as a video link would be wrong.
     parsed = extract("https://www.tiktok.com/@someuser")
     assert parsed.video_id is None
+
+
+def test_the_forms_a_douyin_short_link_lands_on():
+    """One run: 84 links followed, 84 landing pages we could not read.
+
+    A v.douyin.com link does not land on www.douyin.com/video/ as often
+    as the happy path suggests. These are the forms seen in the wild.
+    """
+    landings = {
+        # What the app's own share link still redirects to.
+        "https://www.iesdouyin.com/share/video/7123456789012345678/?region=CN": "7123456789012345678",
+        # A 图文 post: an aweme id like any other, and in scope.
+        "https://www.iesdouyin.com/share/note/7123456789012345679/": "7123456789012345679",
+        "https://www.douyin.com/note/7123456789012345670": "7123456789012345670",
+        # Opened over the author's page.
+        "https://www.douyin.com/user/MS4wLjABAAAA?modal_id=7123456789012345671": "7123456789012345671",
+        "https://www.douyin.com/video/7123456789012345672?x=1": "7123456789012345672",
+    }
+    for url, expected in landings.items():
+        parsed = extract(url)
+        assert parsed.platform == "douyin", url
+        assert parsed.video_id == expected, url
+        assert parsed.needs_resolution is False, url
+
+
+def test_a_douyin_profile_is_still_not_a_video():
+    parsed = extract("https://www.douyin.com/user/MS4wLjABAAAA")
+    assert parsed.video_id is None

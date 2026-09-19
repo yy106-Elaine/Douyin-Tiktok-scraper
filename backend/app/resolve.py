@@ -125,7 +125,7 @@ def resolve_pending(
         parsed = extract(final_url)
         if not parsed.video_id:
             report.failed += 1
-            note(index, "no video id in the page it landed on")
+            note(index, f"no video id in the page it landed on: {final_url}")
             continue
 
         link.video_id = parsed.video_id

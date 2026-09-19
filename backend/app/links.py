@@ -24,7 +24,19 @@ _TIKTOK_SHORT = re.compile(
     r"(?:(?:vm|vt)\.tiktok\.com|(?:www\.)?tiktok\.com/t)/(?P<slug>[\w]+)",
     re.IGNORECASE,
 )
-_DOUYIN_FULL = re.compile(r"douyin\.com/video/(?P<vid>\d+)", re.IGNORECASE)
+#: A short link lands on any of several forms. `www.douyin.com/video/`
+#: is the web page; `iesdouyin.com/share/video/` is what the app's own
+#: share link still redirects to; `note` is the same thing for a 图文
+#: post, which carries an aweme id exactly as a video does and is as
+#: much a part of the sample.
+_DOUYIN_FULL = re.compile(
+    r"(?:douyin\.com/(?:video|note)/|iesdouyin\.com/share/(?:video|note)/)"
+    r"(?P<vid>\d+)",
+    re.IGNORECASE,
+)
+#: A post opened over an author's page carries its id in the query
+#: instead: douyin.com/user/MS4wLj...?modal_id=7123456789012345678
+_DOUYIN_MODAL = re.compile(r"[?&]modal_id=(?P<vid>\d+)", re.IGNORECASE)
 _DOUYIN_SHORT = re.compile(r"v\.douyin\.com/(?P<slug>[\w\-]+)", re.IGNORECASE)
 
 
@@ -65,7 +77,9 @@ def extract(text: str) -> ExtractedLink:
             needs_resolution=False,
         )
 
-    if m := _DOUYIN_FULL.search(haystack):
+    if m := _DOUYIN_FULL.search(haystack) or (
+        _DOUYIN_MODAL.search(haystack) if "douyin.com" in haystack.lower() else None
+    ):
         vid = m.group("vid")
         return ExtractedLink(
             platform="douyin",
