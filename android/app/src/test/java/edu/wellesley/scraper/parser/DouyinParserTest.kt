@@ -226,6 +226,27 @@ class DouyinParserTest {
     }
 
     @Test
+    fun `the author line is not used as a caption`() {
+        // Real: a frame caught before the caption rendered, where the
+        // longest remaining text is the @name. A row went in reading
+        // caption=@咸鱼不闲（求推荐版）, and a caption is stored verbatim
+        // -- wrong is permanent, empty is a gap the next frame fills.
+        val frame = listOf(
+            node("user_avatar", null, "咸鱼不闲（求推荐版）"),
+            node("gzs", null, "未点赞，喜欢106，按钮"),
+            node("e=0", null, "评论9，按钮"),
+            node("title", "@咸鱼不闲（求推荐版）", null),
+            node("41=", "· 4小时前", "发布时间：4小时前"),
+        )
+        val parsed = DouyinParser().parse(frame)
+        assertNull(parsed?.caption)
+        // The rest of the row is still worth keeping.
+        assertEquals("咸鱼不闲（求推荐版）", parsed?.authorName)
+        assertEquals("106", parsed?.likeRaw)
+        assertEquals("4小时前", parsed?.postedAtRaw)
+    }
+
+    @Test
     fun `the rest of the post still parses`() {
         val parsed = DouyinParser().parse(post)
         assertEquals("我爱吃葡萄", parsed?.authorName)

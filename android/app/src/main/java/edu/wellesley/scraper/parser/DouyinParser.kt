@@ -257,7 +257,15 @@ class DouyinParser : PostParser {
                 it.description == null &&
                     (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH &&
                     it.text !in FEEDS &&
-                    !UI_CHROME.containsMatchIn(it.text!!)
+                    !UI_CHROME.containsMatchIn(it.text!!) &&
+                    // The author line is the longest text on a frame
+                    // whose caption has not rendered, so the fallback
+                    // took it: a row went in reading
+                    // caption=@咸鱼不闲（求推荐版）. A caption is stored
+                    // verbatim and cannot be recomputed later, so a
+                    // wrong one is permanent where an empty one is a
+                    // gap the next frame fills.
+                    !AUTHOR.containsMatchIn(it.text!!)
             }
             .maxByOrNull { it.text!!.length }
             ?.text
