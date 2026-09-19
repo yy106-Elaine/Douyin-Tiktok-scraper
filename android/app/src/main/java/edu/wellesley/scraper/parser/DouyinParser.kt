@@ -171,9 +171,17 @@ class DouyinParser : PostParser {
         val post = ParsedPost(
             platform = platform,
             authorHandle = NodeTools.firstGroup(nodes, DOUYIN_ID)
-                ?: NodeTools.firstGroup(nodes, AUTHOR),
+                ?: NodeTools.firstGroup(nodes, AUTHOR)
+                ?: NodeTools.byViewId(nodes, "user_avatar")?.description,
             authorName = NodeTools.firstGroup(nodes, AUTHOR)
-                ?: NodeTools.byViewId(nodes, "author_name", "nickname", "title")?.text,
+                ?: NodeTools.byViewId(nodes, "author_name", "nickname", "title")?.text
+                // The avatar's contentDescription is the display name,
+                // and it is the node most reliably present: `title`
+                // renders a moment later, and a frame caught in between
+                // had no author at all. Which is also what made a post
+                // with no caption yet indistinguishable from interface
+                // text -- neither had an author on it.
+                ?: NodeTools.byViewId(nodes, "user_avatar")?.description,
             caption = caption(nodes),
             postedAtRaw = NodeTools.firstGroup(nodes, POSTED_AT)
                 ?: NodeTools.firstGroup(nodes, POSTED_AT_TEXT),

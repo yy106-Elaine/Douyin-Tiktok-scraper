@@ -176,8 +176,11 @@ class DouyinParserTest {
 
     @Test
     fun `a post whose caption was not read is still a post`() {
-        // Real, from the corpus: 愛樂 with 77 likes and no caption node
-        // in that frame. An author and counts are enough.
+        // Real, from the corpus: 愛樂 with 77 likes, caught before the
+        // caption and the @name had rendered. Only the avatar names
+        // the author in this frame, and the parser was not reading it
+        // -- so the row had no author, which is what interface text
+        // looks like. An author and counts are enough.
         val frame = listOf(
             node("user_avatar", null, "愛樂"),
             node("gzs", null, "未点赞，喜欢77，按钮"),
@@ -185,6 +188,7 @@ class DouyinParserTest {
         )
         val parsed = DouyinParser().parse(frame)
         assertEquals("愛樂", parsed?.authorName)
+        assertEquals("愛樂", parsed?.authorHandle)
         assertEquals("77", parsed?.likeRaw)
     }
 
