@@ -7,8 +7,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import edu.wellesley.scraper.R
+import edu.wellesley.scraper.data.LinkQueue
 import edu.wellesley.scraper.data.Prefs
-import edu.wellesley.scraper.net.ApiClient
+import edu.wellesley.scraper.net.SyncWorker
 import edu.wellesley.scraper.service.CaptureStats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,10 +56,19 @@ class ClipboardReaderActivity : ComponentActivity() {
         saveClipboard()
     }
 
+    /**
+     * Put the clipboard on the queue and close, without waiting for the
+     * upload.
+     *
+     * This used to post the link and finish only once the server had
+     * answered, which meant an assisted run stood still for the length
+     * of a round trip on every video -- and lost the link outright if
+     * the round trip failed. The queue is on disk, so closing early
+     * costs nothing: the upload runs in the background and retries.
+     */
     private fun saveClipboard() {
         val prefs = Prefs(this)
-        val apiKey = prefs.apiKey
-        if (apiKey == null) {
+        if (!prefs.isRegistered) {
             finishWith(getString(R.string.share_not_registered))
             return
         }
@@ -68,34 +78,27 @@ class ClipboardReaderActivity : ComponentActivity() {
             finishWith(getString(R.string.clipboard_empty))
             return
         }
-        if (text == prefs.lastSavedClipboard) {
-            finishWith(getString(R.string.clipboard_already_saved))
-            return
-        }
 
         val fingerprint = CaptureStats.lastFingerprint
         lifecycleScope.launch {
-            val message = try {
-                withContext(Dispatchers.IO) {
-                    ApiClient(prefs.backendUrl).shareLink(
-                        apiKey = apiKey,
-                        rawText = text,
-                        sharedAt = System.currentTimeMillis(),
-                        fingerprint = fingerprint,
-                    )
-                }
-                prefs.lastSavedClipboard = text
-                getString(R.string.clipboard_saved)
-            } catch (error: ApiClient.ApiException) {
-                if (error.status == 422) {
-                    getString(R.string.share_not_recognised)
-                } else {
-                    getString(R.string.clipboard_failed)
-                }
-            } catch (error: Exception) {
-                getString(R.string.clipboard_failed)
+            val queued = withContext(Dispatchers.IO) {
+                LinkQueue.add(
+                    context = applicationContext,
+                    rawText = text,
+                    sharedAt = System.currentTimeMillis(),
+                    fingerprint = fingerprint,
+                ).also { CaptureStats.onLinkQueued(LinkQueue.waiting(applicationContext)) }
             }
-            finishWith(message)
+            if (queued == LinkQueue.Queued.ADDED) SyncWorker.enqueue(applicationContext)
+            finishWith(
+                getString(
+                    when (queued) {
+                        LinkQueue.Queued.ADDED -> R.string.clipboard_saved
+                        LinkQueue.Queued.ALREADY_HAVE_IT -> R.string.clipboard_already_saved
+                        LinkQueue.Queued.EMPTY -> R.string.clipboard_empty
+                    }
+                )
+            )
         }
     }
 

@@ -14,9 +14,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import edu.wellesley.scraper.R
 import edu.wellesley.scraper.data.CaptureDatabase
+import edu.wellesley.scraper.data.LinkQueue
 import edu.wellesley.scraper.data.Prefs
 import edu.wellesley.scraper.databinding.ActivityMainBinding
-import edu.wellesley.scraper.net.ApiClient
 import edu.wellesley.scraper.net.SyncWorker
 import edu.wellesley.scraper.service.AutoCapture
 import edu.wellesley.scraper.service.CaptureAccessibilityService
@@ -90,7 +90,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun captureCopiedLink() {
         val prefs = Prefs(this)
-        val apiKey = prefs.apiKey ?: return
+        if (!prefs.isRegistered) return
 
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val text = clipboard.primaryClip
@@ -106,23 +106,19 @@ class MainActivity : AppCompatActivity() {
 
         val fingerprint = CaptureStats.lastFingerprint
         lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    ApiClient(prefs.backendUrl).shareLink(
-                        apiKey = apiKey,
-                        rawText = text,
-                        sharedAt = System.currentTimeMillis(),
-                        fingerprint = fingerprint,
-                    )
-                }
-                prefs.lastSavedClipboard = text
-                toast(getString(R.string.clipboard_saved))
-                showSelfCheck()
-            } catch (error: Exception) {
-                // Nothing was typed, so say nothing on failure beyond
-                // this: a silent retry happens next time the app opens.
-                toast(getString(R.string.clipboard_failed))
+            val queued = withContext(Dispatchers.IO) {
+                LinkQueue.add(
+                    context = applicationContext,
+                    rawText = text,
+                    sharedAt = System.currentTimeMillis(),
+                    fingerprint = fingerprint,
+                ).also { CaptureStats.onLinkQueued(LinkQueue.waiting(applicationContext)) }
             }
+            if (queued == LinkQueue.Queued.ADDED) {
+                SyncWorker.enqueue(applicationContext)
+                toast(getString(R.string.clipboard_saved))
+            }
+            showSelfCheck()
         }
     }
 
@@ -239,38 +235,30 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val prefs = Prefs(this)
-        val apiKey = prefs.apiKey
-        if (apiKey == null) {
+        if (!Prefs(this).isRegistered) {
             toast(getString(R.string.share_not_registered))
             return
         }
 
         binding.pasteButton.isEnabled = false
         lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    ApiClient(prefs.backendUrl).shareLink(
-                        apiKey = apiKey,
-                        rawText = text,
-                        sharedAt = System.currentTimeMillis(),
-                        fingerprint = CaptureStats.lastFingerprint,
-                    )
-                }
+            val queued = withContext(Dispatchers.IO) {
+                LinkQueue.add(
+                    context = applicationContext,
+                    rawText = text,
+                    sharedAt = System.currentTimeMillis(),
+                    fingerprint = CaptureStats.lastFingerprint,
+                ).also { CaptureStats.onLinkQueued(LinkQueue.waiting(applicationContext)) }
+            }
+            if (queued == LinkQueue.Queued.ADDED) {
+                SyncWorker.enqueue(applicationContext)
                 binding.pasteInput.setText("")
                 toast(getString(R.string.share_saved))
-            } catch (error: ApiClient.ApiException) {
-                toast(
-                    getString(
-                        if (error.status == 422) R.string.share_not_recognised
-                        else R.string.share_not_registered
-                    )
-                )
-            } catch (error: Exception) {
-                toast(getString(R.string.share_not_recognised))
-            } finally {
-                binding.pasteButton.isEnabled = true
+            } else {
+                toast(getString(R.string.clipboard_already_saved))
             }
+            binding.pasteButton.isEnabled = true
+            showSelfCheck()
         }
     }
 

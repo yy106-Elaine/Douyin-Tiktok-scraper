@@ -10,7 +10,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import edu.wellesley.scraper.data.CaptureDatabase
+import edu.wellesley.scraper.data.LinkQueue
 import edu.wellesley.scraper.data.Prefs
+import edu.wellesley.scraper.service.CaptureStats
 import java.util.concurrent.TimeUnit
 
 /**
@@ -27,10 +29,17 @@ class SyncWorker(context: Context, params: WorkerParameters) :
     override suspend fun doWork(): Result {
         val prefs = Prefs(applicationContext)
         val apiKey = prefs.apiKey ?: return Result.success()
-        val dao = CaptureDatabase.get(applicationContext).captureDao()
 
+        // Links first. They are the only record of which video was on
+        // screen -- a capture can be read off the feed again tomorrow,
+        // a link cannot be re-copied once the clipboard has moved on.
+        val links = LinkQueue.drain(applicationContext)
+        CaptureStats.onLinkDrain(links)
+        val linksLeft = LinkQueue.waiting(applicationContext) > 0
+
+        val dao = CaptureDatabase.get(applicationContext).captureDao()
         val batch = dao.pendingBatch(BATCH_SIZE)
-        if (batch.isEmpty()) return Result.success()
+        if (batch.isEmpty()) return if (linksLeft) Result.retry() else Result.success()
 
         return try {
             ApiClient(prefs.backendUrl).uploadBatch(apiKey, prefs.deviceId, batch)
@@ -38,7 +47,7 @@ class SyncWorker(context: Context, params: WorkerParameters) :
             dao.purgeSyncedBefore(System.currentTimeMillis() - RETENTION_MILLIS)
             // More may be waiting; come straight back for the next batch.
             if (batch.size == BATCH_SIZE) enqueue(applicationContext)
-            Result.success()
+            if (linksLeft) Result.retry() else Result.success()
         } catch (error: ApiClient.ApiException) {
             // A rejected key will never succeed on retry; anything else might.
             if (error.status == 401) Result.failure() else Result.retry()

@@ -192,6 +192,31 @@ object CaptureStats {
         autoStoppedBecause = why
     }
 
+    // ----------------------------------------------------------------
+    // Links
+    // ----------------------------------------------------------------
+    //
+    // Whether a link reached the server is invisible otherwise: the
+    // toast is gone in two seconds and an assisted run produces one per
+    // video while the screen is not being watched. A run that collected
+    // nothing and a run whose uploads all failed look identical on the
+    // dashboard, and only one of them is recoverable.
+
+    @Volatile private var linksWaiting = 0
+    @Volatile private var linksSent = 0
+    @Volatile private var linksDiscarded = 0
+    @Volatile private var lastLinkFailure: String? = null
+
+    fun onLinkQueued(waiting: Int) {
+        linksWaiting = waiting
+    }
+
+    fun onLinkDrain(drain: edu.wellesley.scraper.data.LinkQueue.Drain) {
+        linksSent += drain.sent
+        linksDiscarded += drain.discarded
+        lastLinkFailure = drain.failure
+    }
+
     /** A block of text someone can read on screen, or paste into a message. */
     fun report(): String {
         val lines = mutableListOf<String>()
@@ -229,6 +254,16 @@ object CaptureStats {
         lastIdScan?.let { lines += "  last scan: $it" }
 
         lines += "Distinct posts buffered: $distinctPosts"
+
+        lines += ""
+        lines += "Links uploaded: $linksSent   waiting: $linksWaiting"
+        if (linksDiscarded > 0) {
+            lines += "  $linksDiscarded discarded (server found no link in the text)"
+        }
+        lastLinkFailure?.let {
+            lines += "  UPLOAD FAILING: $it"
+            lines += "  Links are kept on the phone and retried; none are lost."
+        }
         lines += "Search frames: $searchFrames   tiles harvested: $searchTiles"
 
         if (autoMode != null) {
