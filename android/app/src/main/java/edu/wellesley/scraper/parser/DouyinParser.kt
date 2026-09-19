@@ -103,6 +103,18 @@ class DouyinParser : PostParser {
         )
         val SHARE_SHEET_OPEN = Regex("""^(?:分享给|分享給|[链連鏈]接已复制|去粘[贴貼]分享)""")
 
+        /**
+         * A profile page over the feed, which is not a post either.
+         *
+         * Both windows flatten into one frame while a profile is open,
+         * and the 抖音号 on the profile then sits inside whichever feed
+         * segment came last. A real run stored `handle=zz272328` on a
+         * post by Devil: the id belongs to zz7, whose profile happened
+         * to be on screen. The feed never shows a 抖音号, so its
+         * presence is itself the signal that this frame is not a feed.
+         */
+        val PROFILE_OPEN = Regex("""抖音号|抖音號|复制名字|複製名字""")
+
         val AD_MARKER = Regex("""(?:广告|推广|品牌合作)""")
         val AI_MARKER = Regex("""(?:AI生成|AI创作|疑似AI)""")
 
@@ -162,6 +174,7 @@ class DouyinParser : PostParser {
         // post. During an assisted run this is on screen for a second
         // of every video, which is how it ended up in the corpus.
         if (NodeTools.anyMatches(nodes, SHARE_SHEET_OPEN)) return "share sheet open"
+        if (NodeTools.anyMatches(nodes, PROFILE_OPEN)) return "profile page open"
         return COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
             NodeTools.anyMatches(nodes, pattern)
         }?.let { (name, _) -> "comment sheet open ($name)" }

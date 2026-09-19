@@ -207,6 +207,25 @@ class DouyinParserTest {
     }
 
     @Test
+    fun `a profile over the feed is not a post`() {
+        // Both windows flatten into one frame while a profile is open,
+        // and the 抖音号 on it then lands inside whichever feed segment
+        // came last. A real run stored handle=zz272328 on a post by
+        // Devil; the id belongs to zz7, whose profile was on screen.
+        val frame = post + listOf(
+            node("tp6", null, "zz7，复制名字"),
+            node("57l", "抖音号：zz272328", null),
+            node("2no", null, "返回顶部"),
+        )
+        assertEquals("profile page open", DouyinParser().skipReason(frame))
+    }
+
+    @Test
+    fun `an ordinary post is not mistaken for a profile`() {
+        assertNull(DouyinParser().skipReason(post))
+    }
+
+    @Test
     fun `the rest of the post still parses`() {
         val parsed = DouyinParser().parse(post)
         assertEquals("我爱吃葡萄", parsed?.authorName)
