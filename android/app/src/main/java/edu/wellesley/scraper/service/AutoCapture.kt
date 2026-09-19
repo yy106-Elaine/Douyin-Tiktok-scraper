@@ -179,7 +179,9 @@ class AutoCapture(private val service: AccessibilityService) {
         // is not reachable from there, a swipe scrolls comments, and
         // pressing on is how software starts tapping things nobody
         // chose. Close it first; if it will not close, skip the video.
-        if (ShareSheet.isSheetOpen(roots()) || ProfilePage.isProfileOpen(roots())) {
+        if (ShareSheet.isSheetOpen(activeRoots()) ||
+            ProfilePage.isProfileOpen(activeRoots())
+        ) {
             CaptureStats.onAutoStep("something is covering the feed; closing it")
             closeSheet(0) { closeProfile(0) }
             return
@@ -397,7 +399,10 @@ class AutoCapture(private val service: AccessibilityService) {
         // where two runs ended up. 取消 on the sheet and 返回 on the
         // profile can each only do the one thing they say, so being
         // wrong about which screen we are on stops mattering.
-        val roots = roots()
+        // Only what is on top: a control in a window that is already
+        // closing is not on screen, and tapping it navigates from
+        // wherever we actually are.
+        val roots = activeRoots()
         ShareSheet.findDismiss(roots)?.let {
             CaptureStats.onAutoStep("dismiss: ${it.label}")
             tap(it.node)
@@ -415,10 +420,37 @@ class AutoCapture(private val service: AccessibilityService) {
 
     /** The feed, with a video's own share control on it. */
     private fun onAVideo(): Boolean {
-        val roots = roots()
-        if (ProfilePage.isProfileOpen(roots)) return false
-        if (ShareSheet.isSheetOpen(roots)) return false
-        return ShareSheet.findShare(roots) != null
+        // "What is covering the screen" is a question about the window
+        // on top, not about every window the app has. A closed window
+        // lingers in the list for a while, so asking all of them kept
+        // answering "the profile is still open" after the back arrow
+        // had already closed it -- and the recovery for that pressed
+        // back again, which is what left the video.
+        val top = activeRoots()
+        if (ProfilePage.isProfileOpen(top)) return false
+        if (ShareSheet.isSheetOpen(top)) return false
+        // Finding the control can look anywhere: a feed window that is
+        // merely behind something is still the feed.
+        return ShareSheet.findShare(roots()) != null
+    }
+
+    /**
+     * The window on top, when it belongs to the app being collected.
+     *
+     * [roots] answers "what does this app have open"; this answers
+     * "what is the person looking at". Those are different questions
+     * and confusing them has now caused the same failure three times.
+     */
+    private fun activeRoots(): List<AccessibilityNodeInfo> {
+        val wanted = startedIn
+        val active = service.windows
+            .filter { it.isActive }
+            .mapNotNull { window ->
+                window.root?.takeIf { it.packageName?.toString() == wanted }
+            }
+        if (active.isNotEmpty()) return active
+        val root = service.rootInActiveWindow
+        return if (root?.packageName?.toString() == wanted) listOf(root) else emptyList()
     }
 
     /**
