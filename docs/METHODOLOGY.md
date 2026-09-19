@@ -117,7 +117,14 @@ is itself a finding worth reporting: the community's practice on YouTube is
 thin compared with Douyin and TikTok, and the search reaches it only through a
 great deal of noise.
 
-The excluded rows are kept and counted, and they are not re-checked. Every one
+The excluded rows are counted, written to a CSV and then removed from the
+database by `python -m app.prune` (`--apply` writes; the CSV is the audit
+trail, because the classifier is fallible -- 拉拉裤 and 巴拉拉小魔仙 both had
+to be taught -- and "read a category before trusting it" stops being possible
+once the rows are gone). Removing a row takes its `capture_events` payload and
+any re-checks made against its id with it. Platforms with no topic filter are
+never pruned. Until a corpus is pruned its excluded rows are still not
+re-checked. Every one
 of them was, at first, and a takedown rate computed over adult nappies and
 Japanese vlogs was being presented as the corpus's. `collected_targets` now
 applies the same scope condition the dashboard and the export use, so
