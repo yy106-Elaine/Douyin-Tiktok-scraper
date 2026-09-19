@@ -11,8 +11,18 @@ interface LinkDao {
     @Insert
     suspend fun insert(link: LinkEntity): Long
 
-    @Query("SELECT * FROM links ORDER BY sharedAt LIMIT :limit")
-    suspend fun pending(limit: Int): List<LinkEntity>
+    /**
+     * Links old enough to send.
+     *
+     * A link is uploaded and deleted within a second or two of being
+     * queued, and the 抖音号 for the same video arrives seven seconds
+     * later -- by which time the row it belongs on is gone. Holding
+     * the newest ones back costs nothing, because nothing downstream
+     * is waiting on an upload, and it is what lets the id find its
+     * video.
+     */
+    @Query("SELECT * FROM links WHERE sharedAt <= :notAfter ORDER BY sharedAt LIMIT :limit")
+    suspend fun pending(limit: Int, notAfter: Long): List<LinkEntity>
 
     @Query("DELETE FROM links WHERE id = :id")
     suspend fun delete(id: Long)

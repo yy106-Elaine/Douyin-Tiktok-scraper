@@ -34,6 +34,16 @@ object ProfilePage {
     private val DOUYIN_ID = Regex("""抖音号[：:\s]*([A-Za-z0-9._\-]{2,30})""")
 
     /**
+     * The profile naming itself.
+     *
+     * Read off the study phone: the nickname sits on a node whose
+     * contentDescription is `zz7，复制名字`. It is the only statement of
+     * whose page this is that does not depend on having tapped the
+     * right thing, which makes it the one worth checking against.
+     */
+    private val PROFILE_NAME = Regex("""^(.+)[，,]复制名[字稱称]$""")
+
+    /**
      * The 抖音号 in a piece of text, if there is one.
      *
      * Public and pure so the patterns can be checked without a device
@@ -50,6 +60,33 @@ object ProfilePage {
      */
     fun isAuthorLink(label: String): Boolean =
         !NEVER_TAP.containsMatchIn(label) && AUTHOR_LINK.containsMatchIn(label)
+
+    /** Whose profile this is, according to the page itself. */
+    fun profileNameIn(text: String): String? =
+        PROFILE_NAME.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+
+    /**
+     * The nickname the open profile gives for itself, if it gives one.
+     *
+     * Null is not "the wrong profile" -- an older build may not label
+     * the node at all -- so a caller treats it as "cannot tell" rather
+     * than as a mismatch.
+     */
+    fun openProfileName(roots: List<AccessibilityNodeInfo>): String? {
+        for (root in roots) {
+            var found: String? = null
+            walk(root) { node ->
+                val label = label(node) ?: return@walk true
+                profileNameIn(label)?.let {
+                    found = it
+                    return@walk false
+                }
+                true
+            }
+            if (found != null) return found
+        }
+        return null
+    }
 
     /** A profile is open when its own id line is on screen. */
     fun readDouyinId(roots: List<AccessibilityNodeInfo>): String? {

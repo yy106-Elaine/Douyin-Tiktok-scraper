@@ -54,6 +54,30 @@ class ProfilePageTest {
     }
 
     @Test
+    fun `the profile names itself`() {
+        // From the study phone: the nickname is on a node whose
+        // contentDescription ends 复制名字. It is the only statement of
+        // whose page this is that does not assume the right thing was
+        // tapped, which is why it is what gets checked.
+        assertEquals("zz7", ProfilePage.profileNameIn("zz7，复制名字"))
+        assertEquals("坏了她真可爱", ProfilePage.profileNameIn("坏了她真可爱，复制名字"))
+        assertEquals("．．．", ProfilePage.profileNameIn("．．．，复制名字"))
+    }
+
+    @Test
+    fun `anything else is not a profile name`() {
+        for (label in listOf(
+            "抖音号：zz272328",
+            "220 获赞",
+            "复制名字",
+            "@zz7",
+            "关注",
+        )) {
+            assertNull("$label read as a profile name", ProfilePage.profileNameIn(label))
+        }
+    }
+
+    @Test
     fun `feed controls are not author links`() {
         for (label in listOf(
             "未点赞，喜欢24，按钮",

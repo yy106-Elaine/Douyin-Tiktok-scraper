@@ -57,6 +57,16 @@ object LinkQueue {
      * will be just as true tomorrow, so the row goes rather than
      * blocking everything behind it forever.
      */
+    /**
+     * How long a link waits before it may be uploaded.
+     *
+     * Long enough for the profile step -- tap, page load, read, back --
+     * to attach a 抖音号 to it. An upload is never urgent: the toast
+     * that tells someone their link was saved fires when it is queued,
+     * not when it lands.
+     */
+    const val HOLD_MILLIS = 30_000L
+
     suspend fun drain(context: Context, limit: Int = 100): Drain {
         val prefs = Prefs(context)
         val apiKey = prefs.apiKey ?: return Drain(0, 0, "not registered")
@@ -65,7 +75,8 @@ object LinkQueue {
 
         var sent = 0
         var discarded = 0
-        for (link in dao.pending(limit)) {
+        val ready = dao.pending(limit, System.currentTimeMillis() - HOLD_MILLIS)
+        for (link in ready) {
             try {
                 client.shareLink(
                     apiKey,
@@ -104,6 +115,11 @@ object LinkQueue {
         val dao = CaptureDatabase.get(context).linkDao()
         val newest = dao.newest() ?: return false
         if (newest.authorHandle != null) return false
+        // Only a link from this video. An id attached to whatever
+        // happened to be queued last would be a claim about a
+        // different video, which is the mistake this whole path was
+        // rewritten to avoid.
+        if (System.currentTimeMillis() - newest.sharedAt > HOLD_MILLIS) return false
         dao.setAuthorHandle(newest.id, handle)
         return true
     }

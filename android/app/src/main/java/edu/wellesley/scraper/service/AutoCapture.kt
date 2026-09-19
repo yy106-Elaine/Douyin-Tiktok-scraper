@@ -273,7 +273,16 @@ class AutoCapture(private val service: AccessibilityService) {
             // seconds every time that author comes round again.
             prefs.visitedAuthors = prefs.visitedAuthors + name
         }
-        if (id != null) {
+        // The page says whose it is. When it disagrees with the name
+        // that was tapped, the run did not land where it meant to and
+        // the id would be attached to the wrong video's link. Null
+        // means the page did not say, which is not a disagreement.
+        val whose = ProfilePage.openProfileName(roots())
+        val landedWrong = name != null && whose != null && whose != name
+
+        if (landedWrong) {
+            CaptureStats.onAutoStep("discarded $id: opened $whose, wanted $name")
+        } else if (id != null) {
             scope.launch {
                 val attached = LinkQueue.attachAuthorHandle(
                     service.applicationContext, id
