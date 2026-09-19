@@ -47,8 +47,15 @@ class MainActivity : AppCompatActivity() {
         binding.selfCheckRefresh.setOnClickListener { showSelfCheck() }
         binding.selfCheckCopy.setOnClickListener { copySelfCheck() }
         binding.saveButtonToggle.setOnClickListener { toggleSaveButton() }
-        binding.autoDryRun.setOnClickListener { startAssisted(AutoCapture.Mode.DRY_RUN) }
-        binding.autoStart.setOnClickListener { startAssisted(AutoCapture.Mode.LIVE) }
+        binding.autoDryRun.setOnClickListener {
+            startAssisted(AutoCapture.Mode.DRY_RUN, MINUTES, VIDEOS)
+        }
+        binding.autoTry.setOnClickListener {
+            startAssisted(AutoCapture.Mode.LIVE, TRY_MINUTES, TRY_VIDEOS)
+        }
+        binding.autoStart.setOnClickListener {
+            startAssisted(AutoCapture.Mode.LIVE, MINUTES, VIDEOS)
+        }
         binding.autoStop.setOnClickListener {
             CaptureAccessibilityService.stopAssisted()
             toast(getString(R.string.auto_stopped))
@@ -132,8 +139,8 @@ class MainActivity : AppCompatActivity() {
      * never been read off a device, so the selectors are guesses until
      * one run reports what it found.
      */
-    private fun startAssisted(mode: AutoCapture.Mode) {
-        val refusal = CaptureAccessibilityService.armAssisted(mode, MINUTES, VIDEOS)
+    private fun startAssisted(mode: AutoCapture.Mode, minutes: Int, videos: Int) {
+        val refusal = CaptureAccessibilityService.armAssisted(mode, minutes, videos)
         if (refusal != null) {
             toast(refusal)
             return
@@ -172,6 +179,7 @@ class MainActivity : AppCompatActivity() {
         )
         val idle = state == CaptureAccessibilityService.State.IDLE
         binding.autoDryRun.isEnabled = idle
+        binding.autoTry.isEnabled = idle
         binding.autoStart.isEnabled = idle
         binding.autoStop.isEnabled = !idle &&
             state != CaptureAccessibilityService.State.SERVICE_OFF
@@ -310,6 +318,20 @@ class MainActivity : AppCompatActivity() {
         /** How long a run may last, and how many videos it may step through. */
         const val MINUTES = 30
         const val VIDEOS = 300
+
+        /**
+         * A first live run, short enough to watch the whole way.
+         *
+         * Every step of the loop has now been checked one at a time,
+         * but never end to end on a device: whether pressing 分享链接
+         * opens a second sheet on this build, whether the clipboard
+         * read returns in time, whether the swipe lands on the next
+         * video. Finding that out over five videos costs a minute;
+         * finding it out over three hundred wastes half an hour and
+         * leaves a mess to read backwards.
+         */
+        const val TRY_MINUTES = 3
+        const val TRY_VIDEOS = 5
 
         /** Only redraws four views; a second is unnoticeable and enough. */
         const val STATE_TICK_MILLIS = 1_000L

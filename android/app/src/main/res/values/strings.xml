@@ -34,6 +34,7 @@
     <string name="auto_title">Assisted collection</string>
     <string name="auto_help">Repeats the copy-link step for you. Open Douyin or TikTok, search, filter to the last day, then come back and start a run. It stops on its own after the time or video limit, and the moment you leave the app.</string>
     <string name="auto_dry_run">Dry run — find the buttons, press nothing</string>
+    <string name="auto_try">Try a short run — 5 videos</string>
     <string name="auto_start">Start a 30-minute run</string>
     <string name="auto_stop">Stop the run</string>
     <string name="auto_started">Running. Switch to the app now.</string>

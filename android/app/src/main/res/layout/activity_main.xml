@@ -105,6 +105,13 @@
         android:text="@string/auto_dry_run" />
 
     <Button
+        android:id="@+id/autoTry"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/auto_try" />
+
+    <Button
         android:id="@+id/autoStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

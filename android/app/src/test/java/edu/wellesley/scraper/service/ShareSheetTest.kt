@@ -50,7 +50,11 @@ class ShareSheetTest {
         // Every one of these sits in a share sheet next to the entry we
         // do want, and 建群分享, 推荐 and Repost all post something.
         for (label in listOf(
-            "建群分享", "转发到日常", "帮上热门", "私信", "推荐",
+            // Read off Douyin's sheet on the study phone: 合拍 posts a
+            // duet with the video, 举报 files a report against it.
+            "转发到日常", "推荐", "合拍", "帮上热门", "举报", "取消",
+            // Read off Douyin on iOS, which offers a different set.
+            "建群分享", "私信",
             "Repost", "Promote", "Create group", "Report", "Not interested",
             "WhatsApp", "SMS", "Instagram Direct", "Facebook",
             "微信", "朋友圈", "QQ", "QQ空间", "微博",
