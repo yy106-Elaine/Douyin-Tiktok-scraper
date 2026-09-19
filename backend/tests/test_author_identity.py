@@ -218,13 +218,26 @@ def test_adopting_a_handle_never_replaces_an_observed_one():
 
     from app.pairing import _adopt_handle
 
-    post = SimpleNamespace(author_handle="seenonscreen")
+    post = SimpleNamespace(author_handle="seenonscreen", author_name="A Name")
     _adopt_handle(SimpleNamespace(author_handle="@fromlink"), post)
     assert post.author_handle == "seenonscreen"
 
-    empty = SimpleNamespace(author_handle=None)
+    empty = SimpleNamespace(author_handle=None, author_name="A Name")
     _adopt_handle(SimpleNamespace(author_handle="@fromlink"), empty)
     assert empty.author_handle == "fromlink"  # the @ is not stored
+
+
+def test_a_douyin_id_replaces_the_display_name_standing_in_for_it():
+    """Douyin renders no handle in the feed, so the column holds the
+    nickname until the profile is read. That was always a stand-in for
+    the 抖音号, and this is the moment it arrives."""
+    from types import SimpleNamespace
+
+    from app.pairing import _adopt_handle
+
+    post = SimpleNamespace(author_handle="沽月", author_name="沽月")
+    _adopt_handle(SimpleNamespace(author_handle="71293403098"), post)
+    assert post.author_handle == "71293403098"
 
 
 def test_a_mismatched_author_is_not_paired_at_all(client, api_key):

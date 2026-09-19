@@ -178,7 +178,11 @@ def ingest_shared_link(
         platform=parsed.platform,
         raw_text=body.raw_text,
         video_id=parsed.video_id,
-        author_handle=parsed.author_handle,
+        # The device's reading wins over the one extracted from the
+        # URL: a 抖音号 was read off the profile, while a TikTok URL
+        # yields an `@handle`. Only one platform supplies each, so they
+        # never compete for the same row.
+        author_handle=body.author_handle or parsed.author_handle,
         canonical_url=parsed.canonical_url,
         shared_at=shared_at,
         fingerprint=body.fingerprint,

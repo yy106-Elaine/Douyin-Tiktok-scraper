@@ -69,11 +69,6 @@ class Prefs(context: Context) {
         get() = prefs.getStringSet(KEY_VISITED, emptySet()).orEmpty()
         set(value) = prefs.edit { putStringSet(KEY_VISITED, value) }
 
-    /** `name\u0000id` pairs the server has not acknowledged yet. */
-    var pendingAuthorIds: Set<String>
-        get() = prefs.getStringSet(KEY_PENDING_IDS, emptySet()).orEmpty()
-        set(value) = prefs.edit { putStringSet(KEY_PENDING_IDS, value) }
-
     /** Whether the floating save-link button is wanted. */
     var showSaveButton: Boolean
         get() = prefs.getBoolean(KEY_SAVE_BUTTON, false)
@@ -92,14 +87,11 @@ class Prefs(context: Context) {
         const val KEY_CLIPBOARD = "last_saved_clipboard"
         const val KEY_SAVE_BUTTON = "show_save_button"
         const val KEY_LINK_FP = "last_link_fingerprint"
-        // Suffixed, and bumped when the rule that produced the values
+        // Suffixed, and bumped when the rule behind the values
         // changes. The first version picked the first `@名字` in the
         // tree rather than the one belonging to the video in front, so
-        // it recorded ids against a neighbour's name -- entries that
-        // must not be uploaded now that they are known to be wrong.
-        // Renaming the key drops them without asking anyone to
-        // reinstall or clear data.
+        // its entries are about the wrong authors. Renaming the key
+        // drops them without asking anyone to reinstall.
         const val KEY_VISITED = "visited_authors_v2"
-        const val KEY_PENDING_IDS = "pending_author_ids_v2"
     }
 }

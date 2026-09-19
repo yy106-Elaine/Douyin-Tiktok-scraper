@@ -46,6 +46,13 @@ class SharedLinkIn(BaseModel):
     #: captured. Pairing is then exact rather than a time-window guess.
     fingerprint: str | None = Field(default=None, max_length=255)
 
+    #: The 抖音号, when the device opened this video's author's profile
+    #: to read it. Carried on the link rather than keyed by display
+    #: name: the link identifies the video, the video identifies the
+    #: author, and no name has to be matched for the association to
+    #: hold.
+    author_handle: str | None = Field(default=None, max_length=255)
+
 
 class SharedLinkResponse(BaseModel):
     stored: bool

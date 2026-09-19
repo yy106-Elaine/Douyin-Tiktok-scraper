@@ -67,7 +67,13 @@ object LinkQueue {
         var discarded = 0
         for (link in dao.pending(limit)) {
             try {
-                client.shareLink(apiKey, link.rawText, link.sharedAt, link.fingerprint)
+                client.shareLink(
+                    apiKey,
+                    link.rawText,
+                    link.sharedAt,
+                    link.fingerprint,
+                    link.authorHandle,
+                )
                 dao.delete(link.id)
                 sent++
             } catch (error: ApiClient.ApiException) {
@@ -84,6 +90,22 @@ object LinkQueue {
             }
         }
         return Drain(sent, discarded, null)
+    }
+
+    /**
+     * Put a 抖音号 on the link queued most recently.
+     *
+     * That row is this video: the link is queued when it is copied and
+     * the profile is opened a step later. Returns false when there is
+     * nothing to attach it to, which is the honest outcome if the copy
+     * failed -- an id with no video to belong to is not worth keeping.
+     */
+    suspend fun attachAuthorHandle(context: Context, handle: String): Boolean {
+        val dao = CaptureDatabase.get(context).linkDao()
+        val newest = dao.newest() ?: return false
+        if (newest.authorHandle != null) return false
+        dao.setAuthorHandle(newest.id, handle)
+        return true
     }
 
     suspend fun waiting(context: Context): Int =

@@ -22,6 +22,18 @@ data class LinkEntity(
     val sharedAt: Long,
     /** The post last read off the screen, so the server can pair it. */
     val fingerprint: String?,
+    /**
+     * The 抖音号, when the run opened this video's author's profile.
+     *
+     * On the link rather than keyed by display name. The link
+     * identifies the video and the video identifies its author, so no
+     * name has to be matched for the association to hold -- and the
+     * first attempt at name matching filed an id under a neighbour's
+     * nickname, which is a false identification nothing downstream can
+     * detect.
+     */
+    val authorHandle: String? = null,
+
     /** How many uploads have failed, for the self-check to show. */
     val attempts: Int = 0,
 )

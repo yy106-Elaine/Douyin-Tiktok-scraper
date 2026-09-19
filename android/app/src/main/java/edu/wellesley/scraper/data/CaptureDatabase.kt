@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CaptureEntity::class, LinkEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class CaptureDatabase : RoomDatabase() {
@@ -42,13 +42,20 @@ abstract class CaptureDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds the 抖音号 the device reads off a profile page. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `links` ADD COLUMN `authorHandle` TEXT")
+            }
+        }
+
         fun get(context: Context): CaptureDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     CaptureDatabase::class.java,
                     "captures.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }

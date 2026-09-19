@@ -7,9 +7,14 @@ import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
+import edu.wellesley.scraper.data.LinkQueue
 import edu.wellesley.scraper.data.Prefs
 import edu.wellesley.scraper.net.SyncWorker
 import edu.wellesley.scraper.ui.ClipboardReaderActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Repeats the manual collection step for a bounded stretch of time.
@@ -47,6 +52,9 @@ class AutoCapture(private val service: AccessibilityService) {
     enum class Mode { DRY_RUN, LIVE }
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /** For the one database write this class makes. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile
     private var running = false
@@ -240,6 +248,11 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
+        // The name is only ever used to avoid opening the same profile
+        // twice. Nothing is filed under it: the 抖音号 is attached to
+        // the link just copied, and the link says which video -- and so
+        // which author -- it belongs to. An earlier version matched by
+        // display name and filed an id under a neighbour's nickname.
         pendingAuthor = name
         CaptureStats.onAutoStep("profile: $name")
         tap(found.first)
@@ -255,26 +268,23 @@ class AutoCapture(private val service: AccessibilityService) {
         val id = ProfilePage.readDouyinId(roots())
 
         if (name != null) {
-            // Recorded either way. A profile with no id on it will not
-            // grow one, and retrying costs the same fifteen seconds
-            // every time that author comes round again.
+            // Remembered either way. A profile with no id on it will
+            // not grow one, and retrying costs the same fifteen
+            // seconds every time that author comes round again.
             prefs.visitedAuthors = prefs.visitedAuthors + name
-            val itsTheirs = ProfilePage.profileBelongsTo(roots(), name)
-            when {
-                id == null -> CaptureStats.onAutoStep("no 抖音号 on $name's profile")
-                // An id under the wrong name is a false identification
-                // that nothing downstream can detect, where a missing
-                // one is a gap anyone can see. So it is discarded, and
-                // the failure is written down rather than swallowed.
-                !itsTheirs -> CaptureStats.onAutoStep(
-                    "discarded $id: the profile is not $name's"
+        }
+        if (id != null) {
+            scope.launch {
+                val attached = LinkQueue.attachAuthorHandle(
+                    service.applicationContext, id
                 )
-                else -> {
-                    prefs.pendingAuthorIds = prefs.pendingAuthorIds + "$name\u0000$id"
-                    CaptureStats.onAutoStep("抖音号: $id ($name)")
-                    SyncWorker.enqueue(service.applicationContext)
-                }
+                CaptureStats.onAutoStep(
+                    if (attached) "抖音号: $id" else "抖音号 $id has no link to belong to"
+                )
+                if (attached) SyncWorker.enqueue(service.applicationContext)
             }
+        } else {
+            CaptureStats.onAutoStep("no 抖音号 on this profile")
         }
 
         // Back to the feed, then carry on. The profile is a page, so
@@ -284,68 +294,6 @@ class AutoCapture(private val service: AccessibilityService) {
             if (!keepGoing()) return@postDelayed
             advance()
         }, PROFILE_BACK_MILLIS)
-    }
-
-    /**
-     * Wait for the app being collected from to be in front again.
-     *
-     * Reading the clipboard brings this app's own activity forward, and
-     * it stays there until its upload finishes -- seconds, on a slow
-     * connection. Pressing BACK then would close that activity and
-     * cancel the save; swiping then would swipe over this app. So the
-     * next step waits for the feed rather than assuming it.
-     */
-    private fun waitForApp(attempt: Int, then: () -> Unit) {
-        if (!keepGoing()) return
-        if (frontPackage() == startedIn) {
-            then()
-            return
-        }
-        if (attempt >= RETURN_TRIES) {
-            CaptureStats.onAutoFailure(
-                "${startedIn ?: "the app"} did not come back to the front",
-                ShareSheet.describe(roots()),
-            )
-            stop("did not return to ${startedIn ?: "the app"}")
-            return
-        }
-        CaptureStats.onAutoStep("waiting for ${startedIn ?: "the app"}")
-        handler.postDelayed({ waitForApp(attempt + 1, then) }, SETTLE_MILLIS)
-    }
-
-    /**
-     * Press BACK until no sheet is covering the feed, and no more.
-     *
-     * Douyin opens two sheets for one copy: 分享给, then 链接已复制成功.
-     * One BACK leaves the first still up, and a swipe then scrolls the
-     * sheet rather than the feed. Pressing BACK a fixed number of times
-     * is worse: a BACK that reaches the feed itself leaves Douyin, and
-     * the run would be walking backwards out of the app it is reading.
-     */
-    private fun closeSheet(attempt: Int, then: () -> Unit) {
-        if (!keepGoing()) return
-
-        if (!ShareSheet.isSheetOpen(roots())) {
-            then()
-            return
-        }
-        if (attempt >= CLOSE_TRIES) {
-            CaptureStats.onAutoFailure(
-                "the share sheet would not close",
-                ShareSheet.describe(roots()),
-            )
-            stop("share sheet would not close")
-            return
-        }
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        handler.postDelayed({ closeSheet(attempt + 1, then) }, BACK_MILLIS)
-    }
-
-    private fun advance() {
-        remaining--
-        CaptureStats.onAutoStep("next video, $remaining left")
-        swipeUp()
-        handler.postDelayed(::openShare, SETTLE_MILLIS)
     }
 
     // ----------------------------------------------------------------

@@ -37,8 +37,6 @@ class SyncWorker(context: Context, params: WorkerParameters) :
         CaptureStats.onLinkDrain(links)
         val linksLeft = LinkQueue.waiting(applicationContext) > 0
 
-        sendAuthorIdentities(prefs, apiKey)
-
         val dao = CaptureDatabase.get(applicationContext).captureDao()
         val batch = dao.pendingBatch(BATCH_SIZE)
         if (batch.isEmpty()) return if (linksLeft) Result.retry() else Result.success()
@@ -55,35 +53,6 @@ class SyncWorker(context: Context, params: WorkerParameters) :
             if (error.status == 401) Result.failure() else Result.retry()
         } catch (error: Exception) {
             Result.retry()
-        }
-    }
-
-    /**
-     * Hand over any 抖音号 read since the last upload, and forget them
-     * only once the server has them.
-     *
-     * Kept in preferences rather than the database because there are
-     * a handful per session and they are already deduplicated by the
-     * visited-authors set; a table would be more machinery than the
-     * problem has.
-     */
-    private fun sendAuthorIdentities(prefs: Prefs, apiKey: String) {
-        val pending = prefs.pendingAuthorIds
-        if (pending.isEmpty()) return
-        val identities = pending.mapNotNull { entry ->
-            val parts = entry.split('\u0000')
-            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
-                parts[0] to parts[1]
-            } else {
-                null
-            }
-        }
-        try {
-            ApiClient(prefs.backendUrl).authorIdentities(apiKey, identities)
-            prefs.pendingAuthorIds = emptySet()
-        } catch (error: Exception) {
-            // Left queued; the next run tries again.
-            CaptureStats.onAutoStep("author ids not sent: ${error.javaClass.simpleName}")
         }
     }
 

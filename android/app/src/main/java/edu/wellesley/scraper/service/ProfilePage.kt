@@ -113,36 +113,6 @@ object ProfilePage {
         return best
     }
 
-    /**
-     * Whether the profile now open belongs to [name].
-     *
-     * A last check before an id is recorded against a display name,
-     * because the cost of being wrong is asymmetric: an id not
-     * collected is a gap anyone can see, and an id under the wrong name
-     * is a false identification nothing downstream can detect. The
-     * profile renders the nickname beside the 抖音号, so if the name the
-     * run tapped is nowhere on this page, it did not land where it
-     * thought and the reading is discarded.
-     */
-    fun profileBelongsTo(roots: List<AccessibilityNodeInfo>, name: String): Boolean {
-        val wanted = name.trim()
-        if (wanted.isEmpty()) return false
-        for (root in roots) {
-            var seen = false
-            walk(root) { node ->
-                val label = label(node)
-                if (label != null && label.contains(wanted)) {
-                    seen = true
-                    false
-                } else {
-                    true
-                }
-            }
-            if (seen) return true
-        }
-        return false
-    }
-
     private fun label(node: AccessibilityNodeInfo): String? {
         val description = node.contentDescription?.toString()?.trim()
         if (!description.isNullOrEmpty()) return description

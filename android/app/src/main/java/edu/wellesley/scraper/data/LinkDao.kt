@@ -33,4 +33,17 @@ interface LinkDao {
      */
     @Query("SELECT COUNT(*) FROM links WHERE rawText = :rawText")
     suspend fun countQueued(rawText: String): Int
+
+    /**
+     * The row queued most recently, which is the video the run is on.
+     *
+     * The link is queued when it is copied and the profile is opened
+     * after that, so the id arrives a step later than the row it
+     * belongs to.
+     */
+    @Query("SELECT * FROM links ORDER BY id DESC LIMIT 1")
+    suspend fun newest(): LinkEntity?
+
+    @Query("UPDATE links SET authorHandle = :handle WHERE id = :id")
+    suspend fun setAuthorHandle(id: Long, handle: String)
 }

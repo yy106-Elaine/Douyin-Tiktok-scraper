@@ -123,11 +123,17 @@ def _adopt_handle(link: SharedLink, post) -> None:
     again or reaches its owner. A resolved link's URL contains it, so
     pairing is the moment it becomes known.
 
-    Never overwritten: a handle already read off the screen was
-    observed directly, and this only fills an empty column.
+    On Douyin the link carries something better: the 抖音号 the device
+    read off the author's profile. The column may already hold the
+    display name, which was only ever a stand-in for exactly this, so
+    that one is replaced. A handle that is neither empty nor the
+    display name was observed some other way and is left alone.
     """
-    if link.author_handle and not post.author_handle:
-        post.author_handle = link.author_handle.lstrip("@")
+    if not link.author_handle:
+        return
+    handle = link.author_handle.lstrip("@")
+    if not post.author_handle or post.author_handle in (post.author_name, handle):
+        post.author_handle = handle
 
 
 def backfill_author_handles(session: Session) -> int:
