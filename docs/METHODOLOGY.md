@@ -101,13 +101,17 @@ this by *redirecting* rather than refusing: past some number of requests every
 short link lands on the same fallback page, whose id is indistinguishable from
 a real one. One pass wrote a single id to 130 rows before this was understood.
 
-Every share link names a different post, so an id already held by another link
-is the signal. `app/resolve.py` refuses it, and stops the pass after three in a
-row rather than filling the table with one id. `python -m app.resolve --repair`
-returns any duplicated id to pending; the copied text is the observation and is
-never deleted. Two links *can* legitimately name one video, seen on two days,
-which is why the repair is a command someone runs after reading the counts and
-not something a pass decides on its own.
+A *run* of links landing on one id is the signal, and only a run.
+`app/resolve.py` stops the pass at three in a row and gives that run's ids
+back. A repeat on its own is ordinary and is kept: a feed brings the same video
+round again, it gets copied a second time, and the two share links differ while
+naming one post. A first version refused every repeat and rejected real rows.
+
+`python -m app.resolve --repair` returns duplicated ids to pending for a
+database written before this existed. The copied text is the observation and is
+never deleted, so the rows resolve again. Because a legitimate duplicate looks
+the same to that command, it is something someone runs after reading the counts
+-- one id on 130 rows -- and never something a pass decides on its own.
 
 ### 3. Pairing is heuristic
 

@@ -44,11 +44,17 @@ Follower = Callable[[str], str]
 Progress = Callable[[int, int, str], None]
 
 
-#: Consecutive landings on an id another link already holds before the
-#: pass gives up. Douyin answers a rate limit by redirecting every
-#: request to the same page rather than by refusing it, so a repeated
-#: id is the only signal that the redirects have stopped meaning
-#: anything -- and one bad pass wrote 130 rows the same id.
+#: How many links in a row may land on one id before the pass gives
+#: up. Douyin answers a rate limit by redirecting every request to the
+#: same page rather than by refusing it; one bad pass wrote 130 rows
+#: the same id.
+#:
+#: *In a row* is the whole distinction. A repeat on its own is
+#: ordinary -- the same video comes round again in a feed and gets
+#: copied twice, and the two share links differ while naming one post.
+#: A first attempt refused every repeat and started rejecting real
+#: data. Only an unbroken run means the redirect has stopped varying
+#: with the link.
 COLLISION_LIMIT = 3
 
 
@@ -110,7 +116,10 @@ def resolve_pending(
     targets = list(links) if links is not None else pending_links(session)
 
     total = len(targets)
-    collisions = 0
+    # The id the last few links landed on, and those links, so a run of
+    # them can be given back when it turns out to be a fallback page.
+    run_id: str | None = None
+    run: list[SharedLink] = []
 
     def note(index: int, outcome: str) -> None:
         if on_progress:
@@ -142,20 +151,23 @@ def resolve_pending(
             note(index, f"no video id in the page it landed on: {final_url}")
             continue
 
-        if _already_held(session, link, parsed.video_id):
-            # Every share link names a different post, so the same id
-            # twice means the redirect stopped tracking the link. Not
-            # a bad row: a bad answer, and the rows after it would get
-            # the same one.
+        if parsed.video_id == run_id:
+            run.append(link)
+        else:
+            run_id, run = parsed.video_id, [link]
+
+        if len(run) >= COLLISION_LIMIT:
+            # The run so far is the fallback page's id, not data, and
+            # the links before this one already took it. Give it back.
+            for stored in run[:-1]:
+                _unresolve(session, stored)
+                report.resolved -= 1
+            session.commit()
             report.failed += 1
-            collisions += 1
-            note(index, f"{parsed.video_id} is already another link's -- not stored")
-            if collisions >= COLLISION_LIMIT:
-                report.rate_limited = True
-                note(index, "stopping: the redirects have stopped naming the post")
-                break
-            continue
-        collisions = 0
+            report.rate_limited = True
+            note(index, f"{parsed.video_id} for {len(run)} links in a row")
+            note(index, "stopping: the redirects have stopped naming the post")
+            break
 
         link.video_id = parsed.video_id
         link.canonical_url = parsed.canonical_url or final_url
@@ -170,16 +182,6 @@ def resolve_pending(
         note(index, parsed.video_id + (" (paired)" if paired else ""))
 
     return report
-
-
-def _already_held(session: Session, link: SharedLink, video_id: str) -> bool:
-    """Whether some other link already claims this id."""
-    held = session.scalar(
-        select(func.count())
-        .select_from(SharedLink)
-        .where(SharedLink.video_id == video_id, SharedLink.id != link.id)
-    )
-    return bool(held)
 
 
 def unresolve_duplicates(session: Session) -> int:

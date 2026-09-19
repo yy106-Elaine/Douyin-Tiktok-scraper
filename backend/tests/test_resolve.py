@@ -175,9 +175,10 @@ def test_a_repeated_id_is_refused_and_stops_the_pass(client, api_key):
 
     One pass wrote the same id to 130 rows: past some number of
     requests every short link landed on the same fallback page, and
-    an id read off it looks exactly like a real one. Every share link
-    names a different post, so the second sighting of an id is the
-    signal that the answers have stopped meaning anything.
+    an id read off it looks exactly like a real one.
+
+    A run of them in a row is the signal, not a repeat on its own --
+    see the test below for why.
     """
     for number in range(8):
         _copy_link(
@@ -199,10 +200,10 @@ def test_a_repeated_id_is_refused_and_stops_the_pass(client, api_key):
     with SessionLocal() as session:
         report = resolve_pending(session, follower=follower, pause_seconds=0)
 
-    assert report.resolved == 2  # the real one, then the fallback once
     assert report.rate_limited is True
+    assert report.resolved == 1  # only the one that resolved before the limit
     # It stopped rather than working through the rest at one id each.
-    assert len(followed) == 5
+    assert len(followed) == 4
 
     with SessionLocal() as session:
         ids = [
@@ -239,3 +240,36 @@ def test_repair_returns_duplicated_ids_to_pending(client, api_key):
             assert link.matched_capture_id is None
         # And the copied text, which is the observation, is still there.
         assert all(link.raw_text for link in session.query(SharedLink).all())
+
+
+def test_interleaved_repeats_are_all_resolved(client, api_key):
+    """A repeat that is not a run is ordinary, and is data.
+
+    The first guard refused any id another link already held, on the
+    reasoning that every share link names a different post. It does
+    not: a feed brings the same video round again, it gets copied a
+    second time, and the two share links differ while naming one post.
+    That guard rejected three real rows in one pass and then stopped.
+    """
+    for slug in ("a", "b", "c", "d", "e"):
+        _copy_link(
+            client, api_key, f"https://v.douyin.com/{slug}/", fingerprint=f"fp-{slug}"
+        )
+
+    landing = {
+        "a": "7686931682436826341",
+        "b": "7686913835698122345",
+        "c": "7686886744431564474",
+        "d": "7686931682436826341",
+        "e": "7686913835698122345",
+    }
+
+    def follower(url: str) -> str:
+        slug = url.rstrip("/").rsplit("/", 1)[-1]
+        return f"https://www.iesdouyin.com/share/video/{landing[slug]}/"
+
+    with SessionLocal() as session:
+        report = resolve_pending(session, follower=follower, pause_seconds=0)
+
+    assert report.rate_limited is False
+    assert report.resolved == 5
