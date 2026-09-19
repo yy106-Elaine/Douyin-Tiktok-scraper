@@ -360,7 +360,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         if (attempt == 0) {
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            pressBack()
             handler.postDelayed({ closeProfile(1) }, PROFILE_BACK_MILLIS)
             return
         }
@@ -369,6 +369,27 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         recover("the profile did not close")
+    }
+
+    /**
+     * BACK, unless we are already looking at a video.
+     *
+     * One invariant, in one place: if the feed's own share control is
+     * on screen then nothing is covering it, and BACK there does not
+     * dismiss anything -- it leaves the video. Repeatedly, it leaves
+     * for the results page and then the search box, which is exactly
+     * where two runs ended up.
+     *
+     * Every BACK in this class goes through here, so the rule cannot
+     * be forgotten at one of the call sites later.
+     */
+    private fun pressBack(): Boolean {
+        if (onAVideo()) {
+            CaptureStats.onAutoStep("not pressing back: a video is on screen")
+            return false
+        }
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        return true
     }
 
     /** The feed, with a video's own share control on it. */
@@ -429,7 +450,7 @@ class AutoCapture(private val service: AccessibilityService) {
             recover("the share sheet would not close")
             return
         }
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        pressBack()
         handler.postDelayed({ closeSheet(attempt + 1, then) }, BACK_MILLIS)
     }
 
@@ -468,11 +489,7 @@ class AutoCapture(private val service: AccessibilityService) {
         }
         CaptureStats.onAutoStep("$why -- skipping this video")
         // BACK only to dismiss something that is demonstrably there.
-        // A BACK pressed on the feed itself leaves the video, which is
-        // how a run ended up scrolling the search results.
-        if (ShareSheet.isSheetOpen(roots()) || ProfilePage.isProfileOpen(roots())) {
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        }
+        pressBack()
         handler.postDelayed({
             if (!keepGoing()) return@postDelayed
             remaining--
@@ -517,6 +534,15 @@ class AutoCapture(private val service: AccessibilityService) {
                 stop("left ${startedIn ?: "the app"} (now ${front ?: "nothing"})")
             } else {
                 CaptureStats.onAutoStep("${front ?: "something else"} is in front; waiting")
+                // Exactly one chain, always. This check runs at the
+                // top of every step, so scheduling a resume without
+                // cancelling first queued a second openShare beside
+                // the one already pending -- two chains pressing BACK
+                // and tapping out of order, which walked the run out
+                // of the video, into the results page and then into
+                // the search box. Whatever was pending is abandoned;
+                // this becomes the only thing waiting to happen.
+                handler.removeCallbacksAndMessages(null)
                 handler.postDelayed(::openShare, SETTLE_MILLIS)
             }
             return false
