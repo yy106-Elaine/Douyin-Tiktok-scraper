@@ -296,6 +296,68 @@ class AutoCapture(private val service: AccessibilityService) {
         }, PROFILE_BACK_MILLIS)
     }
 
+    /**
+     * Wait for the app being collected from to be in front again.
+     *
+     * Reading the clipboard brings this app's own activity forward, and
+     * it stays there until its upload finishes -- seconds, on a slow
+     * connection. Pressing BACK then would close that activity and
+     * cancel the save; swiping then would swipe over this app. So the
+     * next step waits for the feed rather than assuming it.
+     */
+    private fun waitForApp(attempt: Int, then: () -> Unit) {
+        if (!keepGoing()) return
+        if (frontPackage() == startedIn) {
+            then()
+            return
+        }
+        if (attempt >= RETURN_TRIES) {
+            CaptureStats.onAutoFailure(
+                "${startedIn ?: "the app"} did not come back to the front",
+                ShareSheet.describe(roots()),
+            )
+            stop("did not return to ${startedIn ?: "the app"}")
+            return
+        }
+        CaptureStats.onAutoStep("waiting for ${startedIn ?: "the app"}")
+        handler.postDelayed({ waitForApp(attempt + 1, then) }, SETTLE_MILLIS)
+    }
+
+    /**
+     * Press BACK until no sheet is covering the feed, and no more.
+     *
+     * Douyin opens two sheets for one copy: 分享给, then 链接已复制成功.
+     * One BACK leaves the first still up, and a swipe then scrolls the
+     * sheet rather than the feed. Pressing BACK a fixed number of times
+     * is worse: a BACK that reaches the feed itself leaves Douyin, and
+     * the run would be walking backwards out of the app it is reading.
+     */
+    private fun closeSheet(attempt: Int, then: () -> Unit) {
+        if (!keepGoing()) return
+
+        if (!ShareSheet.isSheetOpen(roots())) {
+            then()
+            return
+        }
+        if (attempt >= CLOSE_TRIES) {
+            CaptureStats.onAutoFailure(
+                "the share sheet would not close",
+                ShareSheet.describe(roots()),
+            )
+            stop("share sheet would not close")
+            return
+        }
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        handler.postDelayed({ closeSheet(attempt + 1, then) }, BACK_MILLIS)
+    }
+
+    private fun advance() {
+        remaining--
+        CaptureStats.onAutoStep("next video, $remaining left")
+        swipeUp()
+        handler.postDelayed(::openShare, SETTLE_MILLIS)
+    }
+
     // ----------------------------------------------------------------
     // Guards
     // ----------------------------------------------------------------
