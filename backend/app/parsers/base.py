@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..counts import is_approximate, parse_count
+from ..platforms import FILTERED_PLATFORMS
 from ..relevance import classify
 
 _COUNT_FIELDS = {
@@ -22,8 +23,14 @@ _COUNT_FIELDS = {
 }
 
 
-def structure(payload: dict[str, Any]) -> dict[str, Any]:
-    """Map a raw capture payload onto structured post columns."""
+def structure(payload: dict[str, Any], platform: str) -> dict[str, Any]:
+    """Map a raw capture payload onto structured post columns.
+
+    [platform] decides only whether the topic filter runs: it is right
+    for YouTube, whose keyword search returns whatever the API matched,
+    and wrong for Douyin, which is sampled from community hashtags. See
+    `FILTERED_PLATFORMS`.
+    """
     row: dict[str, Any] = {
         "author_handle": _clean(payload.get("author_handle")),
         "author_name": _clean(payload.get("author_name")),
@@ -39,9 +46,13 @@ def structure(payload: dict[str, Any]) -> dict[str, Any]:
         "video_id": _video_id(payload.get("video_id_hint")),
         # Computed here so every platform gets it from one place --
         # the phone parsers and the YouTube API both land on this
-        # function.
-        "relevance": classify(
-            payload.get("caption"), payload.get("description")
+        # function. Marked on arrival as well as by `remark`, so the
+        # platform test has to live in both or an unfiltered platform
+        # is filtered anyway for as long as nobody re-marks.
+        "relevance": (
+            classify(payload.get("caption"), payload.get("description"))
+            if platform in FILTERED_PLATFORMS
+            else None
         ),
     }
 

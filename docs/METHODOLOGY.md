@@ -445,6 +445,51 @@ because they are defensible either way: general `同性恋` news with no female
 marker is excluded, and non-Chinese posts are excluded even when they carry an
 English WLW hashtag.
 
+### 11. The topic filter runs on YouTube and TikTok, not on Douyin
+
+Section 10 describes a filter built for one sampling frame and then applied to
+all of them. That was wrong, and the first Douyin collection said so
+immediately: every row came back marked `no topic term`.
+
+The captions were these.
+
+| caption | marked |
+| --- | --- |
+| 许愿这次别再丢下我#lwl#lwl | no topic term |
+| 今夜的风悄悄月悄悄 吻你的眉梢#lwl | no topic term |
+| 如果我想让你只属于我，你会不会觉得我太自私 #lwl #萌t | no topic term |
+
+These are on topic. They say so with a community tag rather than with a term
+the filter knows, and a lyric about someone's girlfriend does not have to
+announce its subject to be about it. Filtering them hid the platform entirely —
+and with it the video ids, which are what a takedown study re-checks.
+
+**The distinction is the sampling frame, not the language.** A YouTube keyword
+search returns whatever the API matched: 女同性恋 surfaces Japanese drama,
+divination lessons and 货拉拉 delivery ads, and about 6% of what comes back is
+in scope. Douyin is searched by hand for community hashtags — `#lwl`, `#wlw`,
+`#les` — which are not fragments of ordinary words but labels the community
+applies to its own posts. There the search *is* the filter, and a second one
+only removes real data. So `FILTERED_PLATFORMS` in `app/platforms.py` names the
+platforms the filter runs on, and Douyin is not one of them.
+
+TikTok stays filtered. The Douyin argument does not carry over: it is the
+international build, a search there returns other languages, and this study is
+about Chinese-language content — which is the filter's original job.
+
+**What to report.** Douyin counts are counts of everything collected; YouTube
+counts are counts of what survived a filter. They are not comparable, and the
+dashboard says so on the page rather than leaving it to a footnote. The
+precision of the Douyin sample rests on the hashtags chosen, which is a claim
+about the search terms and belongs in the methods section next to them.
+
+This is also the second time the same lesson has been recorded here: a rule
+written from one platform's data was assumed to hold for another, and the data
+said otherwise within one collection run. The verbatim payload is what made the
+correction free — `python -m app.relevance` re-marked the whole corpus, and
+nothing had to be collected again.
+
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two

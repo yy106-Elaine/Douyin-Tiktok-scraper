@@ -15,7 +15,7 @@ _FEED_SLUGS = {
 
 
 def structure(payload: dict[str, Any]) -> dict[str, Any]:
-    row = base.structure(payload)
+    row = base.structure(payload, "tiktok")
     if row.get("feed") in _FEED_SLUGS:
         row["feed"] = _FEED_SLUGS[row["feed"]]
     return row

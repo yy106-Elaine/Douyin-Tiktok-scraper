@@ -758,3 +758,81 @@ def test_a_confirmed_guess_cannot_override_its_own_collision(text):
 def test_an_unambiguous_term_still_overrides_a_collision():
     """"女同学" beside "我们是拉拉" is a video about being 拉拉."""
     assert classify("我和女同学一起复习，顺便聊了聊我们是拉拉这件事") is None
+
+
+class TestPlatformsWithoutATopicFilter:
+    """Douyin is sampled from community hashtags, so it is not filtered.
+
+    The distinction is the sampling frame, not the language. A YouTube
+    keyword search returns whatever the API matched and about 6% of it
+    is in scope; #lwl is a tag the community puts on its own posts, so
+    the search is already the filter.
+
+    Measured, not assumed: the first Douyin run marked every row
+    "no topic term" -- captions like 许愿这次别再丢下我#lwl, plainly on
+    topic and saying so with a tag rather than a term. Filtering them
+    hid the whole platform, and the video ids with it.
+    """
+
+    def _capture(self, client, api_key, caption):
+        response = client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.ss.android.ugc.aweme",
+                        "fingerprint": f"douyin::someone::{caption}",
+                        "captured_at": "2026-09-19T02:09:00Z",
+                        "payload": {"author_name": "someone", "caption": caption},
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 200
+
+    def _douyin_relevance(self):
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import DouyinPost
+
+        with SessionLocal() as session:
+            return [p.relevance for p in session.scalars(select(DouyinPost))]
+
+    def test_a_hashtag_only_caption_stays_in_scope(self, client, api_key):
+        # Real captions from the first assisted run on the study phone.
+        self._capture(client, api_key, "许愿这次别再丢下我#lwl#lwl")
+        self._capture(client, api_key, "今夜的风悄悄月悄悄 吻你的眉梢#lwl #最帅")
+        assert self._douyin_relevance() == [None, None]
+
+    def test_remarking_does_not_reintroduce_an_exclusion(self, client, api_key):
+        """Turning the filter off has to clear what it marked before.
+
+        Otherwise the rows stay hidden and the switch looks broken.
+        """
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import DouyinPost
+        from app.relevance import remark
+
+        self._capture(client, api_key, "许愿这次别再丢下我#lwl")
+        with SessionLocal() as session:
+            for post in session.scalars(select(DouyinPost)):
+                post.relevance = "no topic term"
+            session.commit()
+            tally = remark(session)
+
+        assert tally["changed"] == 1
+        assert self._douyin_relevance() == [None]
+
+    def test_youtube_is_still_filtered(self, client):
+        """The point is a platform distinction, not removing the filter."""
+        from app.db import SessionLocal
+        from app.relevance import remark
+
+        with SessionLocal() as session:
+            TestRemarking()._collect(session, "货拉拉搬家公司电话")
+            assert remark(session)["unrelated product"] == 1

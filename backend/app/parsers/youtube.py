@@ -15,7 +15,7 @@ from . import base
 
 
 def structure(payload: dict[str, Any]) -> dict[str, Any]:
-    row = base.structure(payload)
+    row = base.structure(payload, "youtube")
 
     # The API gives an exact timestamp, so it is parsed here rather
     # than left to the relative-date handling the feeds need.

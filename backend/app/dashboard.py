@@ -20,6 +20,7 @@ from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
+from .platforms import FILTERED_PLATFORMS
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
 from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
@@ -498,20 +499,34 @@ def _page(**ctx) -> str:
             f'&key={escape(ctx["key"])}">{escape(label)}{suffix}</a>'
         )
 
-    chips = [
-        review("in scope", ""),
-        review("everything", "all"),
-        review("excluded", "excluded", ctx["filtered"]),
-    ]
-    chips += [
-        review(reason, reason, count)
-        for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
-    ]
-    filter_note = (
-        '<p class="note-line">Review what the topic filter did. Excluded rows are '
-        "hidden, never deleted &mdash; read a category before trusting it.</p>"
-        f'<div class="chips">{"".join(chips)}</div>'
-    )
+    if platform in FILTERED_PLATFORMS:
+        chips = [
+            review("in scope", ""),
+            review("everything", "all"),
+            review("excluded", "excluded", ctx["filtered"]),
+        ]
+        chips += [
+            review(reason, reason, count)
+            for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
+        ]
+        filter_note = (
+            '<p class="note-line">Review what the topic filter did. Excluded rows are '
+            "hidden, never deleted &mdash; read a category before trusting it.</p>"
+            f'<div class="chips">{"".join(chips)}</div>'
+        )
+    else:
+        # Saying "no filter here" out loud matters more than the chips
+        # did. A page that shows everything on one platform and a
+        # filtered subset on another invites reading the two counts as
+        # comparable, which they are not.
+        filter_note = (
+            '<p class="note-line">No topic filter on this platform. It is sampled '
+            "from community hashtags (#lwl, #wlw, #les) that the community applies "
+            "to its own posts, so the search is the filter and every row collected "
+            "is in the corpus. YouTube is filtered, because a keyword search there "
+            "returns whatever the API matched; the two counts are not "
+            "comparable.</p>"
+        )
 
     return f"""<!doctype html>
 <html lang="en"><head>

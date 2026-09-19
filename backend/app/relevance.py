@@ -277,6 +277,7 @@ def remark(session) -> dict[str, int]:
 
     from .models import CaptureEvent
     from .parsers import PLATFORM_TABLES
+    from .platforms import FILTERED_PLATFORMS
 
     payloads: dict[int, dict] = {}
     for event in session.scalars(select(CaptureEvent)):
@@ -287,13 +288,20 @@ def remark(session) -> dict[str, int]:
 
     tally: dict[str, int] = {}
     changed = 0
-    for model, _ in PLATFORM_TABLES.values():
+    for platform, (model, _) in PLATFORM_TABLES.items():
+        filtered = platform in FILTERED_PLATFORMS
         for post in session.scalars(select(model)):
-            payload = payloads.get(post.capture_event_id, {})
-            reason = classify(
-                payload.get("caption") or post.caption,
-                payload.get("description"),
-            )
+            # An unfiltered platform is marked in scope, not skipped:
+            # a row carrying an old exclusion has to be cleared, or
+            # turning the filter off would leave the past hidden.
+            if filtered:
+                payload = payloads.get(post.capture_event_id, {})
+                reason = classify(
+                    payload.get("caption") or post.caption,
+                    payload.get("description"),
+                )
+            else:
+                reason = None
             if post.relevance != reason:
                 post.relevance = reason
                 changed += 1
