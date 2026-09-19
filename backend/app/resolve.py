@@ -38,6 +38,9 @@ USER_AGENT = (
 #: Follower signature: given a URL, return the URL it ends up at.
 Follower = Callable[[str], str]
 
+#: Progress signature: link number, total, and what became of it.
+Progress = Callable[[int, int, str], None]
+
 
 @dataclass
 class ResolveReport:
@@ -76,21 +79,34 @@ def resolve_pending(
     follower: Follower = follow_redirect,
     links: Iterable[SharedLink] | None = None,
     pause_seconds: float = 1.0,
+    on_progress: Progress | None = None,
 ) -> ResolveReport:
     """Resolve unresolved links, then pair each to its captured post.
 
     A pause between requests is the default on purpose: this walks a
     list of links one at a time against someone else's servers, and a
     study that gets itself rate-limited halfway through collection has
-    lost data it cannot go back for.
+    lost data it cannot go back for. That makes a run of a few hundred
+    links minutes long, so `on_progress` is called as each one is
+    settled -- a run with no output is indistinguishable from a hang.
+
+    Each resolved link is committed on its own, so stopping partway
+    keeps everything done so far and a re-run picks up the rest.
     """
     report = ResolveReport()
     targets = list(links) if links is not None else pending_links(session)
+
+    total = len(targets)
+
+    def note(index: int, outcome: str) -> None:
+        if on_progress:
+            on_progress(index + 1, total, outcome)
 
     for index, link in enumerate(targets):
         source = link.canonical_url or extract(link.raw_text).raw_url
         if not source:
             report.failed += 1
+            note(index, "no link in this row")
             continue
 
         report.attempted += 1
@@ -103,11 +119,13 @@ def resolve_pending(
             # A link that cannot be followed now may resolve later: the
             # row is left pending rather than marked bad.
             report.failed += 1
+            note(index, "could not be followed")
             continue
 
         parsed = extract(final_url)
         if not parsed.video_id:
             report.failed += 1
+            note(index, "no video id in the page it landed on")
             continue
 
         link.video_id = parsed.video_id
@@ -117,8 +135,10 @@ def resolve_pending(
         session.commit()
         report.resolved += 1
 
-        if pair_shared_link(session, link) is not None:
+        paired = pair_shared_link(session, link) is not None
+        if paired:
             report.paired += 1
+        note(index, parsed.video_id + (" (paired)" if paired else ""))
 
     return report
 
@@ -126,9 +146,12 @@ def resolve_pending(
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
+    def show(done: int, total: int, outcome: str) -> None:
+        print(f"[{done}/{total}] {outcome}", flush=True)
+
     init_db()
     with SessionLocal() as session:
-        print(resolve_pending(session))
+        print(resolve_pending(session, on_progress=show))
         # Posts paired before handles were adopted still have an empty
         # one; this is where that gets repaired, so re-running the
         # command is all an existing database needs.

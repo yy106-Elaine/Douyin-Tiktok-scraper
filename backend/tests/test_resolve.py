@@ -141,3 +141,30 @@ def test_already_resolved_links_are_not_refetched(client, api_key):
 
     assert calls == []
     assert report.attempted == 0
+
+
+def test_each_link_reports_as_it_is_settled(client, api_key):
+    """A run of a few hundred links is minutes long; silence reads as a hang."""
+    _capture(client, api_key)
+    _copy_link(client, api_key, "https://v.douyin.com/iRkQwBt/")
+    _copy_link(client, api_key, "https://v.douyin.com/bad/", fingerprint="fp-2")
+
+    def follower(url: str) -> str:
+        if url.endswith("/bad/"):
+            raise urllib.error.URLError("nope")
+        return "https://www.douyin.com/video/7123456789012345678"
+
+    seen: list[tuple[int, int, str]] = []
+    with SessionLocal() as session:
+        resolve_pending(
+            session,
+            follower=follower,
+            pause_seconds=0,
+            on_progress=lambda done, total, outcome: seen.append(
+                (done, total, outcome)
+            ),
+        )
+
+    assert [(done, total) for done, total, _ in seen] == [(1, 2), (2, 2)]
+    assert "7123456789012345678" in seen[0][2]
+    assert seen[1][2] == "could not be followed"
