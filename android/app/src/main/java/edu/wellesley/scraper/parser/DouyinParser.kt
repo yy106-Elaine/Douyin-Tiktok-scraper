@@ -66,15 +66,59 @@ class DouyinParser : PostParser {
          * appears on the feed's own comment button, and the TikTok side
          * lost three quarters of a session to exactly that mistake.
          */
+        /**
+         * Chrome that is not a post, and was being stored as one.
+         *
+         * The share sheet and the comment input bar each produced rows
+         * in the corpus -- captions of 链接已复制成功，去粘贴分享： and
+         * 爱评论的人，运气不会差, with no author and no counts, sitting
+         * beside real videos. They got there because a segment with no
+         * `desc` node falls back to its longest text, and on those
+         * frames the longest text is the interface talking.
+         *
+         * The placeholder in the comment bar is written fresh for
+         * different posts (期待你的评论, 有爱评论，说点儿好听的,
+         * 爱评论的人，运气不会差), so the shape is matched rather than the
+         * wording: a sentence about commenting, with no author beside it.
+         */
+        val UI_CHROME = Regex(
+            """^(?:[链連鏈]接已复制|分享给|分享給|去粘[贴貼]分享|取消|""" +
+                """[全屏]{2}[观觀]看|玩同款|同款特效|展开|展開|相[关關]搜索)""" +
+                """|评论[的人]|[说說]点儿好听|你的[评評][论論]"""
+        )
+
         val COMMENT_SHEET_MARKERS = listOf(
             "comment box" to Regex("""留下你的精彩评论|善语结善缘"""),
             "all comments header" to Regex("""^全部评论"""),
             "reply target" to Regex("""回复\s*@"""),
         )
+        val SHARE_SHEET_OPEN = Regex("""^(?:分享给|分享給|[链連鏈]接已复制|去粘[贴貼]分享)""")
+
         val AD_MARKER = Regex("""(?:广告|推广|品牌合作)""")
         val AI_MARKER = Regex("""(?:AI生成|AI创作|疑似AI)""")
 
-        const val POST_CONTAINER = "video_container"
+        /**
+         * Where one post ends and the next begins.
+         *
+         * `video_container` was a guess and does not exist in any dump
+         * from the study phone, and a boundary that never matches does
+         * not fail loudly: `NodeTools.segment` returns the whole frame
+         * as a single segment, so every frame yielded exactly one post
+         * assembled from the first matching node of each kind anywhere
+         * on screen. With two or three videos in the tree at once that
+         * pairs one video's author with another's caption. Two rows in
+         * the first Douyin corpus carried the same caption, likes,
+         * comments and shares under different display names -- one
+         * video, stored twice, attributed to two people, neither
+         * necessarily right.
+         *
+         * `user_avatar` is the repeating anchor in every dump taken so
+         * far: one per post, first of the post's nodes after 关注. It
+         * is also a name rather than an obfuscated id like `j+w` or
+         * `z4_`, so it stands a better chance of surviving an update.
+         * `video_container` is kept in case a build does use it.
+         */
+        val POST_CONTAINERS = arrayOf("user_avatar", "video_container")
         const val CAPTION_MIN_LENGTH = 8
 
         val FEEDS = setOf("推荐", "关注", "朋友", "同城", "热点")
@@ -87,8 +131,10 @@ class DouyinParser : PostParser {
         )
     }
 
-    override fun isPostBoundary(node: FlatNode): Boolean =
-        node.viewId?.contains(POST_CONTAINER) == true
+    override fun isPostBoundary(node: FlatNode): Boolean {
+        val id = node.viewId ?: return false
+        return POST_CONTAINERS.any { id.contains(it) }
+    }
 
     /** Same fallback as TikTok: one visible tab label is the active one. */
     override fun feed(nodes: List<FlatNode>): String? {
@@ -102,10 +148,15 @@ class DouyinParser : PostParser {
     private fun labelOf(node: FlatNode): String? =
         node.text?.takeIf { it in FEEDS } ?: node.description?.takeIf { it in FEEDS }
 
-    override fun skipReason(nodes: List<FlatNode>): String? =
-        COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
+    override fun skipReason(nodes: List<FlatNode>): String? {
+        // A frame with the share sheet over it is the sheet, not a
+        // post. During an assisted run this is on screen for a second
+        // of every video, which is how it ended up in the corpus.
+        if (NodeTools.anyMatches(nodes, SHARE_SHEET_OPEN)) return "share sheet open"
+        return COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
             NodeTools.anyMatches(nodes, pattern)
         }?.let { (name, _) -> "comment sheet open ($name)" }
+    }
 
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(
@@ -143,11 +194,15 @@ class DouyinParser : PostParser {
 
     private fun caption(nodes: List<FlatNode>): String? {
         NodeTools.byViewId(nodes, "desc")?.text?.let { return it }
+        // The fallback is for a post whose caption node is missing, not
+        // a licence to store whatever text is longest. Without the
+        // UI_CHROME test it stored the share sheet and the comment bar.
         return nodes
             .filter {
                 it.description == null &&
                     (it.text?.length ?: 0) >= CAPTION_MIN_LENGTH &&
-                    it.text !in FEEDS
+                    it.text !in FEEDS &&
+                    !UI_CHROME.containsMatchIn(it.text!!)
             }
             .maxByOrNull { it.text!!.length }
             ?.text

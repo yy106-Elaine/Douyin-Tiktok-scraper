@@ -207,8 +207,20 @@ object CaptureStats {
     @Volatile private var linksDiscarded = 0
     @Volatile private var lastLinkFailure: String? = null
 
+    @Volatile private var clipboardWaits = 0
+
     fun onLinkQueued(waiting: Int) {
         linksWaiting = waiting
+    }
+
+    /**
+     * The clipboard still held the previous link, so the read was
+     * retried. Counted because it is the difference between a video
+     * that was skipped and a video that was never on screen, and
+     * without it that shows up only as "fewer links than copies".
+     */
+    fun onClipboardWait() {
+        clipboardWaits++
     }
 
     fun onLinkDrain(drain: edu.wellesley.scraper.data.LinkQueue.Drain) {
@@ -259,6 +271,9 @@ object CaptureStats {
         lines += "Links uploaded: $linksSent   waiting: $linksWaiting"
         if (linksDiscarded > 0) {
             lines += "  $linksDiscarded discarded (server found no link in the text)"
+        }
+        if (clipboardWaits > 0) {
+            lines += "  waited $clipboardWaits time(s) for a copy to land"
         }
         lastLinkFailure?.let {
             lines += "  UPLOAD FAILING: $it"

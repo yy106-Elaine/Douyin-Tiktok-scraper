@@ -44,6 +44,9 @@ class ClipboardReaderActivity : ComponentActivity() {
 
     private var handled = false
 
+    /** How many times the clipboard has been re-read this visit. */
+    private var waited = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
@@ -78,6 +81,18 @@ class ClipboardReaderActivity : ComponentActivity() {
             finishWith(getString(R.string.clipboard_empty))
             return
         }
+        // The clipboard still holding the previous video's link means
+        // the copy has not landed yet, not that the same video came
+        // round twice. Reading it then loses a video silently: the
+        // queue sees text it already has, drops it, and the run moves
+        // on. Five copies produced four links that way. So wait for it
+        // to change, briefly, before believing it.
+        if (text == prefs.lastSavedClipboard && waited < MAX_WAITS) {
+            waited++
+            CaptureStats.onClipboardWait()
+            window.decorView.postDelayed({ saveClipboard() }, WAIT_MILLIS)
+            return
+        }
 
         val fingerprint = CaptureStats.lastFingerprint
         lifecycleScope.launch {
@@ -110,6 +125,14 @@ class ClipboardReaderActivity : ComponentActivity() {
             ?.coerceToText(this)
             ?.toString()
             ?.trim()
+    }
+
+    private companion object {
+        // Two seconds in total. Long enough for a share sheet to put
+        // a link on the clipboard, short enough that the run's next
+        // step is not left waiting on a copy that failed outright.
+        const val MAX_WAITS = 10
+        const val WAIT_MILLIS = 200L
     }
 
     private fun finishWith(message: String) {

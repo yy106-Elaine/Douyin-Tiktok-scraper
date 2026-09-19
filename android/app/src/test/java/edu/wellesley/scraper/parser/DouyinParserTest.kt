@@ -59,6 +59,102 @@ class DouyinParserTest {
     }
 
     @Test
+    fun `the share sheet is not a post`() {
+        // Read off the study phone with the sheet open. This frame put
+        // a row in the corpus captioned 链接已复制成功，去粘贴分享：.
+        val sheet = listOf(
+            node("z3h", "分享给", null),
+            node("doy", null, "取消"),
+            node("zyt", "转发到日常", null),
+            node("zyt", "分享链接", null),
+            node("zyt", "推荐", null),
+            node("zyt", "合拍", null),
+            node("zyt", "帮上热门", null),
+            node("zyt", "举报", null),
+        )
+        assertEquals("share sheet open", DouyinParser().skipReason(sheet))
+    }
+
+    @Test
+    fun `the comment bar is not a caption`() {
+        // Douyin writes a different placeholder for different posts,
+        // and each one was being stored as a video of its own.
+        for (placeholder in listOf(
+            "爱评论的人，运气不会差",
+            "期待你的评论",
+            "有爱评论，说点儿好听的",
+            "链接已复制成功，去粘贴分享：",
+        )) {
+            val frame = listOf(
+                node("e3n", placeholder, null),
+                node("6o_", null, "进度条"),
+            )
+            assertNull(
+                "$placeholder was stored as a post",
+                DouyinParser().parse(frame)?.caption,
+            )
+        }
+    }
+
+    @Test
+    fun `a real caption that mentions comments still parses`() {
+        val frame = post.map {
+            if (it.text == "许愿这次别再丢下我#lwl#lwl") {
+                node("desc", "评论区的姐妹都好可爱#lwl", null)
+            } else {
+                it
+            }
+        }
+        assertEquals("评论区的姐妹都好可爱#lwl", DouyinParser().parse(frame)?.caption)
+    }
+
+    @Test
+    fun `two videos in one frame do not become one`() {
+        // The whole of "Last screen read" from the study phone, two
+        // posts deep. Before the boundary was fixed this frame yielded
+        // a single post: 沽月's avatar with 珩舟's caption, or the other
+        // way round depending on node order -- and the corpus has rows
+        // that were built that way.
+        val frame = listOf(
+            node("j+w", null, "关注"),
+            node("user_avatar", null, "沽月"),
+            node("gzs", null, "未点赞，喜欢24，按钮"),
+            node("e=0", null, "评论8，按钮"),
+            node("d_r", null, "未选中，收藏收藏，按钮"),
+            node("z4_", null, "分享，按钮"),
+            node("title", "@沽月", null),
+            node("41=", "· 17小时前", "发布时间：17小时前"),
+            node("desc", "今夜的风悄悄月悄悄 吻你的眉梢#lwl #最帅", null),
+            node("j+w", null, "关注"),
+            node("user_avatar", null, "珩舟"),
+            node("gzs", null, "未点赞，喜欢7，按钮"),
+            node("e=0", null, "评论1，按钮"),
+            node("z4_", null, "分享，按钮"),
+            node("title", "@珩舟", null),
+            node("41=", "· 18小时前", "发布时间：18小时前"),
+            node("desc", "出现#卡点#lwl", null),
+        )
+
+        val parser = DouyinParser()
+        val posts = NodeTools.segment(frame, parser::isPostBoundary)
+            .mapNotNull(parser::parse)
+
+        assertEquals(2, posts.size)
+        assertEquals("沽月", posts[0].authorName)
+        assertEquals("今夜的风悄悄月悄悄 吻你的眉梢#lwl #最帅", posts[0].caption)
+        assertEquals("24", posts[0].likeRaw)
+        assertEquals("17小时前", posts[0].postedAtRaw)
+
+        assertEquals("珩舟", posts[1].authorName)
+        assertEquals("出现#卡点#lwl", posts[1].caption)
+        assertEquals("7", posts[1].likeRaw)
+        assertEquals("18小时前", posts[1].postedAtRaw)
+
+        // The point of the whole fix: two videos, two identities.
+        assertEquals(2, posts.mapNotNull { it.fingerprint() }.distinct().size)
+    }
+
+    @Test
     fun `the rest of the post still parses`() {
         val parsed = DouyinParser().parse(post)
         assertEquals("我爱吃葡萄", parsed?.authorName)
