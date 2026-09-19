@@ -230,7 +230,10 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!keepGoing()) return
 
         val prefs = Prefs(service.applicationContext)
-        val found = ProfilePage.findAuthorLink(roots())
+        val found = ProfilePage.findAuthorLink(
+            roots(),
+            service.resources.displayMetrics.heightPixels,
+        )
         val name = found?.second
         if (found == null || name.isNullOrBlank() || name in prefs.visitedAuthors) {
             advance()
@@ -256,12 +259,21 @@ class AutoCapture(private val service: AccessibilityService) {
             // grow one, and retrying costs the same fifteen seconds
             // every time that author comes round again.
             prefs.visitedAuthors = prefs.visitedAuthors + name
-            if (id != null) {
-                prefs.pendingAuthorIds = prefs.pendingAuthorIds + "$name\u0000$id"
-                CaptureStats.onAutoStep("抖音号: $id")
-                SyncWorker.enqueue(service.applicationContext)
-            } else {
-                CaptureStats.onAutoStep("no 抖音号 on $name's profile")
+            val itsTheirs = ProfilePage.profileBelongsTo(roots(), name)
+            when {
+                id == null -> CaptureStats.onAutoStep("no 抖音号 on $name's profile")
+                // An id under the wrong name is a false identification
+                // that nothing downstream can detect, where a missing
+                // one is a gap anyone can see. So it is discarded, and
+                // the failure is written down rather than swallowed.
+                !itsTheirs -> CaptureStats.onAutoStep(
+                    "discarded $id: the profile is not $name's"
+                )
+                else -> {
+                    prefs.pendingAuthorIds = prefs.pendingAuthorIds + "$name\u0000$id"
+                    CaptureStats.onAutoStep("抖音号: $id ($name)")
+                    SyncWorker.enqueue(service.applicationContext)
+                }
             }
         }
 

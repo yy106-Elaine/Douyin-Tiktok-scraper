@@ -69,27 +69,78 @@ object ProfilePage {
     }
 
     /**
-     * The `@名字` link for the video in front, and the name it carries.
+     * The `@名字` link for the video **in front**, and the name on it.
      *
-     * Returns the name separately because it is the key the server
-     * files the 抖音号 under -- the profile page shows the nickname
-     * too, but reading it from the feed ties the id to the post that
-     * was actually being collected.
+     * The qualifier is the whole difficulty. Douyin keeps two or three
+     * videos in the tree at once, and taking the first `@` in it opened
+     * the neighbour's profile while the run was collecting this video:
+     * a 抖音号 read correctly and then filed under someone else's name,
+     * which is worse than not reading it -- a wrong association looks
+     * exactly like a right one.
+     *
+     * Screen position is what separates them. The video in front fills
+     * the screen and its author line sits near the bottom, above the
+     * comment bar; the next video's author line is below the screen
+     * edge, and the previous one's is above it. So candidates are
+     * filtered to those actually visible and the lowest is taken.
+     *
+     * @param screenHeight pixels, to tell visible from merely present
      */
-    fun findAuthorLink(roots: List<AccessibilityNodeInfo>): Pair<AccessibilityNodeInfo, String>? {
+    fun findAuthorLink(
+        roots: List<AccessibilityNodeInfo>,
+        screenHeight: Int,
+    ): Pair<AccessibilityNodeInfo, String>? {
+        var best: Pair<AccessibilityNodeInfo, String>? = null
+        var bestY = Int.MIN_VALUE
+        val bounds = android.graphics.Rect()
+
         for (root in roots) {
-            var hit: Pair<AccessibilityNodeInfo, String>? = null
             walk(root) { node ->
                 val label = label(node) ?: return@walk true
                 if (!isAuthorLink(label)) return@walk true
                 val target = clickable(node) ?: return@walk true
                 if (NEVER_TAP.containsMatchIn(label(target) ?: "")) return@walk true
-                hit = target to label.removePrefix("@").trim()
-                false
+
+                target.getBoundsInScreen(bounds)
+                val centre = bounds.centerY()
+                if (centre in 0..screenHeight && centre > bestY) {
+                    bestY = centre
+                    best = target to label.removePrefix("@").trim()
+                }
+                true
             }
-            if (hit != null) return hit
         }
-        return null
+        return best
+    }
+
+    /**
+     * Whether the profile now open belongs to [name].
+     *
+     * A last check before an id is recorded against a display name,
+     * because the cost of being wrong is asymmetric: an id not
+     * collected is a gap anyone can see, and an id under the wrong name
+     * is a false identification nothing downstream can detect. The
+     * profile renders the nickname beside the 抖音号, so if the name the
+     * run tapped is nowhere on this page, it did not land where it
+     * thought and the reading is discarded.
+     */
+    fun profileBelongsTo(roots: List<AccessibilityNodeInfo>, name: String): Boolean {
+        val wanted = name.trim()
+        if (wanted.isEmpty()) return false
+        for (root in roots) {
+            var seen = false
+            walk(root) { node ->
+                val label = label(node)
+                if (label != null && label.contains(wanted)) {
+                    seen = true
+                    false
+                } else {
+                    true
+                }
+            }
+            if (seen) return true
+        }
+        return false
     }
 
     private fun label(node: AccessibilityNodeInfo): String? {

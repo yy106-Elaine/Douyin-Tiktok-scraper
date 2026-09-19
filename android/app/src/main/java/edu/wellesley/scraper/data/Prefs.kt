@@ -92,7 +92,14 @@ class Prefs(context: Context) {
         const val KEY_CLIPBOARD = "last_saved_clipboard"
         const val KEY_SAVE_BUTTON = "show_save_button"
         const val KEY_LINK_FP = "last_link_fingerprint"
-        const val KEY_VISITED = "visited_authors"
-        const val KEY_PENDING_IDS = "pending_author_ids"
+        // Suffixed, and bumped when the rule that produced the values
+        // changes. The first version picked the first `@名字` in the
+        // tree rather than the one belonging to the video in front, so
+        // it recorded ids against a neighbour's name -- entries that
+        // must not be uploaded now that they are known to be wrong.
+        // Renaming the key drops them without asking anyone to
+        // reinstall or clear data.
+        const val KEY_VISITED = "visited_authors_v2"
+        const val KEY_PENDING_IDS = "pending_author_ids_v2"
     }
 }
