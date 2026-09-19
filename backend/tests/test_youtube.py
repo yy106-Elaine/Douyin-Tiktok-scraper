@@ -28,7 +28,9 @@ def _item(video_id="abc123", published="2026-09-16T08:30:00Z", privacy="public")
         "snippet": {
             "channelId": f"UC{video_id}",
             "channelTitle": "A Channel",
-            "title": "a title",
+            # On topic, because only in-scope videos are tracked --
+            # see `collected_targets`.
+            "title": "我们是拉拉 女朋友日常",
             "description": "a description",
             "publishedAt": published,
         },

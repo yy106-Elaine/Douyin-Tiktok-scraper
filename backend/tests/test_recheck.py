@@ -335,3 +335,49 @@ def test_the_findings_page_renders_and_states_its_limits(client, api_key):
 
 def test_the_findings_page_needs_the_admin_key(client):
     assert client.get("/dashboard/takedowns").status_code == 401
+
+
+def test_only_in_scope_videos_are_tracked(client, api_key):
+    """1,072 of 1,126 YouTube rows were excluded, and all were tracked.
+
+    The cost of re-checking them daily is the smaller half. A takedown
+    rate computed over adult nappies, a children's cartoon and a shelf
+    of Japanese vlogs is a rate for those, and the page presented it
+    as the corpus's.
+    """
+    from app.db import SessionLocal
+    from app.recheck import collected_targets
+    from app import youtube
+
+    def caller(endpoint, params):
+        if endpoint == "search":
+            return {"items": [{"id": {"videoId": v}} for v in ("keep", "drop")]}
+        titles = {
+            "keep": "我们是拉拉 女朋友日常",
+            # A daily poster of adult nappies. 拉拉裤 is not the topic.
+            "drop": "#卧床老人 #护理用品 #成人拉拉裤",
+        }
+        return {
+            "items": [
+                {
+                    "id": video_id,
+                    "snippet": {
+                        "channelId": "UC1",
+                        "channelTitle": "c",
+                        "title": titles[video_id],
+                        "description": "",
+                        "publishedAt": "2026-09-16T08:30:00Z",
+                    },
+                    "statistics": {},
+                    "status": {"privacyStatus": "public"},
+                }
+                for video_id in params["id"].split(",")
+            ]
+        }
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["拉拉"], caller=caller)
+        tracked = {target.video_id for target in collected_targets(session)}
+
+    assert "keep" in tracked
+    assert "drop" not in tracked

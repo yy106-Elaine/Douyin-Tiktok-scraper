@@ -109,6 +109,25 @@ video, which is worse than a duplicate. Only the derived row is deleted; the
 `capture_events` payload it came from stays, so the observation as the device
 reported it is still on file.
 
+**What is tracked is the corpus, not the search.** A YouTube search for the
+keywords returns mostly other things: of 1,126 videos collected over three
+days, 1,072 were excluded — 504 not in Chinese, 256 Japanese, 200 with no
+topic term, and the rest products, fiction, games and divination. That ratio
+is itself a finding worth reporting: the community's practice on YouTube is
+thin compared with Douyin and TikTok, and the search reaches it only through a
+great deal of noise.
+
+The excluded rows are kept and counted, and they are not re-checked. Every one
+of them was, at first, and a takedown rate computed over adult nappies and
+Japanese vlogs was being presented as the corpus's. `collected_targets` now
+applies the same scope condition the dashboard and the export use, so
+re-marking a row moves it in or out of tracking at the next run; the checks
+already made stay on file, and the findings are recomputed from them.
+
+A copied link that never paired to a post has no relevance to read, and is
+tracked. On Douyin and TikTok the search is the filter, and a hand-copied link
+is a video someone chose.
+
 **One post, many copies.** When a day's search results run out the feed stops
 advancing and the loop keeps copying whatever is on screen; one run copied a
 single post eighty times. Every copy is a real observation and stays in

@@ -269,12 +269,33 @@ def minimum_gap(age: timedelta) -> timedelta:
 
 
 def collected_targets(session: Session) -> list[Target]:
-    """Every video with an id, from posts and from links alike."""
+    """Every in-scope video with an id, from posts and from links alike.
+
+    In scope, not merely collected. A YouTube search for 拉拉 returns
+    adult nappies and a children's cartoon, and 1,072 of 1,126 rows
+    were excluded by the topic filter -- yet all of them were being
+    re-checked daily. That cost is the smaller half of it: a takedown
+    rate computed over them is a rate for Japanese vlogs and product
+    listings, not for the corpus, and it was being read as the corpus's.
+
+    The filter is the same one the dashboard and the CSV export use,
+    so a row re-marked in scope starts being tracked at the next run
+    and one re-marked out of it stops -- the checks already made stay
+    on file either way, and the findings are recomputed from them.
+
+    A link that never paired to a post has no relevance to read. Those
+    are kept: on Douyin and TikTok the search is the filter, and a
+    copied link is a video someone chose to collect by hand.
+    """
+    from .views import in_scope_filter
+
     found: dict[str, Target] = {}
 
     for platform, (model, _) in PLATFORM_TABLES.items():
         for post in session.scalars(
-            select(model).where(model.video_id.isnot(None)).order_by(model.captured_at)
+            select(model)
+            .where(model.video_id.isnot(None), in_scope_filter(model, platform))
+            .order_by(model.captured_at)
         ):
             found.setdefault(
                 post.video_id,

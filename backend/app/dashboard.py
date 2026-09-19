@@ -832,7 +832,11 @@ def _findings_page(**ctx) -> str:
 
     tiles = "".join(
         [
-            _tile("Videos tracked", _compact(summary.tracked), f"of {ctx['collected']:,} collected"),
+            _tile(
+                "Videos tracked",
+                _compact(summary.tracked),
+                f"of {ctx['collected']:,} in the corpus with an ID",
+            ),
             _tile("Disappeared", _compact(summary.gone), "at the latest check"),
             _tile(
                 "Takedown rate",
