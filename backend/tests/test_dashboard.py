@@ -208,3 +208,79 @@ def test_an_unresolved_link_shows_what_the_share_text_said(client, api_key):
     assert "我爱吃葡萄" in body
     assert "我出现的意义是想告诉你" in body
     assert "v.douyin.com/SXLSe2Qgzl4" in body
+
+
+def _douyin_link(client, api_key, slug, author, caption, when):
+    return client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                f"5.61 复制打开抖音，看看【{author}的作品】{caption} "
+                f"https://v.douyin.com/{slug}/ :8p"
+            ),
+            "shared_at": when,
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+
+def test_one_post_copied_eighty_times_is_one_row(client, api_key):
+    """When the day's results run out the feed stops advancing.
+
+    The loop keeps copying whatever is on screen, so one run put the
+    same post in the table eighty times. Every copy is a real
+    observation and stays in the database; the reader needs the post
+    once, with how often it was seen.
+    """
+    for number in range(8):
+        _douyin_link(
+            client,
+            api_key,
+            f"slug{number}",
+            "晒月亮",
+            "你冷不冷 饿不饿 想不想我# 姐姐 # lwl",
+            f"2026-09-19T17:{20 + number}:00Z",
+        )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert body.count("晒月亮") == 1
+    assert "8 seen" in body
+
+
+def test_two_videos_by_one_author_stay_two_rows(client, api_key):
+    """Collapsing by author alone would lose one of them."""
+    _douyin_link(
+        client, api_key, "one", "珩舟", "#短发 #lwl", "2026-09-19T19:50:00Z"
+    )
+    _douyin_link(
+        client, api_key, "two", "珩舟", "出现# 卡点# lwl", "2026-09-19T19:50:30Z"
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "短发" in body
+    assert "卡点" in body
+
+
+def test_the_screen_and_the_share_text_spell_a_caption_differently(client, api_key):
+    """`#短发 #lwl` on screen, `# 短发 # lwl` in the share text.
+
+    Same post. If the spacing kept them apart the table would list
+    every post twice for the rest of the study.
+    """
+    _capture(
+        client,
+        api_key,
+        {
+            "platform_package": "com.ss.android.ugc.aweme",
+            "fingerprint": "douyin::珩舟::#短发 #lwl",
+            "captured_at": "2026-09-19T19:50:00Z",
+            "payload": {"author_name": "珩舟", "caption": "#短发 #lwl"},
+        },
+    )
+    _douyin_link(
+        client, api_key, "one", "珩舟", "# 短发 # lwl", "2026-09-19T19:50:30Z"
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert body.count("珩舟") == 1
+    assert "2 seen" in body

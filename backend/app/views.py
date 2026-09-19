@@ -83,6 +83,10 @@ class VideoRow:
     #: app/relevance.py.
     relevance: str | None = None
 
+    #: How many collected rows this one stands for. Above one when the
+    #: same post was copied repeatedly -- see `_collapse_repeats`.
+    repeats: int = 1
+
 
 def publication(
     video_id: object,
@@ -344,7 +348,7 @@ def video_rows(
     rows.extend(_row_from_link(link) for link in unpaired)
 
     rows.sort(key=lambda row: row.when, reverse=True)
-    return _one_row_per_video(rows)[:limit]
+    return _collapse_repeats(_one_row_per_video(rows))[:limit]
 
 
 def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
@@ -375,7 +379,10 @@ def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
             at[row.video_id] = len(out)
             out.append(row)
             continue
-        out[index] = _filled(out[index], row)
+        held = out[index]
+        out[index] = replace(
+            _filled(held, row), repeats=held.repeats + row.repeats
+        )
 
     return out
 
@@ -410,3 +417,68 @@ def _filled(held: VideoRow, other: VideoRow) -> VideoRow:
             if value not in (None, ""):
                 gaps[field] = value
     return replace(held, **gaps) if gaps else held
+
+
+def _repeat_key(row: VideoRow) -> tuple[str, str] | None:
+    """What makes two rows the same post when no id proves it.
+
+    The author, and the head of the caption with its spacing removed.
+    Both are needed: an author posts more than one video, and the
+    captions are the only thing telling those apart.
+
+    Spacing and length are normalised because the two sources write
+    the same caption differently -- the screen renders `#短发 #lwl`
+    and the share text writes `# 短发 # lwl`, and the share text
+    truncates a long one with an ellipsis. Comparing a short head of
+    the stripped text is what makes those meet.
+    """
+    author = (row.author_name or row.author_handle or "").strip()
+    caption = "".join((row.caption or "").split())
+    if not author or not caption:
+        return None
+    return author, caption[:_HEAD]
+
+
+#: Characters of caption compared. Long enough that two videos by one
+#: author are not confused, short enough to survive the share text's
+#: ellipsis.
+_HEAD = 10
+
+
+def _collapse_repeats(rows: list[VideoRow]) -> list[VideoRow]:
+    """One row per post, where the author and caption say it is one.
+
+    The loop copies the link of whatever video is on screen, and when
+    a day's search results run out the feed stops advancing -- one
+    run put the same post on screen eighty times, and the dashboard
+    listed it eighty times. Each copy is a real observation and stays
+    in the database; what a reader needs is the post, once, with the
+    number of times it was seen.
+
+    Rows an id has already merged come in as one; this is for the
+    ones with no id yet, which is most of them until the links are
+    followed. A row with no author or no caption is never folded --
+    there is nothing there to be sure with.
+    """
+    at: dict[tuple[str, str], int] = {}
+    out: list[VideoRow] = []
+    for row in rows:
+        key = _repeat_key(row)
+        if key is None:
+            out.append(row)
+            continue
+        index = at.get(key)
+        if index is None:
+            at[key] = len(out)
+            out.append(row)
+            continue
+        held = out[index]
+        if held.video_id and row.video_id and held.video_id != row.video_id:
+            # Two ids are two videos, whatever the captions say. One
+            # channel posting the same title twice is ordinary.
+            out.append(row)
+            continue
+        out[index] = replace(
+            _filled(held, row), repeats=held.repeats + row.repeats
+        )
+    return out

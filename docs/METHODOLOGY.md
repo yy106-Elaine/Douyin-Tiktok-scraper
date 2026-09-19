@@ -109,6 +109,17 @@ video, which is worse than a duplicate. Only the derived row is deleted; the
 `capture_events` payload it came from stays, so the observation as the device
 reported it is still on file.
 
+**One post, many copies.** When a day's search results run out the feed stops
+advancing and the loop keeps copying whatever is on screen; one run copied a
+single post eighty times. Every copy is a real observation and stays in
+`shared_links`. The dashboard shows the post once, marked with how many times
+it was seen, folding rows that share an author and the first ten characters of
+the caption with spacing removed -- the screen renders `#短发 #lwl` and the
+share text writes `# 短发 # lwl` for the same post, and the share text
+truncates a long caption. Rows with two different video ids are never folded:
+an id is proof of two videos, and one author posting the same title twice is
+ordinary.
+
 **Where the id comes from, and how it can be wrong.** A Douyin share link is
 `v.douyin.com/XXXX` and carries no id; following its redirect yields
 `iesdouyin.com/share/video/<id>/`, and that id is the record. Douyin rate-limits

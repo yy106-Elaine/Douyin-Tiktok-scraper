@@ -245,6 +245,11 @@ def _notes_cell(row: VideoRow) -> str:
         f'<span class="flag {_STATE_CLASS.get(row.state, "good")}">'
         f"{escape(row.state)}</span>"
     ]
+    if row.repeats > 1:
+        # The same post, copied this many times. Each copy is a real
+        # observation and is still in the database; the reader needs
+        # the post once.
+        notes.append(f'<span class="flag muted">&times;{row.repeats} seen</span>')
     if row.counts_approximate:
         notes.append('<span class="flag approx">&asymp; approximate</span>')
     if row.is_ad:
