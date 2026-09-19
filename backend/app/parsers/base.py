@@ -76,6 +76,27 @@ _RELATIVE = re.compile(
     re.IGNORECASE,
 )
 
+#: Douyin writes the same thing in Chinese: 7小时前, 3天前, 5分钟前.
+#: Without this the value was captured and then shown as "as shown",
+#: an uninterpreted string, while the information needed to date the
+#: post was sitting in it.
+_RELATIVE_CN = re.compile(
+    r"^(\d+)\s*(秒|分[钟鐘]?|小?[时時]|天|周|[个個]?月|年)前$"
+)
+
+_RELATIVE_CN_UNITS = {
+    "秒": 1,
+    "分": 60, "分钟": 60, "分鐘": 60,
+    "时": 3600, "小时": 3600, "時": 3600, "小時": 3600,
+    "天": 86400,
+    "周": 604800,
+    "月": 2592000, "个月": 2592000, "個月": 2592000,
+    "年": 31536000,
+}
+
+#: 刚刚 is "just now" -- zero seconds ago, not an unparseable string.
+_JUST_NOW = ("刚刚", "剛剛", "just now")
+
 _RELATIVE_UNITS = {
     "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
     "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60,
@@ -99,6 +120,11 @@ def resolve_posted_on(value: Any, reference: datetime | None = None) -> datetime
     Partial dates ("5-31") are still refused. There the year is genuinely
     missing, and inferring it would fabricate the variable a takedown
     study measures from.
+
+    Both languages are read, because both are rendered: TikTok writes
+    "11h ago" and Douyin writes 7小时前, and only the English form was
+    understood. The Chinese value was being captured and then shown as
+    "as shown" -- an uninterpreted string with the answer inside it.
     """
     if value is None:
         return None
@@ -120,6 +146,17 @@ def resolve_posted_on(value: Any, reference: datetime | None = None) -> datetime
         if seconds is None:
             return None
         return reference - timedelta(seconds=int(match.group(1)) * seconds)
+
+    if match := _RELATIVE_CN.match(text):
+        if reference is None:
+            return None
+        seconds = _RELATIVE_CN_UNITS.get(match.group(2))
+        if seconds is None:
+            return None
+        return reference - timedelta(seconds=int(match.group(1)) * seconds)
+
+    if text in _JUST_NOW:
+        return reference
 
     return None
 

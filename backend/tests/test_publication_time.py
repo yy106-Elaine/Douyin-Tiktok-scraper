@@ -95,3 +95,49 @@ class TestPrecedence:
 
     def test_nothing_known_is_reported_as_nothing(self):
         assert publication(None, None, None) == (None, None, "")
+
+
+class TestDouyinWritesTheTimeInChinese:
+    """Both platforms render a relative time; only one did so in English.
+
+    The value was being captured and then displayed as "as shown" -- an
+    uninterpreted string with the answer inside it. For a post whose
+    link was never copied this is the only publication time there is,
+    and on this platform that is most of them.
+    """
+
+    reference = datetime(2026, 9, 19, 3, 11)
+
+    def resolve(self, text):
+        from app.parsers.base import resolve_posted_on
+
+        return resolve_posted_on(text, reference=self.reference)
+
+    def test_the_forms_douyin_renders(self):
+        # 7小时前 and 10小时前 are off the study phone; the rest are the
+        # same pattern at other units.
+        assert self.resolve("7小时前") == datetime(2026, 9, 18, 20, 11)
+        assert self.resolve("· 10小时前") == datetime(2026, 9, 18, 17, 11)
+        assert self.resolve("5分钟前") == datetime(2026, 9, 19, 3, 6)
+        assert self.resolve("3天前") == datetime(2026, 9, 16, 3, 11)
+        assert self.resolve("1个月前") == datetime(2026, 8, 20, 3, 11)
+
+    def test_just_now_is_zero_seconds_ago(self):
+        assert self.resolve("刚刚") == self.reference
+
+    def test_traditional_characters_too(self):
+        assert self.resolve("7小時前") == datetime(2026, 9, 18, 20, 11)
+        assert self.resolve("5分鐘前") == datetime(2026, 9, 19, 3, 6)
+
+    def test_english_still_works(self):
+        assert self.resolve("11h ago") == datetime(2026, 9, 18, 16, 11)
+
+    def test_a_partial_date_is_still_refused(self):
+        """The year is genuinely missing; inferring it would fabricate
+        the variable a takedown study measures from."""
+        assert self.resolve("09-18") is None
+
+    def test_nothing_is_invented_without_a_reference(self):
+        from app.parsers.base import resolve_posted_on
+
+        assert resolve_posted_on("7小时前", reference=None) is None
