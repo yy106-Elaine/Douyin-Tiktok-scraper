@@ -94,6 +94,21 @@ then compare — and move `douyin` into the verified set.
 Second, an id decoding outside 2016–now is refused rather than returned. A
 wrong date silently becomes a data point; a missing one does not.
 
+**One post, two rows.** A post's identity on the device is its author plus
+the head of its caption, so a read taken before the caption renders has a
+different identity from the read taken after, and both are stored. The
+assisted loop guarantees the gap: the share sheet covers the feed for several
+seconds between the two reads, long enough for the first to settle.
+
+The blank row holds nothing the other does not, and left alone it inflates the
+row count and halves every caption-coverage figure. `python -m app.dedupe`
+reports the pairs and `--apply` folds them, matching a blank row to a captioned
+one by author, day and like count -- the number that is on screen before the
+caption is. Anything ambiguous is left alone: two rows merged in error lose a
+video, which is worse than a duplicate. Only the derived row is deleted; the
+`capture_events` payload it came from stays, so the observation as the device
+reported it is still on file.
+
 **Where the id comes from, and how it can be wrong.** A Douyin share link is
 `v.douyin.com/XXXX` and carries no id; following its redirect yields
 `iesdouyin.com/share/video/<id>/`, and that id is the record. Douyin rate-limits

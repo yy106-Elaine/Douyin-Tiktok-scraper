@@ -24,12 +24,39 @@ class CaptureBuffer(
     fun observe(post: ParsedPost) {
         val fingerprint = post.fingerprint() ?: return
         val timestamp = now()
+
+        // The same post, read before its caption drew, is held under
+        // a different key -- the caption is part of the identity. It
+        // is not another post, so it is taken over rather than left
+        // to settle into a row holding nothing this one does not.
+        val earlier = blankKeyFor(post)?.let { pending.remove(it) }
+
         val existing = pending[fingerprint]
-        pending[fingerprint] = if (existing == null) {
+        val held = when {
+            existing != null && earlier != null ->
+                existing.copy(
+                    post = earlier.post.mergedWith(existing.post),
+                    firstSeen = minOf(existing.firstSeen, earlier.firstSeen),
+                )
+            earlier != null -> earlier
+            else -> existing
+        }
+        pending[fingerprint] = if (held == null) {
             Pending(post, timestamp, timestamp)
         } else {
-            existing.copy(post = existing.post.mergedWith(post), lastSeen = timestamp)
+            held.copy(post = held.post.mergedWith(post), lastSeen = timestamp)
         }
+    }
+
+    /**
+     * The key this post was held under before its caption drew, when
+     * this read is the one that has it.
+     */
+    private fun blankKeyFor(post: ParsedPost): String? {
+        if (post.caption.isNullOrBlank()) return null
+        val author = (post.authorName ?: post.authorHandle)?.trim().orEmpty()
+        if (author.isEmpty()) return null
+        return "${post.platform}::$author::"
     }
 
     /**

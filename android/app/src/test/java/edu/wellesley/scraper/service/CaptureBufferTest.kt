@@ -83,4 +83,41 @@ class CaptureBufferTest {
         buffer.observe(ParsedPost(platform = "tiktok"))
         assertEquals(0, buffer.size())
     }
+
+    @Test
+    fun `a caption arriving late joins the post it belongs to`() {
+        // 19:50  '珩舟'  likes=8  caption=None
+        // 19:50  '珩舟'  likes=8  caption='#短发 #lwl'
+        //
+        // Two rows, one post. The caption is part of the identity, so
+        // a read taken before the text drew is held under a different
+        // key -- and the blank one holds nothing the other does not.
+        val buffer = buffer()
+        buffer.observe(post(like = "8", caption = null))
+        clock += 1_000
+        buffer.observe(post(like = "8", caption = "#短发 #lwl"))
+        clock += 6_000
+
+        val settled = buffer.drain()
+        assertEquals(1, settled.size)
+        val (merged, firstSeen) = settled.single()
+        assertEquals("#短发 #lwl", merged.caption)
+        assertEquals("8", merged.likeRaw)
+        // And it was first seen when it reached the screen, not when
+        // its caption caught up.
+        assertEquals(0L, firstSeen)
+    }
+
+    @Test
+    fun `two authors are still two posts`() {
+        val buffer = buffer()
+        buffer.observe(
+            ParsedPost(platform = "tiktok", authorName = "one", caption = null)
+        )
+        buffer.observe(
+            ParsedPost(platform = "tiktok", authorName = "two", caption = "a caption")
+        )
+        clock += 6_000
+        assertEquals(2, buffer.drain().size)
+    }
 }
