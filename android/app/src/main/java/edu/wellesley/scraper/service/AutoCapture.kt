@@ -69,6 +69,9 @@ class AutoCapture(private val service: AccessibilityService) {
     /** Reset by [advance]; see [recover]. */
     private var consecutiveFailures = 0
 
+    /** Consecutive checks finding another app in front; see keepGoing. */
+    private var awayReadings = 0
+
     // What a dry run has seen so far. The share control and the copy
     // entry are never on screen at the same time, so each is kept from
     // whichever look first found it.
@@ -94,6 +97,7 @@ class AutoCapture(private val service: AccessibilityService) {
         this.sawCopy = null
         this.tries = 0
         this.consecutiveFailures = 0
+        this.awayReadings = 0
         running = true
         CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
         if (mode == Mode.DRY_RUN) {
@@ -501,9 +505,23 @@ class AutoCapture(private val service: AccessibilityService) {
         // someone walking away. Nothing is ever pressed there: roots()
         // only ever returns windows belonging to startedIn.
         if (front != startedIn && front != service.packageName) {
-            stop("left ${startedIn ?: "the app"} (now ${front ?: "nothing"})")
+            awayReadings++
+            // One reading is not evidence that someone left. A
+            // thirty-minute session ended after six videos because the
+            // launcher was reported for an instant while a profile was
+            // closing. Nothing is pressed meanwhile -- this returns
+            // false either way, so no step acts while another app is
+            // in front -- but the run waits to see it again before
+            // giving up on the other twenty-nine minutes.
+            if (awayReadings >= AWAY_READINGS) {
+                stop("left ${startedIn ?: "the app"} (now ${front ?: "nothing"})")
+            } else {
+                CaptureStats.onAutoStep("${front ?: "something else"} is in front; waiting")
+                handler.postDelayed(::openShare, SETTLE_MILLIS)
+            }
             return false
         }
+        awayReadings = 0
         return true
     }
 
@@ -593,6 +611,13 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** One BACK, then this many waits for the feed to return. */
         const val PROFILE_WAIT_TRIES = 6
+
+        /**
+         * Consecutive readings of another app in front before the run
+         * accepts that someone walked away. About five seconds, and
+         * nothing is pressed during any of them.
+         */
+        const val AWAY_READINGS = 3
 
         // A dry run watches for half a minute: long enough to switch
         // apps, find the video again and open the share sheet by hand.
