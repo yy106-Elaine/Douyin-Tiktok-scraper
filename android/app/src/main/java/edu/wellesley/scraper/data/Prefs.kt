@@ -52,6 +52,28 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_LINK_FP, null)
         set(value) = prefs.edit { putString(KEY_LINK_FP, value) }
 
+    /**
+     * Display names whose profile has already been visited.
+     *
+     * The 抖音号 belongs to the account, not the video, so one visit
+     * answers it for every post that account ever appears in. Without
+     * this the run would open the same profile for every video by a
+     * prolific author, and a profile visit is the most expensive step
+     * in the loop by a wide margin.
+     *
+     * Names that turned out to have no id on the page are remembered
+     * too. A second attempt would fail the same way and cost the same
+     * fifteen seconds.
+     */
+    var visitedAuthors: Set<String>
+        get() = prefs.getStringSet(KEY_VISITED, emptySet()).orEmpty()
+        set(value) = prefs.edit { putStringSet(KEY_VISITED, value) }
+
+    /** `name\u0000id` pairs the server has not acknowledged yet. */
+    var pendingAuthorIds: Set<String>
+        get() = prefs.getStringSet(KEY_PENDING_IDS, emptySet()).orEmpty()
+        set(value) = prefs.edit { putStringSet(KEY_PENDING_IDS, value) }
+
     /** Whether the floating save-link button is wanted. */
     var showSaveButton: Boolean
         get() = prefs.getBoolean(KEY_SAVE_BUTTON, false)
@@ -70,5 +92,7 @@ class Prefs(context: Context) {
         const val KEY_CLIPBOARD = "last_saved_clipboard"
         const val KEY_SAVE_BUTTON = "show_save_button"
         const val KEY_LINK_FP = "last_link_fingerprint"
+        const val KEY_VISITED = "visited_authors"
+        const val KEY_PENDING_IDS = "pending_author_ids"
     }
 }

@@ -241,3 +241,33 @@ class LinkCheck(Base):
     #: Exception class name when the request never completed. A network
     #: failure is not a takedown and must never be counted as one.
     error: Mapped[str | None] = mapped_column(String(128))
+
+
+class AuthorIdentity(Base):
+    """An account's stable id, learned from its profile page.
+
+    Douyin renders `@昵称` beside a video and keeps the 抖音号 -- the
+    identifier that does not change and is not shared -- one tap away
+    on the profile. A nickname is what a study can collect cheaply; the
+    抖音号 is what lets an author still be found months later, when
+    recruitment actually happens.
+
+    Kept per author rather than per video, because that is what it is:
+    one visit answers it for every video that account ever appears in,
+    and revisiting would cost collection time for an answer already
+    held.
+    """
+
+    __tablename__ = "author_identities"
+    __table_args__ = (
+        UniqueConstraint("platform", "author_name", name="uq_author_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    #: The display name as the feed rendered it, which is the only key
+    #: available at the moment a post is captured.
+    author_name: Mapped[str] = mapped_column(String(255), index=True)
+    #: The 抖音号, read off the profile.
+    author_handle: Mapped[str] = mapped_column(String(255), index=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

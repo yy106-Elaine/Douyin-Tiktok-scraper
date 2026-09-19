@@ -20,11 +20,13 @@ from .dashboard import require_admin_view, router as dashboard_router
 from .db import get_session, init_db
 from .links import canonical_url_for, extract
 from .models import CaptureEvent, Participant, SharedLink
-from .pairing import pair_shared_link
+from .pairing import pair_shared_link, record_author_identity
 from .parsers import PLATFORM_TABLES, base
 from .platforms import family_for_platform, platform_for_package
 from .views import in_scope_filter, publication
 from .schemas import (
+    AuthorIdentityBatchIn,
+    AuthorIdentityBatchResponse,
     BatchResponse,
     CaptureBatch,
     RegisterRequest,
@@ -127,6 +129,31 @@ def ingest_batch(
         accepted += 1
 
     return BatchResponse(accepted=accepted, duplicates=duplicates, rejected=rejected)
+
+
+@app.post("/api/authors/identities", response_model=AuthorIdentityBatchResponse)
+def ingest_author_identities(
+    body: AuthorIdentityBatchIn,
+    participant: Participant = Depends(require_participant),
+    session: Session = Depends(get_session),
+) -> AuthorIdentityBatchResponse:
+    """Record 抖音号 values the device read off profile pages.
+
+    Separate from the capture stream because it is a property of an
+    account, not of an observation: one visit answers it for every
+    video that account appears in, past rows included.
+    """
+    filled = 0
+    for identity in body.identities:
+        filled += record_author_identity(
+            session,
+            platform=identity.platform,
+            author_name=identity.author_name,
+            author_handle=identity.author_handle,
+        )
+    return AuthorIdentityBatchResponse(
+        accepted=len(body.identities), rows_filled=filled
+    )
 
 
 @app.post("/api/links/shared", response_model=SharedLinkResponse)

@@ -54,3 +54,23 @@ class SharedLinkResponse(BaseModel):
     canonical_url: str | None
     needs_resolution: bool
     paired_post_id: int | None
+
+
+class AuthorIdentityIn(BaseModel):
+    """An account's stable id, read off its profile page."""
+
+    platform: str = Field(min_length=1, max_length=32)
+    #: The display name the feed shows, which is how stored rows are
+    #: found again.
+    author_name: str = Field(min_length=1, max_length=255)
+    #: The 抖音号.
+    author_handle: str = Field(min_length=1, max_length=255)
+
+
+class AuthorIdentityBatchIn(BaseModel):
+    identities: list[AuthorIdentityIn] = Field(default_factory=list, max_length=200)
+
+
+class AuthorIdentityBatchResponse(BaseModel):
+    accepted: int
+    rows_filled: int

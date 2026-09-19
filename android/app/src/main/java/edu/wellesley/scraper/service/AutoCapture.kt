@@ -7,6 +7,8 @@ import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
+import edu.wellesley.scraper.data.Prefs
+import edu.wellesley.scraper.net.SyncWorker
 import edu.wellesley.scraper.ui.ClipboardReaderActivity
 
 /**
@@ -52,6 +54,9 @@ class AutoCapture(private val service: AccessibilityService) {
     private var deadline = 0L
     private var remaining = 0
     private var startedIn: String? = null
+
+    /** The author whose profile is being opened, if one is. */
+    private var pendingAuthor: String? = null
 
     // What a dry run has seen so far. The share control and the copy
     // entry are never on screen at the same time, so each is kept from
@@ -206,7 +211,67 @@ class AutoCapture(private val service: AccessibilityService) {
 
     private fun nextVideo() {
         if (!keepGoing()) return
-        waitForApp(0) { closeSheet(0) }
+        waitForApp(0) { closeSheet(0) { visitProfileIfNew() } }
+    }
+
+    // ----------------------------------------------------------------
+    // The 抖音号, which is not on the feed
+    // ----------------------------------------------------------------
+    //
+    // Douyin shows `@昵称` beside a video and keeps the 抖音号 on the
+    // profile. The nickname can change and can be shared; the 抖音号
+    // is what still finds the account when recruitment happens months
+    // later. So the run opens the profile -- but once per author, not
+    // once per video. It belongs to the account, and this is the most
+    // expensive step in the loop: roughly fifteen seconds against the
+    // nine a video otherwise costs.
+
+    private fun visitProfileIfNew() {
+        if (!keepGoing()) return
+
+        val prefs = Prefs(service.applicationContext)
+        val found = ProfilePage.findAuthorLink(roots())
+        val name = found?.second
+        if (found == null || name.isNullOrBlank() || name in prefs.visitedAuthors) {
+            advance()
+            return
+        }
+
+        pendingAuthor = name
+        CaptureStats.onAutoStep("profile: $name")
+        tap(found.first)
+        handler.postDelayed(::readDouyinId, PROFILE_OPEN_MILLIS)
+    }
+
+    private fun readDouyinId() {
+        if (!keepGoing()) return
+
+        val name = pendingAuthor
+        pendingAuthor = null
+        val prefs = Prefs(service.applicationContext)
+        val id = ProfilePage.readDouyinId(roots())
+
+        if (name != null) {
+            // Recorded either way. A profile with no id on it will not
+            // grow one, and retrying costs the same fifteen seconds
+            // every time that author comes round again.
+            prefs.visitedAuthors = prefs.visitedAuthors + name
+            if (id != null) {
+                prefs.pendingAuthorIds = prefs.pendingAuthorIds + "$name\u0000$id"
+                CaptureStats.onAutoStep("抖音号: $id")
+                SyncWorker.enqueue(service.applicationContext)
+            } else {
+                CaptureStats.onAutoStep("no 抖音号 on $name's profile")
+            }
+        }
+
+        // Back to the feed, then carry on. The profile is a page, so
+        // one BACK returns to the video that was in front.
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        handler.postDelayed({
+            if (!keepGoing()) return@postDelayed
+            advance()
+        }, PROFILE_BACK_MILLIS)
     }
 
     /**
@@ -245,11 +310,11 @@ class AutoCapture(private val service: AccessibilityService) {
      * is worse: a BACK that reaches the feed itself leaves Douyin, and
      * the run would be walking backwards out of the app it is reading.
      */
-    private fun closeSheet(attempt: Int) {
+    private fun closeSheet(attempt: Int, then: () -> Unit) {
         if (!keepGoing()) return
 
         if (!ShareSheet.isSheetOpen(roots())) {
-            advance()
+            then()
             return
         }
         if (attempt >= CLOSE_TRIES) {
@@ -261,7 +326,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        handler.postDelayed({ closeSheet(attempt + 1) }, BACK_MILLIS)
+        handler.postDelayed({ closeSheet(attempt + 1, then) }, BACK_MILLIS)
     }
 
     private fun advance() {
@@ -376,6 +441,11 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** Douyin stacks two sheets; three presses is one spare. */
         const val CLOSE_TRIES = 3
+
+        // A profile is a page load, not an animation, so these are
+        // generous. Only a first sighting of an author pays them.
+        const val PROFILE_OPEN_MILLIS = 2_500L
+        const val PROFILE_BACK_MILLIS = 1_200L
 
         // A dry run watches for half a minute: long enough to switch
         // apps, find the video again and open the share sheet by hand.

@@ -304,3 +304,99 @@ def test_backfill_repairs_posts_paired_before_handles_were_adopted(client, api_k
         assert session.scalars(select(TikTokPost)).one().author_handle == "realaccount"
         # Idempotent: nothing left to fill.
         assert backfill_author_handles(session) == 0
+
+
+class TestTheDouyinIdReadOffAProfile:
+    """抖音号 is a property of the account, so one visit answers it for
+    every video that account appears in -- including ones already
+    collected."""
+
+    def _capture(self, client, api_key, name, caption):
+        response = client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.ss.android.ugc.aweme",
+                        "fingerprint": f"douyin::{name}::{caption}",
+                        "captured_at": "2026-09-19T03:00:00Z",
+                        "payload": {"author_name": name, "caption": caption},
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 200
+
+    def _send(self, client, api_key, name, handle):
+        return client.post(
+            "/api/authors/identities",
+            json={
+                "identities": [
+                    {
+                        "platform": "douyin",
+                        "author_name": name,
+                        "author_handle": handle,
+                    }
+                ]
+            },
+            headers={"X-API-Key": api_key},
+        )
+
+    def _handles(self):
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import DouyinPost
+
+        with SessionLocal() as session:
+            return [p.author_handle for p in session.scalars(select(DouyinPost))]
+
+    def test_it_fills_every_row_that_author_already_has(self, client, api_key):
+        self._capture(client, api_key, "沽月", "一 #lwl")
+        self._capture(client, api_key, "沽月", "二 #lwl")
+        self._capture(client, api_key, "珩舟", "三 #lwl")
+
+        response = self._send(client, api_key, "沽月", "guyue_2024")
+        assert response.json() == {"accepted": 1, "rows_filled": 2}
+        # Both of 沽月's rows, and not the other author's. The payload
+        # here carries no handle, so 珩舟's stays empty.
+        assert self._handles() == ["guyue_2024", "guyue_2024", None]
+
+    def test_a_different_stable_id_is_never_overwritten(self, client, api_key):
+        """Two accounts can carry one nickname.
+
+        Replacing a 抖音号 already recorded, because a display name
+        matched, would invent an association rather than observe one.
+        """
+        self._capture(client, api_key, "沽月", "一 #lwl")
+        self._send(client, api_key, "沽月", "the_real_one")
+        assert self._handles() == ["the_real_one"]
+
+        self._send(client, api_key, "沽月", "an_impostor")
+        assert self._handles() == ["the_real_one"]
+
+    def test_it_is_recorded_even_with_no_rows_to_fill(self, client, api_key):
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import AuthorIdentity
+
+        assert self._send(client, api_key, "未见过", "unseen_id").json() == {
+            "accepted": 1,
+            "rows_filled": 0,
+        }
+        with SessionLocal() as session:
+            stored = session.scalars(select(AuthorIdentity)).all()
+        assert [(a.author_name, a.author_handle) for a in stored] == [
+            ("未见过", "unseen_id")
+        ]
+
+    def test_it_needs_a_key(self, client):
+        response = client.post(
+            "/api/authors/identities",
+            json={"identities": []},
+            headers={"X-API-Key": "nope"},
+        )
+        assert response.status_code == 401

@@ -1,0 +1,68 @@
+package edu.wellesley.scraper.service
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+/**
+ * The 抖音号 pattern and, more importantly, the labels that must never
+ * be tapped on the way to it.
+ *
+ * The avatar beside a Douyin video carries a red `+` follow badge. A
+ * tap that lands on it follows the account: an action on someone
+ * else's account, taken by software, in a study whose whole claim is
+ * that it only observes. The author's `@名字` line opens the same
+ * profile and carries no such affordance, so that is what is used --
+ * and 关注 is refused outright in case a tree ever puts it where the
+ * name should be.
+ */
+class ProfilePageTest {
+
+    // The app's own functions, not copies of its patterns: a test that
+    // re-declares the regex passes whatever the app actually does.
+    private fun idIn(text: String) = ProfilePage.douyinIdIn(text)
+
+    private fun isAuthorLink(label: String) = ProfilePage.isAuthorLink(label)
+
+    @Test
+    fun `the douyin id is read in the forms the profile uses`() {
+        assertEquals("guyue_2024", idIn("抖音号：guyue_2024"))
+        assertEquals("guyue_2024", idIn("抖音号: guyue_2024"))
+        assertEquals("grape.66", idIn("抖音号 grape.66"))
+        assertEquals("a_b-c", idIn("IP属地：北京 抖音号：a_b-c"))
+    }
+
+    @Test
+    fun `text with no id in it yields nothing`() {
+        assertNull(idIn("关注 12  粉丝 3410  获赞 5.2万"))
+        assertNull(idIn("今夜的风悄悄月悄悄 吻你的眉梢#lwl"))
+    }
+
+    @Test
+    fun `the author line is the tap target`() {
+        // As the feed renders them, from the study phone.
+        assertEquals(true, isAuthorLink("@沽月🦷🍁"))
+        assertEquals(true, isAuthorLink("@我爱吃葡萄"))
+        assertEquals(true, isAuthorLink("@．．．"))
+    }
+
+    @Test
+    fun `nothing that follows an account is ever the tap target`() {
+        for (label in listOf("关注", "關注", "加关注", "Follow", "follow")) {
+            assertEquals("$label must never be tapped", false, isAuthorLink(label))
+        }
+    }
+
+    @Test
+    fun `feed controls are not author links`() {
+        for (label in listOf(
+            "未点赞，喜欢24，按钮",
+            "分享，按钮",
+            "音乐，@沽月创作的原声，按钮",
+            "发布时间：17小时前",
+            "玩同款",
+        )) {
+            assertEquals("$label matched", false, isAuthorLink(label))
+        }
+    }
+}

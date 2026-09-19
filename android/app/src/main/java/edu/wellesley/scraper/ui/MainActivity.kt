@@ -310,16 +310,13 @@ class MainActivity : AppCompatActivity() {
         /**
          * A first live run, short enough to watch the whole way.
          *
-         * Every step of the loop has now been checked one at a time,
-         * but never end to end on a device: whether pressing 分享链接
-         * opens a second sheet on this build, whether the clipboard
-         * read returns in time, whether the swipe lands on the next
-         * video. Finding that out over five videos costs a minute;
-         * finding it out over three hundred wastes half an hour and
-         * leaves a mess to read backwards.
+         * Bounded by time rather than by videos now that a run also
+         * opens profiles: how many videos a minute buys depends on how
+         * many new authors turn up in it, and a minute is the thing
+         * being asked for.
          */
-        const val TRY_MINUTES = 3
-        const val TRY_VIDEOS = 5
+        const val TRY_MINUTES = 1
+        const val TRY_VIDEOS = 30
 
         /** Only redraws four views; a second is unnoticeable and enough. */
         const val STATE_TICK_MILLIS = 1_000L

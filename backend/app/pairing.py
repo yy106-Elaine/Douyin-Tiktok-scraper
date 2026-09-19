@@ -170,3 +170,52 @@ def _distance(post, link: SharedLink) -> tuple[int, float]:
         same = post.author_handle.lstrip("@").lower() == link.author_handle.lstrip("@").lower()
         same_author = 0 if same else 1
     return same_author, abs((post.captured_at - link.shared_at).total_seconds())
+
+
+def record_author_identity(
+    session: Session, platform: str, author_name: str, author_handle: str
+) -> int:
+    """Store an account's stable id and put it on the rows already held.
+
+    Returns how many stored posts it filled in.
+
+    A row whose handle is the nickname is upgraded, because that was
+    always a stand-in for this. A row that already carries a different
+    stable id is left alone: two accounts can share a nickname, and
+    overwriting one account's id with another's on the strength of a
+    matching display name would be inventing an association rather
+    than observing one.
+    """
+    from .models import AuthorIdentity
+
+    name = (author_name or "").strip()
+    handle = (author_handle or "").strip()
+    if not name or not handle:
+        return 0
+
+    family = family_for_platform(platform) or platform
+    existing = session.scalar(
+        select(AuthorIdentity).where(
+            AuthorIdentity.platform == family,
+            AuthorIdentity.author_name == name,
+        )
+    )
+    if existing is None:
+        session.add(
+            AuthorIdentity(platform=family, author_name=name, author_handle=handle)
+        )
+    else:
+        existing.author_handle = handle
+
+    filled = 0
+    registered = PLATFORM_TABLES.get(family)
+    if registered is not None:
+        model, _ = registered
+        for post in session.scalars(
+            select(model).where(model.author_name == name)
+        ):
+            if post.author_handle in (None, "", name):
+                post.author_handle = handle
+                filled += 1
+    session.commit()
+    return filled

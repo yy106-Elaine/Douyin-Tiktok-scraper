@@ -62,6 +62,29 @@ class ApiClient(private val baseUrl: String) {
         return post("/api/links/shared", body.toString(), apiKey)
     }
 
+    /**
+     * Report 抖音号 values read off profile pages.
+     *
+     * A batch, and separate from the capture stream, because this is a
+     * property of an account rather than of an observation: the server
+     * puts it on every row that author already has.
+     */
+    fun authorIdentities(apiKey: String, identities: List<Pair<String, String>>): Int {
+        if (identities.isEmpty()) return 0
+        val array = JSONArray()
+        for ((name, handle) in identities) {
+            array.put(
+                JSONObject()
+                    .put("platform", "douyin")
+                    .put("author_name", name)
+                    .put("author_handle", handle)
+            )
+        }
+        val body = JSONObject().put("identities", array)
+        return post("/api/authors/identities", body.toString(), apiKey)
+            .optInt("accepted", 0)
+    }
+
     private fun post(path: String, json: String, apiKey: String?): JSONObject {
         val connection = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection)
         return try {
