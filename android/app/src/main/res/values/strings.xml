@@ -37,7 +37,7 @@
     <string name="auto_start">Start a 30-minute run</string>
     <string name="auto_stop">Stop the run</string>
     <string name="auto_started">Running. Switch to the app now.</string>
-    <string name="auto_dry_started">Dry run. Switch to the app and open one share sheet.</string>
+    <string name="auto_dry_started">Dry run, watching for 30s. Switch over and open one share sheet by hand.</string>
     <string name="auto_stopped">Run stopped</string>
     <string name="auto_state_service_off">Capture service is off — turn it on first</string>
     <string name="auto_state_idle">Idle — no run</string>

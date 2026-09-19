@@ -53,6 +53,13 @@ class AutoCapture(private val service: AccessibilityService) {
     private var remaining = 0
     private var startedIn: String? = null
 
+    // What a dry run has seen so far. The share control and the copy
+    // entry are never on screen at the same time, so each is kept from
+    // whichever look first found it.
+    private var sawShare: String? = null
+    private var sawCopy: String? = null
+    private var tries = 0
+
     fun isRunning(): Boolean = running
 
     /**
@@ -67,6 +74,9 @@ class AutoCapture(private val service: AccessibilityService) {
         this.deadline = System.currentTimeMillis() + minutes * 60_000L
         this.remaining = videos
         this.startedIn = inPackage
+        this.sawShare = null
+        this.sawCopy = null
+        this.tries = 0
         running = true
         CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
         if (mode == Mode.DRY_RUN) {
@@ -77,38 +87,51 @@ class AutoCapture(private val service: AccessibilityService) {
     }
 
     /**
-     * Report what the selectors find on the screen as it is now, and
+     * Watch for both controls for a while, report what was found, and
      * stop. Pressing nothing.
      *
-     * A dry run cannot walk the loop, because after the first step it
-     * would be looking for a "copy link" entry on a feed with no sheet
-     * open. So it inspects one screen: run it on a video to check the
-     * share control, then open the share sheet by hand and run it
-     * again to check the copy entry. Two runs, and the selectors are
-     * either confirmed or the report says what was there instead.
+     * It has to watch rather than glance, because the two controls are
+     * never on screen together. The share control is on the feed; the
+     * copy entry only exists inside the sheet that opens once the share
+     * control is pressed. And a dry run cannot press it -- that is what
+     * makes it dry.
+     *
+     * So: start the run, switch to the app, and open the share sheet by
+     * hand while this is watching. It remembers the best it has seen of
+     * each, finishes the moment it has both, and otherwise reports at
+     * the deadline. A single glance 1.5 seconds after switching apps
+     * gave no time to open anything, which made the second half of the
+     * check impossible to perform.
      */
     private fun inspect() {
+        if (!running) return
+
         val roots = roots()
-        val share = ShareSheet.findShare(roots)
-        val copy = ShareSheet.findCopyLink(roots)
+        ShareSheet.findShare(roots)?.let { if (sawShare == null) sawShare = it.label }
+        ShareSheet.findCopyLink(roots)?.let { if (sawCopy == null) sawCopy = it.label }
+        tries++
 
-        CaptureStats.onAutoStep("looked in ${roots.size} window(s)")
-        CaptureStats.onAutoStep("share sheet open: ${ShareSheet.isSheetOpen(roots)}")
+        val haveBoth = sawShare != null && sawCopy != null
+        if (!haveBoth && tries < DRY_TRIES) {
+            handler.postDelayed(::inspect, DRY_INTERVAL_MILLIS)
+            return
+        }
 
+        CaptureStats.onAutoStep("watched for ${tries}s, ${roots.size} window(s) last look")
         CaptureStats.onAutoStep(
-            "share control: " + (share?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
+            "share control: " + (sawShare?.let { "found \"$it\"" } ?: "NOT FOUND")
         )
         CaptureStats.onAutoStep(
-            "copy-link entry: " + (copy?.let { "found \"${it.label}\"" } ?: "NOT FOUND")
+            "copy-link entry: " + (sawCopy?.let { "found \"$it\"" } ?: "NOT FOUND")
         )
-        if (share == null || copy == null) {
+        if (!haveBoth) {
             CaptureStats.onAutoFailure(
-                "see the screen below; run this on a video, then again with the " +
-                    "share sheet open",
+                "open the share sheet by hand while a dry run is watching; " +
+                    "below is the last screen seen",
                 ShareSheet.describe(roots),
             )
         }
-        stop("dry run finished")
+        stop(if (haveBoth) "dry run finished, both found" else "dry run finished")
     }
 
     fun stop(why: String) {
@@ -353,5 +376,10 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** Douyin stacks two sheets; three presses is one spare. */
         const val CLOSE_TRIES = 3
+
+        // A dry run watches for half a minute: long enough to switch
+        // apps, find the video again and open the share sheet by hand.
+        const val DRY_TRIES = 30
+        const val DRY_INTERVAL_MILLIS = 1_000L
     }
 }
