@@ -41,6 +41,8 @@
     <string name="auto_dry_started">Dry run, watching for 30s. Switch over and open one share sheet by hand.</string>
     <string name="auto_stopped">Run stopped</string>
     <string name="auto_forget_authors">Forget which profiles were visited</string>
+    <string name="auto_profiles_off">Also open new authors\' profiles: OFF</string>
+    <string name="auto_profiles_on">Also open new authors\' profiles: ON</string>
     <string name="auto_forgot_authors">Forgotten %1$d author(s). Their profiles will be opened again.</string>
     <string name="auto_state_service_off">Capture service is off — turn it on first</string>
     <string name="auto_state_idle">Idle — no run</string>

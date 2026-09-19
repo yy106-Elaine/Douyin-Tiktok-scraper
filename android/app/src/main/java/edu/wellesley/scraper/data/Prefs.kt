@@ -69,6 +69,20 @@ class Prefs(context: Context) {
         get() = prefs.getStringSet(KEY_VISITED, emptySet()).orEmpty()
         set(value) = prefs.edit { putStringSet(KEY_VISITED, value) }
 
+    /**
+     * Whether a run may open a new author's profile for the 抖音号.
+     *
+     * Off by default. The link, the caption, the counts and the
+     * publication time all come off the video itself, and collecting
+     * them never leaves it. A profile visit is the one step that
+     * navigates away, and coming back from it is the only part of the
+     * loop that has repeatedly failed -- twice ending up scrolling the
+     * search results.
+     */
+    var visitProfiles: Boolean
+        get() = prefs.getBoolean(KEY_VISIT_PROFILES, false)
+        set(value) = prefs.edit { putBoolean(KEY_VISIT_PROFILES, value) }
+
     /** Whether the floating save-link button is wanted. */
     var showSaveButton: Boolean
         get() = prefs.getBoolean(KEY_SAVE_BUTTON, false)
@@ -93,5 +107,6 @@ class Prefs(context: Context) {
         // its entries are about the wrong authors. Renaming the key
         // drops them without asking anyone to reinstall.
         const val KEY_VISITED = "visited_authors_v2"
+        const val KEY_VISIT_PROFILES = "visit_profiles"
     }
 }

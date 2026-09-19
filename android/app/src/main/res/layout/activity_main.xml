@@ -131,6 +131,13 @@
         run believing it already has ids it no longer has.
     -->
     <Button
+        android:id="@+id/autoProfiles"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/auto_profiles_off" />
+
+    <Button
         android:id="@+id/autoForgetAuthors"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

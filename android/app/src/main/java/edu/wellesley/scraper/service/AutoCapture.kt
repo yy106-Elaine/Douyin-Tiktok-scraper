@@ -272,6 +272,15 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!keepGoing()) return
 
         val prefs = Prefs(service.applicationContext)
+        // Off unless asked for. Collecting a link never leaves the
+        // video; opening a profile does, and getting back from one is
+        // the only thing in this loop that has ever gone wrong. The
+        // 抖音号 is worth having, but not at the price of a run that
+        // wanders into the search results.
+        if (!prefs.visitProfiles) {
+            advance()
+            return
+        }
         val found = ProfilePage.findAuthorLink(
             roots(),
             service.resources.displayMetrics.heightPixels,
@@ -546,25 +555,45 @@ class AutoCapture(private val service: AccessibilityService) {
      * going regardless, so three in a row with nothing collected
      * between them stops it and records the screen.
      */
+    /**
+     * Give up on this video without touching anything.
+     *
+     * Six builds went into making the loop press its way back to a
+     * video after something went wrong, and every one of them found a
+     * new way to press too much: an extra BACK, two chains pressing at
+     * once, the video's own 返回 mistaken for a profile's. The presses
+     * were never the recovery -- they were the failure.
+     *
+     * So recovery presses nothing. If a video is on screen the run
+     * swipes to the next one, which is the only movement this loop is
+     * supposed to make. If a video is not on screen the run stops and
+     * records what was there, because whatever else is showing, the
+     * answer is not for software to start pressing things to find out.
+     */
     private fun recover(why: String) {
         consecutiveFailures++
-        if (consecutiveFailures >= MAX_FAILURES) {
+
+        if (!onAVideo()) {
             CaptureStats.onAutoFailure(
-                "$why, and $consecutiveFailures in a row",
-                ShareSheet.describe(roots()),
+                "$why, and this is not a video",
+                ShareSheet.describe(activeRoots()),
             )
             stop(why)
             return
         }
+        if (consecutiveFailures >= MAX_FAILURES) {
+            CaptureStats.onAutoFailure(
+                "$why, and $consecutiveFailures in a row",
+                ShareSheet.describe(activeRoots()),
+            )
+            stop(why)
+            return
+        }
+
         CaptureStats.onAutoStep("$why -- skipping this video")
-        // BACK only to dismiss something that is demonstrably there.
-        dismissWhatIsOnTop()
-        handler.postDelayed({
-            if (!keepGoing()) return@postDelayed
-            remaining--
-            swipeUp()
-            handler.postDelayed(::openShare, SETTLE_MILLIS)
-        }, BACK_MILLIS)
+        remaining--
+        swipeUp()
+        handler.postDelayed(::openShare, SETTLE_MILLIS)
     }
 
     // ----------------------------------------------------------------

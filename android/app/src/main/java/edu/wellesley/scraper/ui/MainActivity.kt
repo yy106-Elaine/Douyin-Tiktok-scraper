@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         binding.autoStart.setOnClickListener {
             startAssisted(AutoCapture.Mode.LIVE, MINUTES, VIDEOS)
         }
+        binding.autoProfiles.setOnClickListener { toggleProfileVisits() }
         binding.autoForgetAuthors.setOnClickListener { forgetVisitedAuthors() }
         binding.autoStop.setOnClickListener {
             CaptureAccessibilityService.stopAssisted()
@@ -183,6 +184,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Turn the profile visit on or off.
+     *
+     * Off by default. Everything else a run collects comes off the
+     * video itself and never leaves it; opening a profile is the one
+     * step that navigates away, and returning from one is the only
+     * part of this loop that has repeatedly gone wrong. The 抖音号 is
+     * worth having, so the step stays -- behind a switch, so a
+     * collection session is not at its mercy.
+     */
+    private fun toggleProfileVisits() {
+        val prefs = Prefs(this)
+        prefs.visitProfiles = !prefs.visitProfiles
+        refreshProfileVisits()
+    }
+
+    private fun refreshProfileVisits() {
+        binding.autoProfiles.setText(
+            if (Prefs(this).visitProfiles) R.string.auto_profiles_on
+            else R.string.auto_profiles_off
+        )
+    }
+
+    /**
      * Forget which authors' profiles have been opened.
      *
      * A profile is visited once per author, because the 抖音号 belongs
@@ -300,6 +324,7 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.status_not_registered)
         }
         refreshSaveButtonLabel()
+        refreshProfileVisits()
         showSelfCheck()
     }
 
