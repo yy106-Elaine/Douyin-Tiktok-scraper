@@ -94,7 +94,25 @@ object ShareSheet {
     data class Found(val node: AccessibilityNodeInfo, val label: String)
 
     /** What a label on screen means. */
-    enum class Role { SHARE, COPY_LINK, SHEET }
+    enum class Role { SHARE, COPY_LINK, SHEET, DISMISS }
+
+    /**
+     * The sheet's own way out.
+     *
+     * Tapped instead of the global BACK. BACK means whatever the
+     * current screen decides it means: on a sheet it closes the sheet,
+     * on a video it leaves the video, and from a video reached through
+     * search it goes to the results and then to the search box -- all
+     * of which happened. A named control can only do the one thing it
+     * says, so there is nothing left to get wrong about where we are.
+     */
+    private val DISMISS = listOf(
+        Regex("""^取消$"""),
+        Regex("""^關閉$"""),
+        Regex("""^关闭$"""),
+        Regex("""^cancel$""", RegexOption.IGNORE_CASE),
+        Regex("""^close$""", RegexOption.IGNORE_CASE),
+    )
 
     /**
      * What a label means, decided on the text alone.
@@ -111,10 +129,15 @@ object ShareSheet {
      */
     fun roleOf(label: String): Role? = when {
         COPY_LINK.any { it.containsMatchIn(label) } -> Role.COPY_LINK
+        DISMISS.any { it.containsMatchIn(label) } -> Role.DISMISS
         SHEET.any { it.containsMatchIn(label) } -> Role.SHEET
         SHARE.any { it.containsMatchIn(label) } -> Role.SHARE
         else -> null
     }
+
+    /** The sheet's cancel or close control, if it offers one. */
+    fun findDismiss(roots: List<AccessibilityNodeInfo>): Found? =
+        find(roots, Role.DISMISS)
 
     /**
      * The share control on the feed.

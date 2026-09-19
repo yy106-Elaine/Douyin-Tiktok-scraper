@@ -61,6 +61,36 @@ object ProfilePage {
     fun isAuthorLink(label: String): Boolean =
         !NEVER_TAP.containsMatchIn(label) && AUTHOR_LINK.containsMatchIn(label)
 
+    /**
+     * The profile's own back arrow.
+     *
+     * Exact, so 返回顶部 -- "back to top", which scrolls -- is not it.
+     * Tapped instead of the global BACK for the same reason the sheet
+     * is: a named control does one thing, where BACK does whatever the
+     * screen it lands on decides, and the screen it lands on is what
+     * this loop kept being wrong about.
+     */
+    private val BACK_CONTROL = Regex("""^(?:返回|返 回|back)$""", RegexOption.IGNORE_CASE)
+
+    /** The back arrow on an open profile, if it is reachable. */
+    fun findBack(roots: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
+        for (root in roots) {
+            var hit: AccessibilityNodeInfo? = null
+            walk(root) { node ->
+                val label = label(node)
+                if (label != null && BACK_CONTROL.containsMatchIn(label)) {
+                    clickable(node)?.let {
+                        hit = it
+                        return@walk false
+                    }
+                }
+                true
+            }
+            if (hit != null) return hit
+        }
+        return null
+    }
+
     /** Whose profile this is, according to the page itself. */
     fun profileNameIn(text: String): String? =
         PROFILE_NAME.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }

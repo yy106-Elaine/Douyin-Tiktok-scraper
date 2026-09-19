@@ -388,6 +388,27 @@ class AutoCapture(private val service: AccessibilityService) {
             CaptureStats.onAutoStep("not pressing back: a video is on screen")
             return false
         }
+
+        // A named control first, and the global BACK only when the
+        // screen offers none. BACK means whatever the screen it lands
+        // on decides: on a sheet it closes the sheet, on a video it
+        // leaves the video, and from a video opened out of search it
+        // goes to the results and then to the search box -- which is
+        // where two runs ended up. 取消 on the sheet and 返回 on the
+        // profile can each only do the one thing they say, so being
+        // wrong about which screen we are on stops mattering.
+        val roots = roots()
+        ShareSheet.findDismiss(roots)?.let {
+            CaptureStats.onAutoStep("dismiss: ${it.label}")
+            tap(it.node)
+            return true
+        }
+        ProfilePage.findBack(roots)?.let {
+            CaptureStats.onAutoStep("back arrow on the profile")
+            tap(it)
+            return true
+        }
+
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         return true
     }

@@ -66,6 +66,26 @@ class ShareSheetTest {
     }
 
     @Test
+    fun `the sheet's own way out is recognised`() {
+        // Douyin's sheet on the study phone carries 取消. Tapping it
+        // beats the global BACK, which means whatever the screen it
+        // lands on decides -- and being wrong about which screen that
+        // is walked two runs out to the search box.
+        assertEquals(Role.DISMISS, ShareSheet.roleOf("取消"))
+        assertEquals(Role.DISMISS, ShareSheet.roleOf("关闭"))
+        assertEquals(Role.DISMISS, ShareSheet.roleOf("Cancel"))
+    }
+
+    @Test
+    fun `dismissing is never confused with the entry being collected`() {
+        // If 取消 were ever read as the copy entry the run would close
+        // the sheet and report a link it never copied.
+        assertEquals(Role.COPY_LINK, ShareSheet.roleOf("分享链接"))
+        assertNull(ShareSheet.roleOf("取消关注"))
+        assertNull(ShareSheet.roleOf("关闭AI抖音app引导"))
+    }
+
+    @Test
     fun `nothing that acts on another account is ever the share control`() {
         // Every one of these sits in a share sheet next to the entry we
         // do want, and 建群分享, 推荐 and Repost all post something.
