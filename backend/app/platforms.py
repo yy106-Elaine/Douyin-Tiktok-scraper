@@ -20,32 +20,44 @@ PACKAGE_TO_PLATFORM: dict[str, str] = {
 #: downstream (tables, dashboards, re-checking, export) is the same.
 API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
 
-#: Platforms whose rows are put through the topic filter in
-#: `app/relevance.py`.
+#: How much of `app/relevance.py` each platform's rows are put
+#: through. The right amount depends on the sampling frame, not on the
+#: language, and the three frames here differ.
 #:
-#: YouTube needs it and Douyin does not, and the reason is the sampling
-#: frame rather than the language. A YouTube keyword search returns
-#: whatever the API matched -- 女同性恋 surfaces Japanese drama, divination
-#: videos and 货拉拉 delivery ads, and about 6% of what comes back is in
-#: scope. Douyin is sampled from community hashtags: #lwl, #wlw, #les.
-#: Those are not words that occur inside unrelated ones, they are tags
-#: the community applies to its own posts, so the search itself is the
-#: filter and a second one only removes real data.
+#: "full" -- YouTube. A keyword search returns whatever the API
+#: matched: 女同性恋 surfaces Japanese drama, divination lessons and
+#: 货拉拉 delivery ads, and about 6% of what comes back is in scope. The
+#: text has to earn its place, so a topic term is required.
 #:
-#: This was not a guess either way. The first Douyin collection had
-#: every row marked "no topic term" -- captions like 许愿这次别再丢下我#lwl
-#: and 今夜的风悄悄月悄悄 吻你的眉梢#lwl, which are plainly on topic and
-#: say so with a tag rather than a term. Filtering them would have
-#: hidden the entire platform, and the video ids with it.
+#: "language" -- TikTok. Searched by hand for community terms, so the
+#: search is already doing the topic work; but it is the international
+#: build, a search there returns other languages, and this study is
+#: about Chinese-language content. So the language requirement stays
+#: and the topic-term requirement goes.
 #:
-#: TikTok stays filtered even though it is searched by hand the same
-#: way. The Douyin argument does not carry over: TikTok is the
-#: international build, a search there returns other languages, and
-#: this study is about Chinese-language WLW content. That is the
-#: filter's original job and it still has it here.
-FILTERED_PLATFORMS: frozenset[str] = frozenset(
-    {"youtube", "tiktok", "tiktok_lite"}
-)
+#: "none" -- Douyin. Sampled from community hashtags (#lwl, #wlw, #les)
+#: which are labels the community puts on its own posts, not fragments
+#: of ordinary words. The first Douyin collection had every row marked
+#: `no topic term` -- 许愿这次别再丢下我#lwl, 今夜的风悄悄月悄悄 吻你的眉梢#lwl --
+#: which hid the whole platform, and the video ids with it. A
+#: mainland-only app needs no language test either.
+FILTER_POLICY: dict[str, str] = {
+    "youtube": "full",
+    "tiktok": "language",
+    "tiktok_lite": "language",
+    "douyin": "none",
+    "douyin_lite": "none",
+}
+
+
+def filter_policy(platform: str | None) -> str:
+    """Unknown platforms get the strictest policy, never the loosest.
+
+    A new platform that quietly collected everything would be a change
+    to the corpus definition that nobody decided on.
+    """
+    return FILTER_POLICY.get((platform or "").lower(), "full")
+
 
 # Platforms whose structured rows live in the same table.
 PLATFORM_FAMILY: dict[str, str] = {

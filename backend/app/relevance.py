@@ -200,8 +200,8 @@ _HARD = tuple((reason, re.compile(pattern, re.IGNORECASE)) for reason, pattern i
 _SOFT = tuple((reason, re.compile(pattern, re.IGNORECASE)) for reason, pattern in SOFT)
 
 
-def classify(*parts: object) -> str | None:
-    """None when the text is Chinese-language WLW content, else why not.
+def classify(*parts: object, policy: str = "full") -> str | None:
+    """None when the text is in scope under [policy], else why not.
 
     Takes the title and description together, since either can carry
     the signal. The order is deliberate: a hard exclusion wins over
@@ -215,7 +215,17 @@ def classify(*parts: object) -> str | None:
     fragments of too many ordinary words for naming the collisions ever
     to finish, and in a real run every genuinely relevant row carried a
     second marker while not one of the collisions did.
+
+    [policy] says how much of that to apply, because the platforms are
+    sampled differently -- see `FILTER_POLICY`. "full" is the above.
+    "language" drops exactly one rule -- that the text must carry a
+    topic term -- for a platform whose search already did the topic
+    work but which serves other languages. "none" is for a platform
+    where the search is the whole filter and the app is
+    mainland-only.
     """
+    if policy == "none":
+        return None
     text = "\n".join(str(part) for part in parts if part)
     if not text.strip():
         return "no text"
@@ -247,7 +257,13 @@ def classify(*parts: object) -> str | None:
         if pattern.search(text) and not unambiguous:
             return reason
 
-    if not (unambiguous or confirmed):
+    # The one rule a hand-searched platform does without. The soft
+    # exclusions above still apply, because those are keyword
+    # collisions -- a 货拉拉 delivery ad is not made relevant by having
+    # been returned for 拉拉 -- and so do the two checks below. What
+    # goes is the requirement that the text name the topic at all,
+    # which is what a caption of nothing but #lwl cannot do.
+    if policy != "language" and not (unambiguous or confirmed):
         return "no topic term"
 
     # Male-only content that reached here through a shared term.
@@ -277,7 +293,7 @@ def remark(session) -> dict[str, int]:
 
     from .models import CaptureEvent
     from .parsers import PLATFORM_TABLES
-    from .platforms import FILTERED_PLATFORMS
+    from .platforms import filter_policy
 
     payloads: dict[int, dict] = {}
     for event in session.scalars(select(CaptureEvent)):
@@ -289,19 +305,18 @@ def remark(session) -> dict[str, int]:
     tally: dict[str, int] = {}
     changed = 0
     for platform, (model, _) in PLATFORM_TABLES.items():
-        filtered = platform in FILTERED_PLATFORMS
+        policy = filter_policy(platform)
         for post in session.scalars(select(model)):
-            # An unfiltered platform is marked in scope, not skipped:
-            # a row carrying an old exclusion has to be cleared, or
-            # turning the filter off would leave the past hidden.
-            if filtered:
-                payload = payloads.get(post.capture_event_id, {})
-                reason = classify(
-                    payload.get("caption") or post.caption,
-                    payload.get("description"),
-                )
-            else:
-                reason = None
+            # Every row is re-marked, including on an unfiltered
+            # platform: a row carrying an exclusion from an earlier
+            # policy has to be cleared, or loosening the filter would
+            # leave the past hidden and the change would look broken.
+            payload = payloads.get(post.capture_event_id, {})
+            reason = classify(
+                payload.get("caption") or post.caption,
+                payload.get("description"),
+                policy=policy,
+            )
             if post.relevance != reason:
                 post.relevance = reason
                 changed += 1

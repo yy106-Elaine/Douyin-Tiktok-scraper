@@ -20,7 +20,7 @@ from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
-from .platforms import FILTERED_PLATFORMS
+from .platforms import filter_policy
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
 from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
@@ -499,7 +499,8 @@ def _page(**ctx) -> str:
             f'&key={escape(ctx["key"])}">{escape(label)}{suffix}</a>'
         )
 
-    if platform in FILTERED_PLATFORMS:
+    policy = filter_policy(platform)
+    if policy != "none":
         chips = [
             review("in scope", ""),
             review("everything", "all"),
@@ -509,8 +510,14 @@ def _page(**ctx) -> str:
             review(reason, reason, count)
             for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
         ]
+        said = (
+            "Review what the topic filter did."
+            if policy == "full"
+            else "Language filter only on this platform &mdash; the search chose "
+            "the topic, so no row is excluded for lacking a topic term."
+        )
         filter_note = (
-            '<p class="note-line">Review what the topic filter did. Excluded rows are '
+            f'<p class="note-line">{said} Excluded rows are '
             "hidden, never deleted &mdash; read a category before trusting it.</p>"
             f'<div class="chips">{"".join(chips)}</div>'
         )
@@ -523,9 +530,8 @@ def _page(**ctx) -> str:
             '<p class="note-line">No topic filter on this platform. It is sampled '
             "from community hashtags (#lwl, #wlw, #les) that the community applies "
             "to its own posts, so the search is the filter and every row collected "
-            "is in the corpus. YouTube is filtered, because a keyword search there "
-            "returns whatever the API matched; the two counts are not "
-            "comparable.</p>"
+            "is in the corpus. YouTube is filtered and TikTok is language-filtered, "
+            "so counts across the three are not comparable.</p>"
         )
 
     return f"""<!doctype html>

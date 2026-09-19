@@ -37,8 +37,15 @@ object LinkQueue {
             return Queued.ALREADY_HAVE_IT
         }
 
-        dao.insert(LinkEntity(rawText = text, sharedAt = sharedAt, fingerprint = fingerprint))
+        // A fingerprint already spent on an earlier link is stale, not
+        // evidence: the server would record an exact pairing to a post
+        // this link did not come from. Dropping it falls back to
+        // pairing by time, which at least says in the data that it is
+        // a heuristic.
+        val fresh = fingerprint?.takeIf { it != prefs.lastLinkFingerprint }
+        dao.insert(LinkEntity(rawText = text, sharedAt = sharedAt, fingerprint = fresh))
         prefs.lastSavedClipboard = text
+        if (fresh != null) prefs.lastLinkFingerprint = fresh
         return Queued.ADDED
     }
 

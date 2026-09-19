@@ -34,6 +34,22 @@ from datetime import datetime, timedelta, timezone
 _EARLIEST = datetime(2016, 1, 1)
 
 #: Platforms whose layout has been confirmed against known posts.
+#:
+#: Douyin is still not one, and an attempt to move it here is worth
+#: recording because of how it failed. Id 7686818714507271786 decodes
+#: to 2026-09-18 10:22:28, which is 15.8 hours before the capture that
+#: carried it, while the feed at that moment rendered 17小时前 -- a
+#: mismatch of over an hour, not a rounding difference.
+#:
+#: But the two numbers describe different videos. The id came from one
+#: row and the 17小时前 was read off another in the same screen dump,
+#: because the Douyin parser was not capturing 发布时间 at all, so no
+#: row carried both. The comparison was never valid in either
+#: direction: it neither confirms the derivation nor refutes it.
+#:
+#: The parser now reads 发布时间, so a row collected from here on has
+#: an independent reading beside its id. Check one of those -- same
+#: row, both values -- and move douyin in.
 _VERIFIED = {"tiktok"}
 
 

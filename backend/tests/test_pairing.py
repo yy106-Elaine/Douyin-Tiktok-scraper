@@ -190,3 +190,69 @@ def test_an_unknown_fingerprint_falls_back_to_the_time_window(client, api_key):
 
     with SessionLocal() as session:
         assert session.query(SharedLink).one().pairing_method == "window"
+
+
+class TestALinkNeverOverwritesAnother:
+    """Two links carrying one fingerprint must not collapse onto a post.
+
+    An assisted run produces exactly that. The device names the post it
+    last read off the screen, and the capture buffer settles more slowly
+    than the loop copies links, so several videos share one stale
+    fingerprint. Before the guard, each link overwrote the previous one
+    on the same post: five links, three reported "paired exactly", two
+    posts holding an id, and whichever id was written last was the one
+    that stuck -- a wrong video attributed to a caption, labelled exact.
+    """
+
+    def _capture(self, client, api_key, fingerprint, caption):
+        response = client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.ss.android.ugc.aweme",
+                        "fingerprint": fingerprint,
+                        "captured_at": "2026-09-19T02:09:00Z",
+                        "payload": {"author_name": "someone", "caption": caption},
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 200
+
+    def _share(self, client, api_key, url, fingerprint):
+        return client.post(
+            "/api/links/shared",
+            json={
+                "raw_text": url,
+                "shared_at": "2026-09-19T02:09:30Z",
+                "fingerprint": fingerprint,
+            },
+            headers={"X-API-Key": api_key},
+        )
+
+    def test_the_first_id_wins_and_the_second_is_not_called_exact(
+        self, client, api_key
+    ):
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import DouyinPost, SharedLink
+
+        self._capture(client, api_key, "douyin::someone::一", "一")
+        self._share(client, api_key, "https://www.douyin.com/video/7686818714507271786", "douyin::someone::一")
+        self._share(client, api_key, "https://www.douyin.com/video/7686847496509803195", "douyin::someone::一")
+
+        with SessionLocal() as session:
+            posts = list(session.scalars(select(DouyinPost)))
+            links = list(session.scalars(select(SharedLink).order_by(SharedLink.id)))
+
+        # The post keeps the id it was given first, not the last one in.
+        assert [p.video_id for p in posts] == ["7686818714507271786"]
+        assert links[0].pairing_method == "fingerprint"
+        # The second link is not attached to that post as an exact match.
+        assert links[1].pairing_method != "fingerprint" or (
+            links[1].matched_capture_id != links[0].matched_capture_id
+        )

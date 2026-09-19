@@ -470,12 +470,26 @@ divination lessons and 货拉拉 delivery ads, and about 6% of what comes back i
 in scope. Douyin is searched by hand for community hashtags — `#lwl`, `#wlw`,
 `#les` — which are not fragments of ordinary words but labels the community
 applies to its own posts. There the search *is* the filter, and a second one
-only removes real data. So `FILTERED_PLATFORMS` in `app/platforms.py` names the
-platforms the filter runs on, and Douyin is not one of them.
+only removes real data.
 
-TikTok stays filtered. The Douyin argument does not carry over: it is the
-international build, a search there returns other languages, and this study is
-about Chinese-language content — which is the filter's original job.
+The three frames therefore get three policies, in `FILTER_POLICY`:
+
+| platform | policy | what runs |
+| --- | --- | --- |
+| YouTube | `full` | hard exclusions, Chinese-language requirement, **and a topic term must be present** |
+| TikTok | `language` | hard exclusions, Chinese-language requirement, keyword-collision rules — but no topic term required |
+| Douyin | `none` | nothing; the search is the filter |
+
+TikTok sits in the middle because both halves of the argument apply to it. It
+is searched by hand with the same community terms, so the search has already
+done the topic work — but it is the international build, a search there returns
+English and Japanese posts, and this study is about Chinese-language content.
+So exactly one rule is dropped: that the text must name the topic. A caption of
+nothing but `#lwl` passes; a 货拉拉 delivery ad does not, because a keyword
+collision is not made relevant by having been returned for the keyword.
+
+An unrecognised platform gets `full`. A new one that quietly collected
+everything would be a change to the corpus definition that nobody decided on.
 
 **What to report.** Douyin counts are counts of everything collected; YouTube
 counts are counts of what survived a filter. They are not comparable, and the

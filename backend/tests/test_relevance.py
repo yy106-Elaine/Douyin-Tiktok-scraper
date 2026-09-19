@@ -836,3 +836,68 @@ class TestPlatformsWithoutATopicFilter:
         with SessionLocal() as session:
             TestRemarking()._collect(session, "货拉拉搬家公司电话")
             assert remark(session)["unrelated product"] == 1
+
+
+class TestTikTokKeepsTheLanguageTestOnly:
+    """Searched by hand like Douyin, but serving other languages.
+
+    The Douyin argument -- the search is the filter -- carries over,
+    because the terms typed into TikTok are the same community ones.
+    What does not carry over is the language: TikTok is the
+    international build, so a search returns English and Japanese posts
+    that the study is not about.
+    """
+
+    def _tiktok(self, client, api_key, caption):
+        response = client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.zhiliaoapp.musically",
+                        "fingerprint": f"tt::someone::{caption}",
+                        "captured_at": "2026-09-19T02:09:00Z",
+                        "payload": {"author_name": "someone", "caption": caption},
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 200
+
+    def _relevance(self):
+        from sqlalchemy import select
+
+        from app.db import SessionLocal
+        from app.models import TikTokPost
+
+        with SessionLocal() as session:
+            return [p.relevance for p in session.scalars(select(TikTokPost))]
+
+    def test_chinese_with_no_topic_term_is_kept(self, client, api_key):
+        """The change: this used to be excluded as "no topic term"."""
+        self._tiktok(client, api_key, "许愿这次别再丢下我")
+        assert self._relevance() == [None]
+
+    def test_english_is_still_excluded(self, client, api_key):
+        self._tiktok(client, api_key, "my girlfriend and i wlw couple")
+        assert self._relevance() == ["not in chinese"]
+
+    def test_japanese_is_still_excluded(self, client, api_key):
+        self._tiktok(client, api_key, "百合カップルの日常です")
+        assert self._relevance() == ["japanese"]
+
+    def test_a_keyword_collision_is_still_excluded(self, client, api_key):
+        """Looser is not "off". A 货拉拉 delivery ad is not made relevant
+        by having been returned for a search for 拉拉."""
+        self._tiktok(client, api_key, "货拉拉搬家电话，便宜")
+        assert self._relevance() == ["unrelated product"]
+
+
+def test_the_policy_for_an_unknown_platform_is_the_strictest_one():
+    """A new platform must not silently collect everything."""
+    from app.platforms import filter_policy
+
+    assert filter_policy("some_new_app") == "full"
+    assert filter_policy(None) == "full"

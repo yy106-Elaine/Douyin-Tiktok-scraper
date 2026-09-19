@@ -59,7 +59,13 @@ def test_a_future_publication_time_is_refused():
 
 
 def test_douyin_is_not_claimed_as_verified():
-    """The arithmetic is applied to both; only one has been checked."""
+    """The arithmetic is applied to both; only one has been checked.
+
+    An attempt to verify Douyin on 2026-09-19 compared an id from one
+    row against a 发布时间 read off another, because the parser was not
+    capturing 发布时间 and no row carried both. It now does, so the
+    check is possible on rows collected after that.
+    """
     assert derivation_is_verified("tiktok") is True
     assert derivation_is_verified("douyin") is False
 

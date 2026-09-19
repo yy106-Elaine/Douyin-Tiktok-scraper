@@ -69,6 +69,19 @@ def _pair_by_fingerprint(session: Session, link: SharedLink, model, family: str)
     No time window and no author comparison are needed -- the device
     triggered the share from the post itself, so the association is a
     fact rather than an inference.
+
+    Unless two links arrive carrying the same fingerprint, which an
+    assisted run produces: the device names the post it last read off
+    the screen, and the capture buffer settles more slowly than the
+    loop copies links. Several videos then share one stale fingerprint,
+    and without the guard below each link overwrote the previous one on
+    the same post -- so three links "paired exactly" and one post ended
+    up holding whichever id was written last. That is worse than an
+    unpaired link: it is a wrong link labelled exact.
+
+    A post that already carries a different id is therefore refused, and
+    the caller falls back to window pairing, which says in the data that
+    it is a heuristic.
     """
     if not link.fingerprint:
         return None
@@ -83,6 +96,8 @@ def _pair_by_fingerprint(session: Session, link: SharedLink, model, family: str)
         .order_by(model.captured_at.desc())
     ).first()
     if post is None:
+        return None
+    if post.video_id and post.video_id != link.video_id:
         return None
 
     _attach(session, link, post, family, method="fingerprint")

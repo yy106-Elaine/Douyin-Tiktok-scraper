@@ -38,6 +38,26 @@ class DouyinParser : PostParser {
          * account findable later.
          */
         val DOUYIN_ID = Regex("""抖音号[：:\s]*([A-Za-z0-9._\-]{2,30})""")
+
+        /**
+         * Publication time, which Douyin renders and TikTok does not.
+         *
+         * Two forms sit on the same node: the contentDescription reads
+         * `发布时间：17小时前` and the text reads `· 17小时前`. The
+         * description is preferred because it is labelled -- the text
+         * form is a bare relative time behind a separator, which could
+         * be anything.
+         *
+         * Worth having even though an id decodes to the second. It is
+         * the only reading independent of the id, so it is what a check
+         * of the id arithmetic compares against; a first attempt at
+         * that check had to compare two different videos, because this
+         * was not being captured. It is also the only publication time
+         * available at all for a post whose link was never copied,
+         * which on this platform is most of them.
+         */
+        val POSTED_AT = Regex("""发布时间[：:]\s*(.+)""")
+        val POSTED_AT_TEXT = Regex("""^[·•]\s*(\d+\s*(?:分钟|小时|天|周|个月|年)前|[\d\-年月日\s]{3,20})$""")
         val MUSIC = Regex("""@?(.+?)创作的原声|原声[：: ]\s*(.+)""")
 
         /**
@@ -94,6 +114,8 @@ class DouyinParser : PostParser {
             authorName = NodeTools.firstGroup(nodes, AUTHOR)
                 ?: NodeTools.byViewId(nodes, "author_name", "nickname", "title")?.text,
             caption = caption(nodes),
+            postedAtRaw = NodeTools.firstGroup(nodes, POSTED_AT)
+                ?: NodeTools.firstGroup(nodes, POSTED_AT_TEXT),
             music = NodeTools.firstGroup(nodes, MUSIC)
                 ?: NodeTools.byViewId(nodes, "music_title")?.text,
             likeRaw = firstCount(nodes, LIKE),

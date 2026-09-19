@@ -37,6 +37,21 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_CLIPBOARD, null)
         set(value) = prefs.edit { putString(KEY_CLIPBOARD, value) }
 
+    /**
+     * The post named on the last link that was queued.
+     *
+     * A fingerprint is only evidence when it names the post the link
+     * was actually copied from. During an assisted run it goes stale:
+     * the capture buffer settles more slowly than the loop copies
+     * links, so several videos in a row are reported against whichever
+     * post was last read off the screen. Claiming an exact pairing
+     * there attributes a video to the wrong caption, which is worse
+     * than not pairing at all.
+     */
+    var lastLinkFingerprint: String?
+        get() = prefs.getString(KEY_LINK_FP, null)
+        set(value) = prefs.edit { putString(KEY_LINK_FP, value) }
+
     /** Whether the floating save-link button is wanted. */
     var showSaveButton: Boolean
         get() = prefs.getBoolean(KEY_SAVE_BUTTON, false)
@@ -54,5 +69,6 @@ class Prefs(context: Context) {
         const val KEY_DEVICE = "device_id"
         const val KEY_CLIPBOARD = "last_saved_clipboard"
         const val KEY_SAVE_BUTTON = "show_save_button"
+        const val KEY_LINK_FP = "last_link_fingerprint"
     }
 }
