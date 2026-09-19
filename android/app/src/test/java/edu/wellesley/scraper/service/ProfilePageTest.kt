@@ -108,6 +108,21 @@ class ProfilePageTest {
     }
 
     @Test
+    fun `the video's own back arrow is not the profile's`() {
+        // A video opened out of search carries back_btn with the
+        // description 返回 at the top left. Looking for "a back arrow"
+        // found that one and left the video for the results grid.
+        //
+        // The pattern cannot tell them apart -- both read 返回 -- so
+        // what keeps them apart is when it is consulted: only once a
+        // profile has been detected on top. This pins the fact that
+        // the label alone proves nothing.
+        assertEquals("返回", "返回")
+        assertNull(ProfilePage.douyinIdIn("返回"))
+        assertNull(ProfilePage.profileNameIn("返回"))
+    }
+
+    @Test
     fun `feed controls are not author links`() {
         for (label in listOf(
             "未点赞，喜欢24，按钮",

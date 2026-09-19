@@ -362,7 +362,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
         if (attempt == 0) {
-            pressBack()
+            dismissWhatIsOnTop()
             handler.postDelayed({ closeProfile(1) }, PROFILE_BACK_MILLIS)
             return
         }
@@ -385,40 +385,53 @@ class AutoCapture(private val service: AccessibilityService) {
      * Every BACK in this class goes through here, so the rule cannot
      * be forgotten at one of the call sites later.
      */
-    private fun pressBack(): Boolean {
-        if (onAVideo()) {
-            CaptureStats.onAutoStep("not pressing back: a video is on screen")
-            return false
-        }
+    /**
+     * Dismiss whatever is on top, using that thing's own control.
+     *
+     * The control is chosen by what is detected, never searched for
+     * on its own. A video opened out of search has its own 返回 at the
+     * top left, and looking for "a back arrow" found that one and
+     * left the video -- the page it went back to was the results
+     * grid, which is exactly the sideways movement this loop must not
+     * make.
+     *
+     * So: a sheet is closed by the sheet's 取消, a profile by the
+     * profile's 返回, and when neither is detected nothing is pressed
+     * at all. The global BACK remains only for a sheet or profile
+     * that offers no control of its own, because there it can only
+     * dismiss the thing we have already established is covering the
+     * screen.
+     */
+    private fun dismissWhatIsOnTop(): Boolean {
+        val top = activeRoots()
 
-        // A named control first, and the global BACK only when the
-        // screen offers none. BACK means whatever the screen it lands
-        // on decides: on a sheet it closes the sheet, on a video it
-        // leaves the video, and from a video opened out of search it
-        // goes to the results and then to the search box -- which is
-        // where two runs ended up. 取消 on the sheet and 返回 on the
-        // profile can each only do the one thing they say, so being
-        // wrong about which screen we are on stops mattering.
-        // Only what is on top: a control in a window that is already
-        // closing is not on screen, and tapping it navigates from
-        // wherever we actually are.
-        val roots = activeRoots()
-        ShareSheet.findDismiss(roots)?.let {
-            CaptureStats.onAutoStep("dismiss: ${it.label}")
-            tap(it.node)
+        if (ShareSheet.isSheetOpen(top)) {
+            ShareSheet.findDismiss(top)?.let {
+                CaptureStats.onAutoStep("dismiss: ${it.label}")
+                tap(it.node)
+                return true
+            }
+            CaptureStats.onAutoStep("closing the sheet with back")
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             return true
         }
-        ProfilePage.findBack(roots)?.let {
-            CaptureStats.onAutoStep("back arrow on the profile")
-            tap(it)
+
+        if (ProfilePage.isProfileOpen(top)) {
+            ProfilePage.findBack(top)?.let {
+                CaptureStats.onAutoStep("back arrow on the profile")
+                tap(it)
+                return true
+            }
+            CaptureStats.onAutoStep("leaving the profile with back")
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             return true
         }
 
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        return true
+        CaptureStats.onAutoStep("nothing on top to dismiss")
+        return false
     }
 
-    /** The feed, with a video's own share control on it. */
+    /** Nothing of ours is covering the feed. */
     private fun onAVideo(): Boolean {
         // "What is covering the screen" is a question about the window
         // on top, not about every window the app has. A closed window
@@ -427,11 +440,14 @@ class AutoCapture(private val service: AccessibilityService) {
         // had already closed it -- and the recovery for that pressed
         // back again, which is what left the video.
         val top = activeRoots()
+        if (top.isEmpty()) return false
         if (ProfilePage.isProfileOpen(top)) return false
         if (ShareSheet.isSheetOpen(top)) return false
-        // Finding the control can look anywhere: a feed window that is
-        // merely behind something is still the feed.
-        return ShareSheet.findShare(roots()) != null
+        // Not "the share control is findable". A video whose controls
+        // have not drawn yet is still a video, and treating it as not
+        // one sent the loop into recovery on a screen that needed
+        // nothing done to it.
+        return !ShareSheet.isSearchResults(top)
     }
 
     /**
@@ -503,7 +519,7 @@ class AutoCapture(private val service: AccessibilityService) {
             recover("the share sheet would not close")
             return
         }
-        pressBack()
+        dismissWhatIsOnTop()
         handler.postDelayed({ closeSheet(attempt + 1, then) }, BACK_MILLIS)
     }
 
@@ -542,7 +558,7 @@ class AutoCapture(private val service: AccessibilityService) {
         }
         CaptureStats.onAutoStep("$why -- skipping this video")
         // BACK only to dismiss something that is demonstrably there.
-        pressBack()
+        dismissWhatIsOnTop()
         handler.postDelayed({
             if (!keepGoing()) return@postDelayed
             remaining--
