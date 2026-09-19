@@ -39,6 +39,18 @@ _DOUYIN_FULL = re.compile(
 _DOUYIN_MODAL = re.compile(r"[?&]modal_id=(?P<vid>\d+)", re.IGNORECASE)
 _DOUYIN_SHORT = re.compile(r"v\.douyin\.com/(?P<slug>[\w\-]+)", re.IGNORECASE)
 
+#: What the share text says before the link.
+#:
+#:   5.61 复制打开抖音，看看【我爱吃葡萄的作品】我出现的意义是想告诉你
+#:   你不再是一个人 # lwl... https://v.douyin.com/SXLSe2Qgzl4/ :8p
+#:
+#: The author and the caption are in there. A link that never paired
+#: to a captured post had been showing an empty row, while the text it
+#: was extracted from held both -- see `describe`.
+_DOUYIN_SHARE = re.compile(
+    r"【(?P<author>.+?)的作品】(?P<caption>.*?)(?=https?://|$)", re.DOTALL
+)
+
 
 @dataclass(frozen=True)
 class ExtractedLink:
@@ -118,6 +130,30 @@ def extract(text: str) -> ExtractedLink:
         raw_url=raw_url,
         needs_resolution=raw_url is not None,
     )
+
+
+@dataclass(frozen=True)
+class SharedText:
+    """What the copied blob says about the post, before resolving."""
+
+    author_name: str | None
+    caption: str | None
+
+
+def describe(text: str) -> SharedText:
+    """Author and caption as the share text renders them.
+
+    This is not as good as reading the post: the caption is whatever
+    the app chose to put in the blob, which truncates long ones with
+    an ellipsis. It is what there is for a link that never paired to a
+    capture, and an ellipsis is more than an empty column.
+    """
+    match = _DOUYIN_SHARE.search(text or "")
+    if not match:
+        return SharedText(None, None)
+    author = match.group("author").strip() or None
+    caption = match.group("caption").strip() or None
+    return SharedText(author, caption)
 
 
 def canonical_url_for(platform: str, video_id: str, handle: str | None = None) -> str:

@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .links import extract
+from .links import describe, extract
 from .models import SharedLink
 from .platforms import API_PLATFORMS
 from .relevance import HIDDEN
@@ -159,6 +159,12 @@ def _row_from_link(link: SharedLink) -> VideoRow:
     # one sitting inside the text that was copied. That one still opens
     # the video, which is what the row is for.
     target = link.canonical_url or extract(link.raw_text).raw_url
+    # The blob the share sheet produced names the author and quotes
+    # the caption. These rows showed neither for a while, on the
+    # reasoning that no post had been matched -- but the text a person
+    # copied is itself an observation, and it is the only one these
+    # rows have.
+    said = describe(link.raw_text)
     return VideoRow(
         when=link.shared_at,
         participant_id=link.participant_id,
@@ -170,10 +176,8 @@ def _row_from_link(link: SharedLink) -> VideoRow:
         video_id=link.video_id,
         video_url=target,
         author_handle=link.author_handle,
-        author_name=None,
-        # No post was matched, so there is no caption to show. The text
-        # that was copied is the only description there is.
-        caption=None,
+        author_name=said.author_name,
+        caption=said.caption,
         feed=None,
     )
 

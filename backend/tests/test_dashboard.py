@@ -180,4 +180,31 @@ def test_an_unresolved_link_is_still_clickable(client, api_key):
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
     assert 'href="https://www.tiktok.com/t/ZP83TmDmq/"' in body
-    assert "short link" in body
+    # The link itself, not the words "short link": every unresolved
+    # row read the same, and the link is what gets pasted elsewhere.
+    assert "www.tiktok.com/t/ZP83TmDmq" in body
+    assert "short link" not in body
+
+
+def test_an_unresolved_link_shows_what_the_share_text_said(client, api_key):
+    """Dashes across every column, with the answer in the same row.
+
+    The blob Douyin's share sheet produces names the author and
+    quotes the caption. A link that never paired to a capture was
+    rendering an empty row while that text sat beside it.
+    """
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                "5.61 复制打开抖音，看看【我爱吃葡萄的作品】"
+                "我出现的意义是想告诉你 你不再是一个人 # lwl... "
+                "https://v.douyin.com/SXLSe2Qgzl4/ :8p"
+            )
+        },
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "我爱吃葡萄" in body
+    assert "我出现的意义是想告诉你" in body
+    assert "v.douyin.com/SXLSe2Qgzl4" in body

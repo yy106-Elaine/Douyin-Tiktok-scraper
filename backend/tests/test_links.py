@@ -93,3 +93,28 @@ def test_the_forms_a_douyin_short_link_lands_on():
 def test_a_douyin_profile_is_still_not_a_video():
     parsed = extract("https://www.douyin.com/user/MS4wLjABAAAA")
     assert parsed.video_id is None
+
+
+def test_the_share_text_names_the_author_and_quotes_the_caption():
+    """A link that never paired to a capture is not an empty row.
+
+    The dashboard showed dashes across every column for an unresolved
+    link. The blob the share sheet produced was sitting in the same
+    row all along.
+    """
+    from app.links import describe
+
+    said = describe(
+        "5.61 复制打开抖音，看看【我爱吃葡萄的作品】我出现的意义是想告诉你 "
+        "你不再是一个人 # lwl... https://v.douyin.com/SXLSe2Qgzl4/ :8p"
+    )
+    assert said.author_name == "我爱吃葡萄"
+    assert said.caption == "我出现的意义是想告诉你 你不再是一个人 # lwl..."
+
+
+def test_share_text_that_says_nothing_yields_nothing():
+    from app.links import describe
+
+    said = describe("https://v.douyin.com/SXLSe2Qgzl4/")
+    assert said.author_name is None
+    assert said.caption is None

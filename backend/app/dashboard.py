@@ -212,13 +212,16 @@ def _posted_cell(row: VideoRow) -> str:
 
 def _id_cell(row: VideoRow) -> str:
     if not row.video_id:
-        # An unresolved short link has no id yet, but it does open, and
-        # a row with nothing clickable in it looks like a row with no
-        # data in it.
+        # An unresolved short link has no id yet, but it does open.
+        # It used to read "short link", which told the reader nothing
+        # and made every unresolved row look alike -- the link itself
+        # distinguishes them, and it is what gets pasted into a
+        # notebook or handed to a collaborator.
         if row.video_url:
             return (
-                f'<td><a href="{escape(row.video_url)}" rel="noreferrer noopener" '
-                'target="_blank">short link</a></td>'
+                f'<td class="vid"><a href="{escape(row.video_url)}" '
+                'rel="noreferrer noopener" target="_blank">'
+                f'{escape(_bare(row.video_url))}</a></td>'
             )
         return '<td class="muted">&mdash;</td>'
     if row.video_url:
@@ -227,6 +230,14 @@ def _id_cell(row: VideoRow) -> str:
             f'rel="noreferrer noopener" target="_blank">{escape(row.video_id)}</a></td>'
         )
     return f'<td class="vid">{escape(row.video_id)}</td>'
+
+
+def _bare(url: str) -> str:
+    """A URL without the scheme, which is the same on every row."""
+    for prefix in ("https://", "http://"):
+        if url.startswith(prefix):
+            return url[len(prefix):].rstrip("/")
+    return url.rstrip("/")
 
 
 def _notes_cell(row: VideoRow) -> str:
