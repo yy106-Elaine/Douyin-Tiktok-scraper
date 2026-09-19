@@ -181,6 +181,19 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
+        // Not a feed at all. Swiping a results grid is not collection,
+        // and a run that has wandered off the surface it was started
+        // on should say so rather than keep going somewhere it was
+        // never pointed.
+        if (ShareSheet.isSearchResults(roots())) {
+            CaptureStats.onAutoFailure(
+                "this is the search results page, not a video",
+                ShareSheet.describe(roots()),
+            )
+            stop("left the video feed for the search results")
+            return
+        }
+
         val found = ShareSheet.findShare(roots())
         if (found == null) {
             CaptureStats.onAutoFailure(

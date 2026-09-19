@@ -182,6 +182,13 @@ class DouyinParser : PostParser {
         // of every video, which is how it ended up in the corpus.
         if (NodeTools.anyMatches(nodes, SHARE_SHEET_OPEN)) return "share sheet open"
         if (NodeTools.anyMatches(nodes, PROFILE_OPEN)) return "profile page open"
+        // Many videos at once and no author beside any of them. Read
+        // as a feed it became one row carrying one video's caption and
+        // another's like count. Reading it properly is a separate job
+        // -- see TikTokSearchParser for the shape that does it.
+        if (nodes.any { it.viewId?.endsWith("et_search_kw") == true }) {
+            return "search results page"
+        }
         return COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
             NodeTools.anyMatches(nodes, pattern)
         }?.let { (name, _) -> "comment sheet open ($name)" }

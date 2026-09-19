@@ -37,9 +37,14 @@ object ShareSheet {
      * Share video, so the start of the label is enough.
      */
     private val SHARE = listOf(
-        Regex("""^share video""", RegexOption.IGNORE_CASE),
+        Regex("""^share video$""", RegexOption.IGNORE_CASE),
         Regex("""^share$""", RegexOption.IGNORE_CASE),
-        Regex("""^分享"""),
+        // Whole label, not a prefix. `^分享` matched 分享你此刻的想法 --
+        // the comment box's placeholder -- and a run tapped it, which
+        // is how it ended up somewhere that has no share sheet and
+        // then on the search results page. Douyin's control reads
+        // 分享，按钮 or 分享8，按钮 with the count folded in.
+        Regex("""^分享\d*(?:[，,]\s*按钮)?$"""),
     )
 
     /**
@@ -122,6 +127,31 @@ object ShareSheet {
 
     fun findCopyLink(roots: List<AccessibilityNodeInfo>): Found? =
         find(roots, Role.COPY_LINK)
+
+    /**
+     * Whether the screen is Douyin's search results rather than a feed.
+     *
+     * A run that ends up here keeps swiping a grid that has no share
+     * control, which is not collection and is not where anything
+     * should be pressed. It is a surface with its own shape -- many
+     * videos at once, no author beside any of them -- and reading it
+     * properly is a separate job from this loop.
+     */
+    fun isSearchResults(roots: List<AccessibilityNodeInfo>): Boolean {
+        for (root in roots) {
+            var found = false
+            walk(root) { node ->
+                if (node.viewIdResourceName?.endsWith("et_search_kw") == true) {
+                    found = true
+                    false
+                } else {
+                    true
+                }
+            }
+            if (found) return true
+        }
+        return false
+    }
 
     /** Whether a share sheet is covering the feed; see [SHEET]. */
     fun isSheetOpen(roots: List<AccessibilityNodeInfo>): Boolean =

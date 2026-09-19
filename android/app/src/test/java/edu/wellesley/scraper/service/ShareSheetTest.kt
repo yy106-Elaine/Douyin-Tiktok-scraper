@@ -46,6 +46,26 @@ class ShareSheetTest {
     }
 
     @Test
+    fun `the comment box placeholder is not the share control`() {
+        // 分享你此刻的想法 -- "share what you are thinking" -- is the
+        // comment box. A prefix match took it for the share button, a
+        // run tapped it, and the session ended up on the search
+        // results page. The label has to be the control, not start
+        // like it.
+        assertNull(ShareSheet.roleOf("分享你此刻的想法"))
+        assertNull(ShareSheet.roleOf("分享到日常"))
+        assertNull(ShareSheet.roleOf("分享你的想法"))
+    }
+
+    @Test
+    fun `the count folded into the label does not hide the control`() {
+        // Douyin writes the share count into the same label.
+        for (label in listOf("分享，按钮", "分享2，按钮", "分享8，按钮", "分享")) {
+            assertEquals(label, Role.SHARE, ShareSheet.roleOf(label))
+        }
+    }
+
+    @Test
     fun `nothing that acts on another account is ever the share control`() {
         // Every one of these sits in a share sheet next to the entry we
         // do want, and 建群分享, 推荐 and Repost all post something.
