@@ -60,18 +60,8 @@ async def _keep_links_resolved() -> None:
         await asyncio.sleep(RESOLVE_EVERY_SECONDS)
         try:
             def work() -> str:
-                from .pairing import pair_unpaired
-
                 with SessionLocal() as session:
-                    report = str(resolve_pending(session))
-                    # The phone uploads links and captures on their
-                    # own schedules, so a link is routinely followed
-                    # before the post it was copied from arrives.
-                    # Ask again every pass.
-                    caught_up = pair_unpaired(session)
-                    if caught_up:
-                        report += f", paired {caught_up} late arrival(s)"
-                    return report
+                    return str(resolve_pending(session))
 
             report = await asyncio.to_thread(work)
             logging.getLogger("resolve").info("%s", report)

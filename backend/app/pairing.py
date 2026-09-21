@@ -66,6 +66,11 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
     return best.id
 
 
+def undo_window_pairings(session: Session) -> int:
+    """Take back the ids attached on time alone. See [undo_pairings]."""
+    return undo_pairings(session, "window")
+
+
 def pair_unpaired(session: Session) -> int:
     """Try again for links whose capture had not arrived yet.
 
@@ -80,6 +85,15 @@ def pair_unpaired(session: Session) -> int:
 
     Nothing here is new evidence; it is the same exact match, asked
     once more now that both halves are present.
+
+    **Not called anywhere yet.** Running it over the backlog paired
+    72 links and put the wrong caption beside the wrong counts,
+    because the fingerprint a link carries is the last post the
+    device read off the screen -- and the capture buffer settles
+    more slowly than the loop copies links, so several links share
+    one stale fingerprint. Asking more often multiplies that error
+    instead of fixing it. It waits for the device to name the post
+    the share sheet was opened on.
     """
     paired = 0
     links = session.scalars(
@@ -94,8 +108,8 @@ def pair_unpaired(session: Session) -> int:
     return paired
 
 
-def undo_window_pairings(session: Session) -> int:
-    """Take back every id that was attached on time alone.
+def undo_pairings(session: Session, method: str) -> int:
+    """Take back every id attached by one pairing method.
 
         id ...819109   @handle 晒月亮   name 想吃什么月亮
                        41K / 187 / 3,629   "你最忘不了哪一任 #lwl"
@@ -117,7 +131,7 @@ def undo_window_pairings(session: Session) -> int:
 
     undone = 0
     links = session.scalars(
-        select(SharedLink).where(SharedLink.pairing_method == "window")
+        select(SharedLink).where(SharedLink.pairing_method == method)
     ).all()
     for link in links:
         family = family_for_platform(link.platform) or link.platform or ""
@@ -353,18 +367,35 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         help="unlink every post whose id came from a nearest-in-time match",
     )
     parser.add_argument(
+        "--undo-fingerprint-pairings",
+        action="store_true",
+        help=(
+            "unlink every post paired by fingerprint -- the device names "
+            "the last post it read, not the one the sheet was opened on"
+        ),
+    )
+    parser.add_argument(
         "--drop-attached-handles",
         action="store_true",
         help="forget Douyin handles attached from a profile visit, not observed",
     )
     args = parser.parse_args()
-    if not (args.undo_time_pairings or args.drop_attached_handles):
-        parser.error("nothing to do; pass --undo-time-pairings or --drop-attached-handles")
+    if not (
+        args.undo_time_pairings
+        or args.undo_fingerprint_pairings
+        or args.drop_attached_handles
+    ):
+        parser.error("nothing to do; pass one of the --undo/--drop options")
 
     init_db()
     with SessionLocal() as session:
         if args.undo_time_pairings:
             print(f"unlinked {undo_window_pairings(session)} time-based pairing(s)")
+        if args.undo_fingerprint_pairings:
+            print(
+                f"unlinked {undo_pairings(session, 'fingerprint')} "
+                "fingerprint pairing(s)"
+            )
         if args.drop_attached_handles:
             print(f"cleared {drop_attached_handles(session)} attached handle(s)")
 
