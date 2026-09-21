@@ -146,24 +146,26 @@ truncates a long caption. Rows with two different video ids are never folded:
 an id is proof of two videos, and one author posting the same title twice is
 ordinary.
 
-**Where the id comes from, and how it can be wrong.** A Douyin share link is
-`v.douyin.com/XXXX` and carries no id; following its redirect yields
-`iesdouyin.com/share/video/<id>/`, and that id is the record. Douyin rate-limits
-this by *redirecting* rather than refusing: past some number of requests every
-short link lands on the same fallback page, whose id is indistinguishable from
-a real one. One pass wrote a single id to 130 rows before this was understood.
+**Where the id comes from.** A Douyin share link is `v.douyin.com/XXXX` and
+carries no id; following its redirect yields `iesdouyin.com/share/video/<id>/`
+— or the `note` form for a 图文 post, or `?modal_id=` when the post was opened
+over its author's page — and that id is the record.
 
-A *run* of links landing on one id is the signal, and only a run.
-`app/resolve.py` stops the pass at three in a row and gives that run's ids
-back. A repeat on its own is ordinary and is kept: a feed brings the same video
-round again, it gets copied a second time, and the two share links differ while
-naming one post. A first version refused every repeat and rejected real rows.
+Many links landing on one id is expected here, and is not guarded against. It
+is the same phenomenon as the repeated rows above: one run copied 晒月亮
+(`shares 3,629`, the post the run log shows the loop spinning on) 130 times.
+Two guards were built on the theory that a repeated id meant Douyin had begun
+redirecting every request to a single fallback page under a rate limit. It had
+not. The first refused real rows. The second deadlocked resolution completely,
+because the pending queue is walked in the same order every pass and a refusal
+at its head never clears — 228 links sat unresolved for a day behind three of
+them. A repair command written to undo the imagined damage did real damage: it
+returned 214 correctly resolved links to pending.
 
-`python -m app.resolve --repair` returns duplicated ids to pending for a
-database written before this existed. The copied text is the observation and is
-never deleted, so the rows resolve again. Because a legitimate duplicate looks
-the same to that command, it is something someone runs after reading the counts
--- one id on 130 rows -- and never something a pass decides on its own.
+All three are gone. What remains is what was actually true: a pause between
+requests, and a link left pending rather than written with a guess. The
+collection deliberately produces many links per video, so the same value twice
+is this data's normal shape and is never on its own evidence of a fault.
 
 ### 3. Pairing is heuristic
 
