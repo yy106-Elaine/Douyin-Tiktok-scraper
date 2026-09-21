@@ -715,29 +715,53 @@ The three frames therefore get three policies, in `FILTER_POLICY`:
 | platform | policy | what runs |
 | --- | --- | --- |
 | YouTube | `full` | hard exclusions, Chinese-language requirement, **and a topic term must be present** |
-| TikTok | `language` | hard exclusions, Chinese-language requirement, keyword-collision rules — but no topic term required |
+| TikTok | `search` | hard exclusions and keyword-collision rules only — no language test, no topic term |
 | Douyin | `none` | nothing; the search is the filter |
 
-TikTok sits in the middle because both halves of the argument apply to it. It
-is searched by hand with the same community terms, so the search has already
-done the topic work — but it is the international build, a search there returns
-English and Japanese posts, and this study is about Chinese-language content.
-So exactly one rule is dropped: that the text must name the topic. A caption of
-nothing but `#lwl` passes; a 货拉拉 delivery ad does not, because a keyword
-collision is not made relevant by having been returned for the keyword.
+TikTok was `language` first, on the assumption that a search there behaves
+like a Douyin one with a language problem attached: same community terms, so
+drop the topic-term rule, but keep the requirement that the caption be in
+Chinese. The first real search said otherwise. 女同性恋, 女同 and 拉拉 on the
+international build return every language at once and very little of this
+study's population; the terms that reach it name it directly — `Chinese
+lesbian`, 中国女同性恋, 中国女同 — and what they surface is Chinese and
+diaspora creators who caption in English.
+
+Against that sample a language test does not remove noise, it removes the
+sample. The search has already said "Chinese"; asking the caption to say it
+again in Chinese characters throws away the creators the search was chosen to
+find. So on TikTok both the language rule and the topic-term rule go, and what
+remains is the collision rules: a 货拉拉 delivery ad, a divination channel,
+Japanese yuri (kana is a hard exclusion, unaffected by this) and male-only
+content are still out, and fiction is still labelled.
+
+**This makes TikTok a third population, not more of the same one.** Douyin is
+mainland, Chinese-language, inside the censorship regime this study is about.
+TikTok here is largely diaspora, often English-captioned, moderated by a
+different company under different law. A takedown rate pooled over the two
+describes neither, and the difference between them is not a finding about
+censorship until everything else that differs has been accounted for. Report
+them separately, and say in the methods section which search terms produced
+each — on TikTok the term is not incidental to the sample, it *is* the sample
+definition. `TikTokSearchParser` records it on every row (`feed` reads
+`search:<query>:<sort>`), so the claim is checkable against the data rather
+than resting on someone's memory of what they typed.
 
 An unrecognised platform gets `full`. A new one that quietly collected
 everything would be a change to the corpus definition that nobody decided on.
 
 **What to report.** Douyin counts are counts of everything collected; YouTube
-counts are counts of what survived a filter. They are not comparable, and the
-dashboard says so on the page rather than leaving it to a footnote. The
+counts are counts of what survived a topic filter; TikTok counts are counts of
+what a differently-worded search returned. None of the three are comparable,
+and the dashboard says so on the page rather than leaving it to a footnote. The
 precision of the Douyin sample rests on the hashtags chosen, which is a claim
 about the search terms and belongs in the methods section next to them.
 
-This is also the second time the same lesson has been recorded here: a rule
+This is also the third time the same lesson has been recorded here: a rule
 written from one platform's data was assumed to hold for another, and the data
-said otherwise within one collection run. The verbatim payload is what made the
+said otherwise within one collection run. Twice now it was TikTok's row in this
+very table — first the topic term, then the language test — written from
+reasoning about the platform rather than from a search actually run on it. The verbatim payload is what made the
 correction free — `python -m app.relevance` re-marked the whole corpus, and
 nothing had to be collected again.
 

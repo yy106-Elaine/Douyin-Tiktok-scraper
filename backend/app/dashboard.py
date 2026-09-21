@@ -577,12 +577,22 @@ def _page(**ctx) -> str:
             review(reason, reason, count)
             for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
         ]
-        said = (
-            "Review what the topic filter did."
-            if policy == "full"
-            else "Language filter only on this platform &mdash; the search chose "
-            "the topic, so no row is excluded for lacking a topic term."
-        )
+        if policy == "full":
+            said = "Review what the topic filter did."
+        elif policy == "search":
+            said = (
+                "The search term is the filter on this platform. "
+                "<code>Chinese lesbian</code> and 中国女同 name the population "
+                "directly, and what they surface is largely diaspora creators "
+                "captioning in English &mdash; so no row is excluded here for "
+                "being in English or for lacking a topic term. Keyword "
+                "collisions still are."
+            )
+        else:
+            said = (
+                "Language filter only on this platform &mdash; the search chose "
+                "the topic, so no row is excluded for lacking a topic term."
+            )
         filter_note = (
             f'<p class="note-line">{said} Excluded rows are '
             "hidden, never deleted &mdash; read a category before trusting it.</p>"
@@ -597,8 +607,9 @@ def _page(**ctx) -> str:
             '<p class="note-line">No topic filter on this platform. It is sampled '
             "from community hashtags (#lwl, #wlw, #les) that the community applies "
             "to its own posts, so the search is the filter and every row collected "
-            "is in the corpus. YouTube is filtered and TikTok is language-filtered, "
-            "so counts across the three are not comparable.</p>"
+            "is in the corpus. YouTube is topic-filtered and TikTok is sampled "
+            "on a different search term entirely, so counts across the three "
+            "are not comparable.</p>"
         )
 
     return f"""<!doctype html>

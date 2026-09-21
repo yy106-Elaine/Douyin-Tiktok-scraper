@@ -287,10 +287,17 @@ class TestTheCarveOut:
             headers={"X-API-Key": api_key},
         )
 
-    def test_a_truncated_caption_hides_a_phone_row_with_no_link(self, client, api_key):
-        self._capture(client, api_key, "re uploadd ...more")
+    def test_an_excluded_caption_hides_a_phone_row_with_no_link(self, client, api_key):
+        """A collision the search returned, with no link to vouch for it.
+
+        This used to use an English caption, back when English alone
+        was enough to hide a TikTok row. It is not any more -- see
+        TestTikTokTrustsTheSearchTerm -- so the exclusion under test
+        here is a keyword collision, which still stands.
+        """
+        self._capture(client, api_key, "货拉拉搬家电话，便宜")
         body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
-        assert "re uploadd" not in body
+        assert "货拉拉搬家" not in body
 
     def test_but_not_once_its_link_has_been_copied(self, client, api_key):
         """The rows that cost the most to collect are never hidden.
@@ -838,14 +845,19 @@ class TestPlatformsWithoutATopicFilter:
             assert remark(session)["unrelated product"] == 1
 
 
-class TestTikTokKeepsTheLanguageTestOnly:
-    """Searched by hand like Douyin, but serving other languages.
+class TestTikTokTrustsTheSearchTerm:
+    """Searched by hand, and the search term names the population.
 
-    The Douyin argument -- the search is the filter -- carries over,
-    because the terms typed into TikTok are the same community ones.
-    What does not carry over is the language: TikTok is the
-    international build, so a search returns English and Japanese posts
-    that the study is not about.
+    This class used to assert the opposite -- that English was
+    excluded -- on the assumption that a TikTok search behaves like a
+    Douyin one. It does not. 女同性恋, 女同 and 拉拉 on the
+    international build return every language at once and almost
+    nothing from this study's population; the terms that work name it
+    directly (`Chinese lesbian`, 中国女同), and what they surface is
+    Chinese and diaspora creators captioning in English.
+
+    So the language test goes. The collision rules do not: a delivery
+    ad, a divination channel and Japanese yuri are still out.
     """
 
     def _tiktok(self, client, api_key, caption):
@@ -880,9 +892,19 @@ class TestTikTokKeepsTheLanguageTestOnly:
         self._tiktok(client, api_key, "许愿这次别再丢下我")
         assert self._relevance() == [None]
 
-    def test_english_is_still_excluded(self, client, api_key):
+    def test_english_is_kept(self, client, api_key):
+        """The change: this used to be excluded as "not in chinese"."""
         self._tiktok(client, api_key, "my girlfriend and i wlw couple")
-        assert self._relevance() == ["not in chinese"]
+        assert self._relevance() == [None]
+
+    def test_english_with_no_topic_term_is_kept_too(self, client, api_key):
+        """A caption the search chose, saying nothing about itself.
+
+        Neither test the other platforms apply can be met by this
+        text, and on TikTok neither is asked of it.
+        """
+        self._tiktok(client, api_key, "three years together and counting")
+        assert self._relevance() == [None]
 
     def test_japanese_is_still_excluded(self, client, api_key):
         self._tiktok(client, api_key, "百合カップルの日常です")

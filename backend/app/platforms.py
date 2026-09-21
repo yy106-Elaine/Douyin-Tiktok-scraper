@@ -29,11 +29,31 @@ API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
 #: 货拉拉 delivery ads, and about 6% of what comes back is in scope. The
 #: text has to earn its place, so a topic term is required.
 #:
-#: "language" -- TikTok. Searched by hand for community terms, so the
-#: search is already doing the topic work; but it is the international
-#: build, a search there returns other languages, and this study is
-#: about Chinese-language content. So the language requirement stays
-#: and the topic-term requirement goes.
+#: "search" -- TikTok. Searched by hand, and the search term is what
+#: defines the sample, so neither a topic term nor Chinese characters
+#: are required of the text.
+#:
+#: This started as "language", which required Chinese. What that
+#: assumed was a TikTok search behaving like Douyin's, and it does
+#: not: 女同性恋, 女同, 拉拉 on the international build return every
+#: language at once and almost nothing from the population this
+#: study is about. The terms that do work name it directly --
+#: `Chinese lesbian`, 中国女同性恋, 中国女同 -- and what they surface
+#: is Chinese and diaspora creators who caption in English. A
+#: language test would have thrown that away as noise, which is the
+#: opposite of what it is: the search already said "Chinese".
+#:
+#: The collision rules still apply, so a 货拉拉 delivery ad, a
+#: divination channel, Japanese yuri (kana is a hard exclusion) and
+#: male-only content are still out, and fiction is still labelled.
+#: What goes is only the requirement that the caption itself prove
+#: the language and the topic.
+#:
+#: Read the two platforms as two populations, not one. Douyin is
+#: mainland, Chinese-language, inside the censorship regime being
+#: measured; TikTok here is largely diaspora, often English-captioned,
+#: under a different moderation system. A takedown rate pooled over
+#: both describes neither -- see docs/METHODOLOGY.md.
 #:
 #: "none" -- Douyin. Sampled from community hashtags (#lwl, #wlw, #les)
 #: which are labels the community puts on its own posts, not fragments
@@ -43,8 +63,8 @@ API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
 #: mainland-only app needs no language test either.
 FILTER_POLICY: dict[str, str] = {
     "youtube": "full",
-    "tiktok": "language",
-    "tiktok_lite": "language",
+    "tiktok": "search",
+    "tiktok_lite": "search",
     "douyin": "none",
     "douyin_lite": "none",
 }

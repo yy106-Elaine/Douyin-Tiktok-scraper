@@ -228,9 +228,10 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     sampled differently -- see `FILTER_POLICY`. "full" is the above.
     "language" drops exactly one rule -- that the text must carry a
     topic term -- for a platform whose search already did the topic
-    work but which serves other languages. "none" is for a platform
-    where the search is the whole filter and the app is
-    mainland-only.
+    work but which serves other languages. "search" drops the language
+    rule as well, for a search term that names the population itself.
+    "none" is for a platform where the search is the whole filter and
+    the app is mainland-only.
     """
     if policy == "none":
         return None
@@ -243,7 +244,15 @@ def classify(*parts: object, policy: str = "full") -> str | None:
             return reason
 
     # Chinese, and not Japanese wearing the same characters.
-    if not _CJK.search(text) or _KANA.search(text):
+    #
+    # "search" is exempt, and only "search". On TikTok the terms that
+    # work are `Chinese lesbian` and 中国女同 -- the ordinary Chinese
+    # terms return every language at once -- and what they surface is
+    # Chinese and diaspora creators who caption in English. Requiring
+    # Chinese characters there would exclude the sample the search was
+    # designed to reach. The Japanese exclusion is not weakened by
+    # this: kana is a HARD rule, checked above.
+    if policy != "search" and (not _CJK.search(text) or _KANA.search(text)):
         return "not in chinese"
 
     # 百合 is a lily and an ingredient; 女同志 also reads as "female
@@ -271,7 +280,7 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     # been returned for 拉拉 -- and so do the two checks below. What
     # goes is the requirement that the text name the topic at all,
     # which is what a caption of nothing but #lwl cannot do.
-    if policy != "language" and not (unambiguous or confirmed):
+    if policy not in ("language", "search") and not (unambiguous or confirmed):
         return "no topic term"
 
     # Male-only content that reached here through a shared term.
