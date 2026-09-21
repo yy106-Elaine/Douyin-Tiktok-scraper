@@ -107,7 +107,16 @@ def fetch(url: str, timeout: float = 20.0) -> Fetched:
 _ASSIGNED = re.compile(
     r"window\.(?:_ROUTER_DATA|_SSR_HYDRATED_DATA|__INITIAL_STATE__)\s*=\s*",
 )
+#: douyin.com renders its state into a script tag rather than
+#: assigning it, and percent-encodes the JSON inside. `RENDER_DATA` is
+#: the one it has used; the pattern is loose because the id changes
+#: and the type attribute is not always there.
 _JSON_SCRIPT = re.compile(
+    r"<script[^>]*\bid=\"[^\"]*(?:RENDER_DATA|__RENDER_DATA__|__NEXT_DATA__)[^\"]*\""
+    r"[^>]*>(.*?)</script>",
+    re.DOTALL | re.IGNORECASE,
+)
+_ANY_JSON_SCRIPT = re.compile(
     r'<script[^>]+type="application/json"[^>]*>(.*?)</script>', re.DOTALL
 )
 
@@ -159,11 +168,22 @@ def embedded(html: str) -> Iterator[dict]:
                 yield json.loads(unquote(blob))
             except ValueError:
                 continue
-    for match in _JSON_SCRIPT.finditer(html):
-        try:
-            yield json.loads(unescape(match.group(1)))
-        except ValueError:
-            continue
+    for pattern in (_JSON_SCRIPT, _ANY_JSON_SCRIPT):
+        for match in pattern.finditer(html):
+            body = match.group(1).strip()
+            # Four spellings, because the site has used more than one:
+            # plain JSON, HTML-escaped, percent-encoded, and both.
+            for decode in (
+                lambda text: text,
+                unescape,
+                unquote,
+                lambda text: unquote(unescape(text)),
+            ):
+                try:
+                    yield json.loads(decode(body))
+                    break
+                except ValueError:
+                    continue
 
 
 def dicts_with(obj: object, required: tuple[str, ...]) -> Iterator[dict]:
@@ -255,6 +275,12 @@ class VideoFacts:
 
 _POSTED = re.compile(r"发布[时時]间[：:]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<\n]*)")
 _HANDLE = re.compile(r"抖音号[：:]\s*([A-Za-z0-9._\-]+)")
+#: The account id, as it appears in every link to a profile. Worth
+#: reading even when nothing else could be: it is what the profile
+#: pass is keyed on, so one of these turns an unreadable video page
+#: into a readable author.
+_SEC_UID_HREF = re.compile(r"/user/(MS4w[A-Za-z0-9_\-]{10,})")
+
 _META = re.compile(
     r'<meta[^>]+(?:property|name)="(?P<key>[^"]+)"[^>]+content="(?P<value>[^"]*)"',
     re.IGNORECASE,
@@ -311,6 +337,9 @@ def video_facts(html: str) -> VideoFacts:
     handle = _HANDLE.search(html)
     if handle:
         facts.author_handle = handle.group(1)
+    account = _SEC_UID_HREF.search(html)
+    if account:
+        facts.sec_uid = account.group(1)
     return facts
 
 

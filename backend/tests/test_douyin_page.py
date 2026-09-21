@@ -122,3 +122,38 @@ def test_a_profile_read_off_the_surface_still_gives_the_handle():
 def test_a_page_that_says_nothing_is_empty_not_wrong():
     facts = video_facts("<html><body>请下载抖音 App</body></html>")
     assert facts.is_empty()
+
+
+def test_render_data_is_percent_encoded_and_still_read():
+    """douyin.com's own pages, as opposed to the share host.
+
+    Five video pages came back "surface only" -- a caption off a meta
+    tag, no counts -- because the state is in a script tag rather
+    than an assignment, and the JSON inside it is percent-encoded.
+    """
+    import urllib.parse
+
+    payload = {"aweme": {"detail": _RECORD}}
+    blob = urllib.parse.quote(json.dumps(payload, ensure_ascii=False))
+    html = f'<script id="RENDER_DATA" type="application/json">{blob}</script>'
+
+    facts = video_facts(html)
+    assert facts.parsed_by == "embedded"
+    assert facts.author_name == "35"
+    assert facts.like_count == 0
+    assert facts.share_count == 2
+
+
+def test_the_account_id_is_read_even_off_the_surface():
+    """It is what the profile pass is keyed on.
+
+    A video page that yields nothing else still turns into a readable
+    author if this comes out of it.
+    """
+    html = (
+        '<a href="/user/MS4wLjABAAAAQ3osBXG0LqnkGyPJZ11GS">35</a>'
+        "<div>发布时间：2026-09-20 23:10</div>"
+    )
+    facts = video_facts(html)
+    assert facts.sec_uid == "MS4wLjABAAAAQ3osBXG0LqnkGyPJZ11GS"
+    assert facts.parsed_by == "surface"

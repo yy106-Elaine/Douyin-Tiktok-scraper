@@ -135,9 +135,21 @@ def run(
                 outcome += f" -- wrote {video_id}.html"
         else:
             report["read"] += 1
+            outcome = f"{facts.author_name or '?'} | {(facts.caption or '')[:36]}"
             if facts.parsed_by == "surface":
                 report["surface_only"] += 1
-            outcome = f"{facts.author_name or '?'} | {(facts.caption or '')[:36]}"
+                # The interesting failure now. A page read off its
+                # surface yields a caption and a date and no counts,
+                # and looks like a success in the tally -- so it is
+                # written out too, and says so on its line.
+                outcome += "  [surface only]"
+                if dump is not None and page.html:
+                    dump.mkdir(parents=True, exist_ok=True)
+                    (dump / f"{video_id}.surface.html").write_text(
+                        page.html, encoding="utf-8"
+                    )
+                    outcome += f" -- wrote {video_id}.surface.html"
+
 
         store(session, video_id, page, facts)
         if on_progress:
