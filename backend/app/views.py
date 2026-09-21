@@ -373,8 +373,11 @@ def video_rows(
     )
     rows.extend(_row_from_link(link) for link in unpaired)
 
+    # Merged newest-sighting-first, so the row kept as the base of a
+    # merge is the most recent reading of that video.
     rows.sort(key=lambda row: row.when, reverse=True)
-    return _collapse_repeats(_one_row_per_video(rows))[:limit]
+    merged = _collapse_repeats(_one_row_per_video(rows))
+    return _newest_first(merged)[:limit]
 
 
 def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
@@ -545,3 +548,22 @@ def corpus_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[i
     """
     rows = video_rows(session, platform, cap)
     return len(rows), sum(1 for row in rows if row.video_id)
+
+
+def _newest_first(rows: list[VideoRow]) -> list[VideoRow]:
+    """Newest publication first, and the undated afterwards.
+
+    Publication is what the table is about -- when the video went up,
+    not when this study happened to scroll past it -- so it is what
+    the order should follow.
+
+    Rows whose publication time is unknown are not sorted among the
+    known ones on some stand-in: that would put a video collected an
+    hour ago above one published today and read as a claim about
+    when it was posted. They follow, ordered by when they were seen.
+    """
+    dated = [row for row in rows if row.posted_at is not None]
+    undated = [row for row in rows if row.posted_at is None]
+    dated.sort(key=lambda row: row.posted_at, reverse=True)
+    undated.sort(key=lambda row: row.when, reverse=True)
+    return dated + undated

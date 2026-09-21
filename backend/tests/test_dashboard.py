@@ -384,3 +384,61 @@ def test_the_at_sign_does_not_make_two_videos(client, api_key):
     assert "2 seen" in body
     # One video, not two -- the link is still unresolved, so no id yet.
     assert "0 of 1 collected" in body
+
+
+def test_rows_read_newest_published_first(client, api_key):
+    """The table is about when a video went up, not when we saw it."""
+    from app.db import SessionLocal
+    from app.views import video_rows
+
+    for name, video_id, seen in (
+        # Collected in one order, published in another.
+        ("older", "7686334741608361451", "2026-09-20T23:40:00Z"),
+        ("newer", "7687820515369510629", "2026-09-20T23:30:00Z"),
+    ):
+        _douyin_link(client, api_key, name, name, f"#lwl {name}", seen)
+        with SessionLocal() as session:
+            from app.models import SharedLink
+
+            link = (
+                session.query(SharedLink)
+                .filter(SharedLink.raw_text.contains(name))
+                .one()
+            )
+            link.video_id = video_id
+            session.commit()
+
+    with SessionLocal() as session:
+        rows = video_rows(session, "douyin", 10)
+
+    assert [row.author_name for row in rows] == ["newer", "older"]
+
+
+def test_a_video_with_no_publication_time_goes_last(client, api_key):
+    """Not sorted among the dated ones on a stand-in.
+
+    Placing it by when it was collected would read as a claim about
+    when it was posted.
+    """
+    from app.db import SessionLocal
+    from app.views import video_rows
+
+    # Seen most recently, but nothing says when it was published.
+    _douyin_link(client, api_key, "u", "没有时间的", "#lwl", "2026-09-20T23:59:00Z")
+    _douyin_link(client, api_key, "d", "有时间的", "#lwl 2", "2026-09-20T23:00:00Z")
+    with SessionLocal() as session:
+        from app.models import SharedLink
+
+        link = (
+            session.query(SharedLink)
+            .filter(SharedLink.raw_text.contains("有时间的的作品"))
+            .one()
+        )
+        link.video_id = "7687820515369510629"
+        session.commit()
+
+    with SessionLocal() as session:
+        rows = video_rows(session, "douyin", 10)
+
+    assert rows[0].author_name == "有时间的"
+    assert rows[-1].author_name == "没有时间的"
