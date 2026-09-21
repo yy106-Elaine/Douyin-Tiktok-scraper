@@ -191,16 +191,40 @@ requests, and a link left pending rather than written with a guess. The
 collection deliberately produces many links per video, so the same value twice
 is this data's normal shape and is never on its own evidence of a fault.
 
-### 3. Pairing is heuristic
+### 3. Pairing is exact, or it does not happen
 
-A shared link is matched to a captured post by participant, platform, author
-handle, and a ±15 minute window (`PAIRING_WINDOW_SECONDS`). It refuses to
-match when the author handles disagree, so false positives need two videos by
-the same author within the window. False negatives are more common: sharing
-long after viewing leaves the link unpaired.
+A shared link is attached to a captured post only when the device harvested
+that link from that post — the share sheet was opened on it, so the
+association is a fact the phone observed, not an inference. That is the
+`linked (exact)` label.
 
-`shared_links.matched_capture_id` is null for every unpaired link — count
-them, and report the pairing rate.
+Matching on time alone is disabled (`pairing_window_seconds = 0`). It existed
+for links copied by hand, and the assisted loop broke it: the loop copies a
+link about two seconds after a post reaches the screen, at a steady cadence,
+so once the ordering slipped by one, nearest-in-time matched every later post
+to the link belonging to the one before it. The table then read
+
+    id ...819109   @handle 晒月亮   name 想吃什么月亮
+                   41K / 187 / 3,629   "你最忘不了哪一任 #lwl"
+
+one video's engagement beside another's caption, with nothing on the row
+saying so. An association that is wrong invisibly is worse than none:
+unlinked rows announce what they lack.
+
+`python -m app.pairing --undo-time-pairings` takes back the ids already
+attached that way. Nothing is deleted — the post keeps what it read off the
+screen, the link keeps its id and its share text, and they stand as two rows
+rather than one row that mixes them.
+
+**The name and the caption are safe.** Both come out of the same copied blob
+(`【<author>的作品】<caption>`), so whatever else a link row lacks, those two
+belong to each other and to the id beside them.
+
+**A display name is not a handle.** On Douyin the handle is the 抖音号 and it
+lives on the author's profile, which the loop does not open. The parser falls
+back to the display name, so the dashboard shows a handle only when it differs
+from the name — a name printed in the handle column implies an identifier the
+row does not have.
 
 ### 3b. On Douyin, the handle is a nickname
 

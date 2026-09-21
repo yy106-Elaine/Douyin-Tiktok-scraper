@@ -8,7 +8,19 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./scraper.db"
     admin_api_key: str = ""
     approved_participants_csv: str = "./approved_participants.csv"
-    pairing_window_seconds: int = 900
+    #: Seconds either side of a copied link in which a captured post
+    #: may be matched to it on time alone. **Zero, which disables it.**
+    #:
+    #: The assisted loop copies a link about two seconds after a post
+    #: reaches the screen, at a steady cadence. Once the ordering
+    #: slipped by one, nearest-in-time matched every later post to the
+    #: link belonging to the one before it -- and the result reads as
+    #: an ordinary table: one video's counts beside another's caption.
+    #: An association that is wrong invisibly is worse than none.
+    #:
+    #: Exact pairing, where the device harvested the link from the
+    #: post itself, is unaffected and is the only kind now made.
+    pairing_window_seconds: int = 0
 
     #: The zone every shown time and every day boundary is expressed
     #: in. Storage stays UTC; this is only what a reader sees and how

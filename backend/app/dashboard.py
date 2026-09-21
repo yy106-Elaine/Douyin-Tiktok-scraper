@@ -268,6 +268,22 @@ def _bare(url: str) -> str:
     return url.rstrip("/")
 
 
+def _handle_cell(row: VideoRow) -> str:
+    """The @handle, when there is one worth showing.
+
+    On Douyin the handle is the 抖音号, and reading it means opening
+    the author's profile -- which the assisted loop does not do. What
+    the feed offers instead is the display name, which the parser
+    stores in both columns, so the table printed it twice and implied
+    an identifier it does not have. A name is not a handle.
+    """
+    handle = (row.author_handle or "").lstrip("@").strip()
+    name = (row.author_name or "").lstrip("@").strip()
+    if not handle or handle == name:
+        return '<td class="muted">&mdash;</td>'
+    return _cell(handle)
+
+
 def _notes_cell(row: VideoRow) -> str:
     notes = [
         f'<span class="flag {_STATE_CLASS.get(row.state, "good")}">'
@@ -301,7 +317,7 @@ def _video_rows(rows) -> str:
             f'<td class="rank">{number}</td>'
             f"{_posted_cell(row)}"
             f"{_id_cell(row)}"
-            f"{_cell(row.author_handle)}"
+            f"{_handle_cell(row)}"
             f"{_cell(row.author_name)}"
             f'<td class="caption">{escape((row.caption or "—")[:110])}</td>'
             f"<td class=\"when\">{escape(local(row.when).strftime('%m-%d %H:%M'))}</td>"

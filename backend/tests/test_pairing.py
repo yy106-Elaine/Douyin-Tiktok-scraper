@@ -256,3 +256,64 @@ class TestALinkNeverOverwritesAnother:
         assert links[1].pairing_method != "fingerprint" or (
             links[1].matched_capture_id != links[0].matched_capture_id
         )
+
+
+def test_time_pairing_is_off_unless_someone_turns_it_on():
+    """The default is zero. See app/config.py for what it cost."""
+    from app.config import Settings
+
+    # Read off the field, because the test environment sets the
+    # variable on purpose so the disabled path stays covered.
+    assert Settings.model_fields["pairing_window_seconds"].default == 0
+
+
+def test_nothing_is_paired_on_time_when_the_window_is_zero(client, api_key, monkeypatch):
+    from app.config import settings
+    from app.models import SharedLink
+
+    monkeypatch.setattr(settings, "pairing_window_seconds", 0)
+    _capture(client, api_key, fingerprint="fp-real")
+    body = _share_with_fingerprint(
+        client,
+        api_key,
+        "https://www.tiktok.com/@someuser/video/7301234567890123456",
+        "fp-never-captured",
+        "2026-09-14T12:00:30Z",
+    ).json()
+
+    assert body["paired_post_id"] is None
+    with SessionLocal() as session:
+        link = session.query(SharedLink).one()
+        assert link.pairing_method is None
+        # The link keeps its own id; only the claim about a post goes.
+        assert link.video_id == "7301234567890123456"
+
+
+def test_undoing_a_time_pairing_leaves_two_honest_rows(client, api_key):
+    """One video's counts beside another's caption, taken apart again."""
+    from app.models import SharedLink, TikTokPost
+    from app.pairing import undo_window_pairings
+
+    _capture(client, api_key, fingerprint="fp-real")
+    _share_with_fingerprint(
+        client,
+        api_key,
+        "https://www.tiktok.com/@someuser/video/7301234567890123456",
+        "fp-never-captured",
+        "2026-09-14T12:00:30Z",
+    )
+
+    with SessionLocal() as session:
+        assert session.query(TikTokPost).one().video_id == "7301234567890123456"
+        assert undo_window_pairings(session) == 1
+
+        post = session.query(TikTokPost).one()
+        assert post.video_id is None
+        assert post.video_url is None
+        # What the screen said is untouched.
+        assert post.author_handle == "someuser"
+
+        link = session.query(SharedLink).one()
+        assert link.matched_capture_id is None
+        assert link.pairing_method is None
+        assert link.video_id == "7301234567890123456"

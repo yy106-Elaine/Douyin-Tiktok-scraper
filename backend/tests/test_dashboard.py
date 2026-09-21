@@ -284,3 +284,24 @@ def test_the_screen_and_the_share_text_spell_a_caption_differently(client, api_k
     body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
     assert body.count("珩舟") == 1
     assert "2 seen" in body
+
+
+def test_a_display_name_is_not_shown_as_a_handle(client, api_key):
+    """On Douyin the handle is the 抖音号, and it is on the profile page.
+
+    The loop never opens one, so the parser stores the display name in
+    both columns and the table printed it twice — implying an
+    identifier the row does not have.
+    """
+    _capture(
+        client,
+        api_key,
+        {
+            "platform_package": "com.ss.android.ugc.aweme",
+            "fingerprint": "douyin::珩舟::#短发",
+            "captured_at": "2026-09-19T19:50:00Z",
+            "payload": {"author_name": "珩舟", "caption": "#短发 #lwl"},
+        },
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert body.count("珩舟") == 1

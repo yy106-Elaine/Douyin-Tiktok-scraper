@@ -38,6 +38,9 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
     if exact is not None:
         return exact
 
+    if not settings.pairing_window_seconds:
+        return None
+
     window = timedelta(seconds=settings.pairing_window_seconds)
     candidates = session.scalars(
         select(model).where(
@@ -61,6 +64,50 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
 
     _attach(session, link, best, family, method="window")
     return best.id
+
+
+def undo_window_pairings(session: Session) -> int:
+    """Take back every id that was attached on time alone.
+
+        id ...819109   @handle 晒月亮   name 想吃什么月亮
+                       41K / 187 / 3,629   "你最忘不了哪一任 #lwl"
+
+    One video's counts beside another's caption, and nothing on the
+    row says so. The assisted loop copies a link about two seconds
+    after the post reaches the screen, at a steady cadence, so once
+    the ordering slipped by one the nearest-in-time match was wrong
+    for every post after it -- wrong in a way that looks orderly.
+
+    This clears `video_id` and `video_url` from the posts those
+    pairings wrote to, and unlinks the links. Nothing is deleted: the
+    post keeps what it read off the screen, the link keeps its id and
+    its share text, and they stand as two rows instead of one row
+    that mixes them.
+    """
+    from .parsers import PLATFORM_TABLES
+    from .platforms import family_for_platform
+
+    undone = 0
+    links = session.scalars(
+        select(SharedLink).where(SharedLink.pairing_method == "window")
+    ).all()
+    for link in links:
+        family = family_for_platform(link.platform) or link.platform or ""
+        registered = PLATFORM_TABLES.get(family)
+        if registered is not None and link.matched_capture_id is not None:
+            model, _ = registered
+            for post in session.scalars(
+                select(model).where(model.capture_event_id == link.matched_capture_id)
+            ):
+                if post.video_id == link.video_id:
+                    post.video_id = None
+                    post.video_url = None
+        link.matched_capture_id = None
+        link.pairing_method = None
+        undone += 1
+
+    session.commit()
+    return undone
 
 
 def _pair_by_fingerprint(session: Session, link: SharedLink, model, family: str):
@@ -225,3 +272,28 @@ def record_author_identity(
                 filled += 1
     session.commit()
     return filled
+
+
+def main() -> None:  # pragma: no cover - thin CLI wrapper
+    """Undo pairings made on time alone. See [undo_window_pairings]."""
+    import argparse
+
+    from .db import SessionLocal, init_db
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument(
+        "--undo-time-pairings",
+        action="store_true",
+        help="unlink every post whose id came from a nearest-in-time match",
+    )
+    args = parser.parse_args()
+    if not args.undo_time_pairings:
+        parser.error("nothing to do; pass --undo-time-pairings")
+
+    init_db()
+    with SessionLocal() as session:
+        print(f"unlinked {undo_window_pairings(session)} time-based pairing(s)")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
