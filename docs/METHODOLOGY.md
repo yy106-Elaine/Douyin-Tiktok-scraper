@@ -133,6 +133,18 @@ label, so any analysis can make the same split. The boundary is a regular
 expression over the title and description and will misplace rows near it —
 read both lists before quoting either rate.
 
+**A collection window has to be the same every day, or the daily counts are
+about the windows.** `app.youtube collect --hours N` looks back N hours, so a
+24-hour run and a 48-hour run return different amounts of the same world. Runs
+made at 24, then 48, then 12 hours produced a per-day series that fell from 22
+to 17 to 15 to 7 — which reads as the community posting less and is mostly an
+artifact of how far back each run reached. The daily job fixes the window
+(`WINDOW_HOURS`, 72 by default, overlapping on purpose so nothing is missed
+when a run is skipped) and is the only collector whose output belongs in a
+trend. An ad-hoc run with a different `--hours` is worth making — it finds
+videos — but the day it lands on is no longer comparable to the others, and a
+figure drawn across both is not a measurement.
+
 **What is tracked is the corpus, not the search.** A YouTube search for the
 keywords returns mostly other things: of 1,126 videos collected over three
 days, 1,072 were excluded — 504 not in Chinese, 256 Japanese, 200 with no

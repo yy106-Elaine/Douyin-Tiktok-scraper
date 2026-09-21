@@ -260,8 +260,21 @@ CADENCE: tuple[tuple[timedelta, timedelta], ...] = (
 #: Anything older than the last tier.
 CADENCE_FLOOR = timedelta(days=27)
 
+#: Platforms whose checks go through an API in batches, and therefore
+#: cost almost nothing: YouTube answers fifty ids per request for one
+#: quota unit, so a sweep of the whole corpus is two units.
+#:
+#: The cadence exists to keep a page-by-page fetch from hammering a
+#: site. Applying it where a check is nearly free buys nothing and
+#: costs the only thing this table is for: a removal is dated to the
+#: gap between the check that found it alive and the one that found
+#: it gone, so a wider gap is a vaguer answer. These are always due.
+BATCHED = frozenset({"youtube"})
 
-def minimum_gap(age: timedelta) -> timedelta:
+
+def minimum_gap(age: timedelta, platform: str | None = None) -> timedelta:
+    if platform in BATCHED:
+        return timedelta(0)
     for limit, gap in CADENCE:
         if age <= limit:
             return gap
@@ -340,19 +353,53 @@ def last_checked(session: Session) -> dict[str, datetime]:
     return checks
 
 
+def disappeared(session: Session) -> set[str]:
+    """Videos whose check history already says they are gone.
+
+    Computed from the stored checks, like every other finding, so a
+    corrected marker list changes this too.
+    """
+    from .survival import findings
+
+    return {
+        finding.video_id
+        for finding in findings(session)
+        if finding.outcome is not None
+    }
+
+
 def due_targets(
-    session: Session, now: datetime | None = None, targets: Iterable[Target] | None = None
+    session: Session,
+    now: datetime | None = None,
+    targets: Iterable[Target] | None = None,
+    skip_gone: bool = False,
 ) -> list[Target]:
-    """Targets whose last check is older than their cadence allows."""
+    """Targets worth checking again now.
+
+    A video already found gone is still checked, because a removal
+    reversed is a finding: an appeal that succeeded, or a block that
+    was temporary. It costs nearly nothing to keep looking -- on
+    YouTube it is part of a batch, and on the page platforms an older
+    video is due only every few weeks.
+
+    `skip_gone` stops it anyway, for a run that has a budget to
+    protect. It buys little: the videos still being watched are the
+    ones a cadence actually spends requests on.
+    """
     moment = now or _utcnow()
     seen = last_checked(session)
+    gone = disappeared(session) if skip_gone else set()
     due = []
     for target in targets if targets is not None else collected_targets(session):
+        if target.video_id in gone:
+            continue
         previous = seen.get(target.video_id)
         if previous is None:
             due.append(target)
             continue
-        if moment - previous >= minimum_gap(moment - target.first_seen):
+        if moment - previous >= minimum_gap(
+            moment - target.first_seen, target.platform
+        ):
             due.append(target)
     return due
 
@@ -469,6 +516,7 @@ def run_round(
     pause_seconds: float = 2.0,
     targets: Iterable[Target] | None = None,
     ignore_cadence: bool = False,
+    skip_gone: bool = False,
     youtube_checker: Callable[[list[Target]], dict[str, FetchResult]] | None = check_youtube,
 ) -> RecheckReport:
     """Check everything due once, recording each response.
@@ -483,7 +531,7 @@ def run_round(
     if ignore_cadence:
         due = list(targets) if targets is not None else collected_targets(session)
     else:
-        due = due_targets(session, moment, targets)
+        due = due_targets(session, moment, targets, skip_gone=skip_gone)
     if limit is not None:
         due = due[:limit]
 
@@ -537,6 +585,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="check every collected link, ignoring the cadence",
     )
+    parser.add_argument(
+        "--skip-gone",
+        action="store_true",
+        help=(
+            "leave out videos already found gone -- saves little, and a "
+            "removal that gets reversed then goes unseen"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
@@ -547,6 +603,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 limit=args.limit,
                 pause_seconds=args.pause,
                 ignore_cadence=args.all,
+                skip_gone=args.skip_gone,
             )
         )
 

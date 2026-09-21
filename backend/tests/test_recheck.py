@@ -434,3 +434,57 @@ def test_the_two_strata_get_their_own_rate(client, api_key):
     ).text
     assert "盼你归来" in listing
     assert "我和女朋友的日常" not in listing
+
+
+def test_youtube_is_always_due(client):
+    """A YouTube check is fifty ids per request, for one quota unit.
+
+    The cadence exists to stop a page-by-page fetch hammering a site.
+    Where a check is nearly free it buys nothing and costs the only
+    thing this table is for: a removal is dated to the gap between
+    the check that found it alive and the one that found it gone.
+    """
+    from datetime import timedelta
+
+    from app.recheck import minimum_gap
+
+    assert minimum_gap(timedelta(hours=1), "youtube") == timedelta(0)
+    # The page platforms keep it.
+    assert minimum_gap(timedelta(hours=1), "douyin") == timedelta(hours=8)
+    assert minimum_gap(timedelta(days=30), "douyin") == timedelta(days=6)
+    assert minimum_gap(timedelta(days=200), "douyin") == timedelta(days=27)
+
+
+def test_a_youtube_video_checked_an_hour_ago_is_due_again(client):
+    from datetime import datetime, timedelta
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import Target, due_targets
+
+    first_seen = datetime(2026, 9, 21, 9, 0)
+    target = Target(
+        platform="youtube",
+        video_id="abc123",
+        url="https://www.youtube.com/watch?v=abc123",
+        author_handle=None,
+        first_seen=first_seen,
+    )
+
+    with SessionLocal() as session:
+        session.add(
+            LinkCheck(
+                platform="youtube",
+                video_id="abc123",
+                url=target.url,
+                checked_at=first_seen,
+                http_status=200,
+            )
+        )
+        session.commit()
+
+        due = due_targets(
+            session, now=first_seen + timedelta(hours=1), targets=[target]
+        )
+
+    assert [item.video_id for item in due] == ["abc123"]
