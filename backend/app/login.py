@@ -31,8 +31,36 @@ def main() -> None:  # pragma: no cover - interactive by nature
         action="store_true",
         help="report whether the saved session still opens the site",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "wait for a sign-in even if this profile looks signed in "
+            "already -- use when the check is wrong"
+        ),
+    )
+    parser.add_argument(
+        "--show-cookies",
+        action="store_true",
+        help=(
+            "list the cookie names and domains in this profile, never "
+            "their values, to check what a sign-in actually sets"
+        ),
+    )
     args = parser.parse_args()
     profile = Path(args.profile)
+
+    if args.show_cookies:
+        with open_browser(profile, headless=True) as browser:
+            browser.read("https://www.douyin.com/", settle_seconds=2.0)
+            print(f"{profile}:")
+            for name, domain in browser.cookie_names():
+                print(f"  {name:<28} {domain}")
+            known = browser.session_cookies()
+            print(
+                f"\n  read as a session: {', '.join(known) if known else 'none'}"
+            )
+        return
 
     if args.check:
         with open_browser(profile, headless=True) as browser:
@@ -50,8 +78,13 @@ def main() -> None:  # pragma: no cover - interactive by nature
 
     with open_browser(profile, headless=False) as browser:
         browser.read("https://www.douyin.com/", settle_seconds=1.0)
-        if browser.is_signed_in():
-            print(f"Already signed in; {profile}/ still holds a session.")
+        if browser.is_signed_in() and not args.force:
+            found = ", ".join(browser.session_cookies())
+            print(
+                f"Already signed in; {profile}/ holds a session ({found}).\n"
+                "If the site is in fact asking you to sign in, re-run with "
+                "--force and this will wait anyway."
+            )
             return
 
         print(

@@ -91,3 +91,37 @@ def test_the_profile_directory_does_not_depend_on_where_it_was_run():
     from app.browser import DEFAULT_PROFILE
 
     assert DEFAULT_PROFILE.is_absolute()
+
+
+def test_a_token_every_visitor_gets_is_not_a_session():
+    """A deleted profile reported a session and closed the window.
+
+    `passport_csrf_token` is set for any visitor at all. Counting it
+    made a brand-new profile look signed in, so login returned at
+    once and shut the browser -- while an SMS code was being typed
+    into it.
+    """
+    assert not _browser(
+        [
+            {
+                "name": "passport_csrf_token",
+                "value": "9f2a",
+                "domain": ".douyin.com",
+            }
+        ]
+    ).is_signed_in()
+
+
+def test_the_names_can_be_listed_without_the_values():
+    """The values are the session; they are never printed."""
+    browser = _browser(
+        [
+            {"name": "sessionid", "value": "secret", "domain": ".douyin.com"},
+            {"name": "ttwid", "value": "also-secret", "domain": ".douyin.com"},
+        ]
+    )
+    listed = browser.cookie_names()
+    assert ("sessionid", ".douyin.com") in listed
+    assert ("ttwid", ".douyin.com") in listed
+    assert all("secret" not in str(entry) for entry in listed)
+    assert browser.session_cookies() == ["sessionid"]

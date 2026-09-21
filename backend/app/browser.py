@@ -52,15 +52,24 @@ DEFAULT_PROFILE = Path(__file__).resolve().parent.parent / ".browser-profile"
 VIDEO_URL = "https://www.douyin.com/video/{video_id}"
 AUTHOR_URL = "https://www.douyin.com/user/{sec_uid}"
 
-#: Cookies the site sets once a sign-in has actually happened. This
-#: is what "signed in" is decided by -- not by reading the page.
+#: Cookies the site sets once a sign-in has actually happened.
 #:
-#: The first version looked for words like 扫码登录 in the rendered
-#: text, which Douyin shows in its sidebar to signed-in visitors too.
-#: Every page then looked like a login wall, the run asked to sign in
-#: again at each one, and none of it had anything to do with whether
-#: the session was there.
-_SESSION_COOKIES = ("sessionid", "sessionid_ss", "sid_tt", "passport_csrf_token")
+#: Read from the jar rather than from the page. The first attempt
+#: looked for words like 扫码登录 in the rendered text, which Douyin
+#: shows in its sidebar to signed-in visitors too, so every page
+#: looked like a login wall.
+#:
+#: The second attempt read the jar but included
+#: `passport_csrf_token`, which the site sets for any visitor at all.
+#: A profile deleted seconds earlier then reported a session, login
+#: returned immediately and closed the window -- while an SMS code
+#: was being typed into it. The same mistake inverted.
+#:
+#: So: only cookies that a sign-in creates, and nothing that merely
+#: proves a page was loaded. `python -m app.login --show-cookies`
+#: prints the names in a profile (never the values) when this list
+#: needs checking against what the site actually sets.
+_SESSION_COOKIES = ("sessionid", "sessionid_ss", "sid_tt", "uid_tt", "sid_guard")
 
 #: A challenge: a page asking the person to prove something. Narrow on
 #: purpose, and only consulted when the session is present -- so it
@@ -97,20 +106,40 @@ class Browser:
 
     # -- session ---------------------------------------------------
 
-    def is_signed_in(self) -> bool:
-        """Whether the site has actually set a session cookie.
-
-        Asked of the cookie jar, not of the page. A rendered page
-        mentions signing in whether or not you are.
-        """
+    def session_cookies(self) -> list[str]:
+        """Names of the sign-in cookies present. Never their values."""
+        found = []
         for cookie in self._context.cookies():
-            if cookie.get("name") not in _SESSION_COOKIES:
+            name = cookie.get("name")
+            if name not in _SESSION_COOKIES:
                 continue
             if not (cookie.get("value") or "").strip():
                 continue
             if "douyin.com" in (cookie.get("domain") or ""):
-                return True
-        return False
+                found.append(name)
+        return found
+
+    def cookie_names(self) -> list[tuple[str, str]]:
+        """Every cookie's name and domain, for checking the list above.
+
+        Values are never returned or printed: they are the session.
+        """
+        return sorted(
+            {
+                (cookie.get("name") or "", cookie.get("domain") or "")
+                for cookie in self._context.cookies()
+            }
+        )
+
+    def is_signed_in(self) -> bool:
+        """Whether a sign-in has actually happened in this profile.
+
+        Asked of the cookie jar, not of the page: a rendered page
+        mentions signing in whether or not you are. And asked only of
+        cookies a sign-in creates -- see [_SESSION_COOKIES] for the
+        two ways this has been got wrong.
+        """
+        return bool(self.session_cookies())
 
     def wait_until_signed_in(self, timeout_seconds: float = 900.0) -> bool:
         """Hold the browser open until a sign-in lands, or time runs out.
