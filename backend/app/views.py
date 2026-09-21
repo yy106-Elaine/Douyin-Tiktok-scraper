@@ -170,6 +170,14 @@ def _row_from_link(link: SharedLink) -> VideoRow:
     # copied is itself an observation, and it is the only one these
     # rows have.
     said = describe(link.raw_text)
+    # The handle is read off the URL, where TikTok puts it, and
+    # nowhere else. Douyin's is the 抖音号 and lives on the author's
+    # profile; a value attached to the link afterwards -- by the
+    # device's own profile visits, matched on time -- turned out to
+    # be the neighbouring author's as often as this one's, so it is
+    # not read back. A name in the handle column is worse than an
+    # empty one.
+    from_url = extract(link.canonical_url or link.raw_text)
     return VideoRow(
         when=link.shared_at,
         participant_id=link.participant_id,
@@ -180,7 +188,7 @@ def _row_from_link(link: SharedLink) -> VideoRow:
         posted_source=source,
         video_id=link.video_id,
         video_url=target,
-        author_handle=link.author_handle,
+        author_handle=from_url.author_handle,
         author_name=said.author_name,
         caption=said.caption,
         feed=None,
@@ -521,3 +529,15 @@ def fiction_ids(session: Session, platform: str) -> set[str]:
             )
         )
     }
+
+
+def corpus_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, int]:
+    """Videos on the page, and how many of them have an id.
+
+    Counted over the merged rows rather than the post table. Once
+    pairing became exact-only most ids live on link rows, so counting
+    posts reported "8% with a video ID" for a page where every row
+    showed one -- a tile disagreeing with the table under it.
+    """
+    rows = video_rows(session, platform, cap)
+    return len(rows), sum(1 for row in rows if row.video_id)

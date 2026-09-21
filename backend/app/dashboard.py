@@ -27,6 +27,7 @@ from .relevance import FICTION_STRATUM, HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
+    corpus_counts,
     daily_counts,
     fiction_ids,
     in_scope_filter,
@@ -74,13 +75,9 @@ def dashboard(
         )
     model, _ = PLATFORM_TABLES[platform]
 
-    posts = session.scalar(select(func.count()).select_from(model)) or 0
-    with_id = (
-        session.scalar(
-            select(func.count()).select_from(model).where(model.video_id.isnot(None))
-        )
-        or 0
-    )
+    # Over the rows the page actually shows, not over the post table:
+    # with exact-only pairing most ids sit on link rows.
+    posts, with_id = corpus_counts(session, platform)
     approximate = (
         session.scalar(
             select(func.count()).select_from(model).where(model.counts_approximate.is_(True))

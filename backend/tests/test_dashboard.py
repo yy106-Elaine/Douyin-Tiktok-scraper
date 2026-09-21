@@ -305,3 +305,45 @@ def test_a_display_name_is_not_shown_as_a_handle(client, api_key):
     )
     body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
     assert body.count("珩舟") == 1
+
+
+def test_the_id_tile_counts_what_the_table_shows(client, api_key):
+    """"8% with a video ID" over a page where every row had one.
+
+    The tile counted the post table. With exact-only pairing most ids
+    sit on link rows, so it disagreed with the table under it.
+    """
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    _douyin_link(
+        client, api_key, "one", "珩舟", "#短发 #lwl", "2026-09-19T19:50:00Z"
+    )
+    with SessionLocal() as session:
+        link = session.query(SharedLink).one()
+        link.video_id = "7686773732988082810"
+        session.commit()
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "1 of 1 collected" in body
+
+
+def test_a_handle_attached_after_the_fact_is_not_shown(client, api_key):
+    """The 抖音号 is on the profile page, and was matched on time.
+
+    It came out the neighbouring author's as often as this one's.
+    """
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    _douyin_link(
+        client, api_key, "one", "颜小颜", "#lwl #姐1", "2026-09-19T19:50:00Z"
+    )
+    with SessionLocal() as session:
+        link = session.query(SharedLink).one()
+        link.author_handle = "🍚"  # the next author along
+        session.commit()
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "颜小颜" in body
+    assert "🍚" not in body
