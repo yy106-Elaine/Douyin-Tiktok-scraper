@@ -27,6 +27,7 @@ from .relevance import FICTION_STRATUM, HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
+    FROM_PAGE,
     corpus_counts,
     daily_counts,
     fiction_ids,
@@ -205,6 +206,7 @@ def _num(value: object) -> str:
 #: Colour carries how much a row's identity can be trusted: green for
 #: an exact match, amber for anything inferred or still pending.
 _STATE_CLASS = {
+    FROM_PAGE: "good",
     NEEDS_RESOLVING: "warn",
     LINKED_BY_TIME: "warn",
     LINK_ONLY: "crit",
@@ -228,6 +230,8 @@ def _posted_cell(row: VideoRow) -> str:
     if row.posted_source == "video id":
         label = "from id" if derivation_is_verified(row.platform) else "from id?"
         note = f'<div class="prov exact">{label}</div>'
+    elif row.posted_source == "page":
+        note = '<div class="prov exact">from the page</div>'
     elif row.posted_source == "screen":
         note = '<div class="prov">from screen</div>'
     elif row.posted_source == "as shown":

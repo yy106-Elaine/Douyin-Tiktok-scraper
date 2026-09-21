@@ -271,3 +271,96 @@ class AuthorIdentity(Base):
     #: The 抖音号, read off the profile.
     author_handle: Mapped[str] = mapped_column(String(255), index=True)
     seen_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class WebVideo(Base):
+    """What the video's own web page says, fetched from a computer.
+
+    The phone reads a feed: it sees what is on screen for a second or
+    two, at whatever moment the loop looked, and its author, caption
+    and counts have to be stitched to a link afterwards by inference.
+    Every mis-association in this study so far came from that stitch.
+
+    A page fetched from the video's own URL needs no stitch. The id is
+    in the address, so everything parsed out of the response belongs
+    to it by construction. This table is therefore the authority for
+    these fields, and the screen readings become corroboration.
+
+    Kept separate from the post tables rather than overwriting them:
+    the two are different observations -- one of what a viewer saw in
+    the app, one of what the page served to a fetch -- and a study
+    that measures removals should be able to show both.
+    """
+
+    __tablename__ = "web_videos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True, default="douyin")
+    video_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+
+    #: The account's opaque id, which is what a profile URL is keyed
+    #: on. The 抖音号 is not: it is a display identifier the owner can
+    #: change, and it is not in the address of anything.
+    sec_uid: Mapped[str | None] = mapped_column(String(255), index=True)
+    author_name: Mapped[str | None] = mapped_column(String(255))
+    #: The 抖音号, when the video page carries it. It usually does not
+    #: -- see `web_authors`.
+    author_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+
+    caption: Mapped[str | None] = mapped_column(Text)
+    posted_on: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
+    like_count: Mapped[int | None] = mapped_column(Integer)
+    comment_count: Mapped[int | None] = mapped_column(Integer)
+    share_count: Mapped[int | None] = mapped_column(Integer)
+    collect_count: Mapped[int | None] = mapped_column(Integer)
+
+    #: HTTP status of the fetch, and the class name of whatever went
+    #: wrong instead. A page that could not be read is recorded as
+    #: such rather than left indistinguishable from one never tried.
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(String(255))
+    #: How the fields were found: the name of the strategy that
+    #: matched. A row parsed by a fallback is worth less than one read
+    #: out of the page's own data, and the difference should be
+    #: visible without re-fetching.
+    parsed_by: Mapped[str | None] = mapped_column(String(32))
+
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=_utcnow)
+
+
+class WebAuthor(Base):
+    """What an author's profile page says, fetched from a computer.
+
+    The 抖音号 lives here and nowhere else: it is not in a video's
+    address and the feed does not render it. One visit answers it for
+    every video that account appears in, which is why this is keyed on
+    the account rather than stored per video.
+    """
+
+    __tablename__ = "web_authors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True, default="douyin")
+    sec_uid: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+
+    #: The 抖音号.
+    author_handle: Mapped[str | None] = mapped_column(String(255), index=True)
+    author_name: Mapped[str | None] = mapped_column(String(255))
+    signature: Mapped[str | None] = mapped_column(Text)
+    #: Douyin shows a coarse location on every profile. Recorded
+    #: because it is on the page, not because the study needs it --
+    #: and it is a personal detail, so it stays out of exports unless
+    #: a written reason says otherwise.
+    ip_location: Mapped[str | None] = mapped_column(String(64))
+
+    follower_count: Mapped[int | None] = mapped_column(Integer)
+    following_count: Mapped[int | None] = mapped_column(Integer)
+    total_favorited: Mapped[int | None] = mapped_column(Integer)
+    video_count: Mapped[int | None] = mapped_column(Integer)
+
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(String(255))
+    parsed_by: Mapped[str | None] = mapped_column(String(32))
+
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=_utcnow)

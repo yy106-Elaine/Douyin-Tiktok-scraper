@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from .clock import local, local_date, start_of_local_day
 from .links import describe, extract
-from .models import SharedLink
+from .models import SharedLink, WebAuthor, WebVideo
 from .platforms import API_PLATFORMS
 from .relevance import FICTION_STRATUM, HIDDEN
 from .parsers import PLATFORM_TABLES
@@ -45,6 +45,8 @@ NO_LINK = "no link yet"
 LINK_ONLY = "link only"
 #: A copied short link that has not been followed to its real id yet.
 NEEDS_RESOLVING = "needs resolving"
+#: The row's fields came from the video's own page, fetched by id.
+FROM_PAGE = "read from the page"
 
 
 @dataclass(frozen=True)
@@ -377,7 +379,7 @@ def video_rows(
     # merge is the most recent reading of that video.
     rows.sort(key=lambda row: row.when, reverse=True)
     merged = _collapse_repeats(_one_row_per_video(rows))
-    return _newest_first(merged)[:limit]
+    return _newest_first(_with_page_facts(session, merged))[:limit]
 
 
 def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
@@ -567,3 +569,82 @@ def _newest_first(rows: list[VideoRow]) -> list[VideoRow]:
     dated.sort(key=lambda row: row.posted_at, reverse=True)
     undated.sort(key=lambda row: row.when, reverse=True)
     return dated + undated
+
+
+def _with_page_facts(session: Session, rows: list[VideoRow]) -> list[VideoRow]:
+    """Let the video's own page overrule what the screen showed.
+
+    Both are real observations, but they are not equally attached to
+    the video. A page fetched by id belongs to that id by
+    construction; a screen reading had to be stitched to a link
+    afterwards, and that stitch is what produced one video's counts
+    beside another's caption. So where a page has been read, it wins,
+    and the row says where its fields came from.
+
+    The 抖音号 comes from the author's profile, keyed on the account
+    rather than the video: one visit answers it for everything that
+    account posted.
+    """
+    wanted = {row.video_id for row in rows if row.video_id}
+    if not wanted:
+        return rows
+
+    pages = {
+        page.video_id: page
+        for page in session.scalars(
+            select(WebVideo).where(WebVideo.video_id.in_(wanted))
+        )
+    }
+    if not pages:
+        return rows
+
+    handles = {
+        author.sec_uid: author.author_handle
+        for author in session.scalars(
+            select(WebAuthor).where(
+                WebAuthor.sec_uid.in_(
+                    {page.sec_uid for page in pages.values() if page.sec_uid}
+                )
+            )
+        )
+        if author.author_handle
+    }
+
+    out: list[VideoRow] = []
+    for row in rows:
+        page = pages.get(row.video_id or "")
+        if page is None:
+            out.append(row)
+            continue
+
+        posted_at = page.posted_on or row.posted_at
+        out.append(
+            replace(
+                row,
+                state=FROM_PAGE,
+                posted_at=posted_at,
+                posted_display=(
+                    local(posted_at).strftime("%Y-%m-%d %H:%M") if posted_at else None
+                ),
+                posted_source="page" if page.posted_on else row.posted_source,
+                author_name=page.author_name or row.author_name,
+                author_handle=handles.get(page.sec_uid or "")
+                or page.author_handle
+                or row.author_handle,
+                caption=page.caption or row.caption,
+                like_count=_prefer(page.like_count, row.like_count),
+                comment_count=_prefer(page.comment_count, row.comment_count),
+                share_count=_prefer(page.share_count, row.share_count),
+                save_count=_prefer(page.collect_count, row.save_count),
+                # The page gives exact numbers; the screen abbreviated
+                # them, and that caveat does not carry over.
+                counts_approximate=(
+                    False if page.like_count is not None else row.counts_approximate
+                ),
+            )
+        )
+    return out
+
+
+def _prefer(from_page: int | None, from_screen: int | None) -> int | None:
+    return from_page if from_page is not None else from_screen

@@ -191,6 +191,36 @@ requests, and a link left pending rather than written with a guess. The
 collection deliberately produces many links per video, so the same value twice
 is this data's normal shape and is never on its own evidence of a fault.
 
+### 3b. The page is the authority; the screen corroborates
+
+The phone reaches posts a web search will not return, and that is the only
+reason it collects at all. But it reads a feed: it sees a post for a second or
+two, at whatever moment the loop looked, and whatever it read has to be
+stitched to a copied link afterwards. Every wrong row in this study came out
+of that stitch — one video's counts beside another's caption, a neighbouring
+author's 抖音号, a caption that had not drawn yet.
+
+A page fetched from the video's own URL needs no stitch: the id is in the
+address, so what is parsed out of the response belongs to that id by
+construction. `python -m app.fetch_videos --apply` reads each collected
+video's page into `web_videos`, and `python -m app.fetch_authors --apply`
+reads each author's profile into `web_authors` — one visit per account,
+because the 抖音号 is a property of the account and is on the profile and
+nowhere else.
+
+Where a page has been read it overrules the screen on the dashboard, and the
+row says so (`read from the page`, and `from the page` under the publication
+time). The screen reading is kept, not replaced: the two are different
+observations — what a viewer saw in the app, and what the site served to a
+fetch — and a study about removals should be able to show both.
+
+`parsed_by` records how a row was read. `embedded` means it came out of the
+page's own data; `surface` means only the visible text and meta tags could be
+read, which yields a caption and a date but no counts. A row parsed off the
+surface is worth less and says so without being re-fetched. A page that could
+not be read at all is stored with its status and error rather than left
+looking like one never tried.
+
 ### 3. Pairing is exact, or it does not happen
 
 A shared link is attached to a captured post only when the device harvested
