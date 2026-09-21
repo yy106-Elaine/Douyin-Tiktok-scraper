@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import argparse
 import time
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .clock import now as utc_now
 from .browser import AUTHOR_URL as BROWSER_AUTHOR_URL, DEFAULT_PROFILE, open_browser
 from .douyin_page import AUTHOR_URL, author_facts, fetch
 from .models import WebAuthor, WebVideo
@@ -62,7 +62,7 @@ def store(session: Session, sec_uid: str, page, facts) -> WebAuthor:
 
     row.http_status = page.http_status
     row.error = page.error
-    row.fetched_at = datetime.utcnow()
+    row.fetched_at = utc_now()
     if facts is not None:
         row.author_handle = facts.author_handle or row.author_handle
         row.author_name = facts.author_name or row.author_name
@@ -201,6 +201,22 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 headless=args.headless,
                 pause_seconds=args.pause,
             ) as browser:
+                # Check the session once, here, rather than discovering
+                # it missing on every page. A run that asks to sign in
+                # at each of two hundred videos is a run with no
+                # session at all, and saying so once is the useful
+                # thing to do.
+                browser.read("https://www.douyin.com/", settle_seconds=1.0)
+                if not browser.is_signed_in():
+                    print(
+                        "No saved session in "
+                        f"{args.profile}. Sign in once first:\n"
+                        "    ./.venv/bin/python -m app.login\n"
+                        "Or pass --anonymous to read what the share host "
+                        "gives without one."
+                    )
+                    return
+
                 report = run(
                     session,
                     targets,

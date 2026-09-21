@@ -39,24 +39,33 @@ from .douyin_page import Fetched
 #: Where the signed-in session lives. Beside the database, because it
 #: is the same kind of thing: local state a collection depends on and
 #: which must never reach the repository.
-DEFAULT_PROFILE = Path(".browser-profile")
+#:
+#: Absolute, and derived from this file rather than the working
+#: directory. A relative path means `app.login` and `app.fetch_videos`
+#: can sign in to and read from two different profiles depending on
+#: where each was run, which looks exactly like a session that will
+#: not persist.
+DEFAULT_PROFILE = Path(__file__).resolve().parent.parent / ".browser-profile"
 
 #: The site's own pages, which is what a signed-in browser can read.
 #: The share host stays the fallback for an anonymous fetch.
 VIDEO_URL = "https://www.douyin.com/video/{video_id}"
 AUTHOR_URL = "https://www.douyin.com/user/{sec_uid}"
 
-#: Wording that means the page is asking the person for something
-#: rather than answering. Checked against the rendered text.
-_WALL = (
-    "验证",
-    "滑动",
-    "拖动",
-    "请完成",
-    "登录后",
-    "扫码登录",
-    "手机号登录",
-)
+#: Cookies the site sets once a sign-in has actually happened. This
+#: is what "signed in" is decided by -- not by reading the page.
+#:
+#: The first version looked for words like 扫码登录 in the rendered
+#: text, which Douyin shows in its sidebar to signed-in visitors too.
+#: Every page then looked like a login wall, the run asked to sign in
+#: again at each one, and none of it had anything to do with whether
+#: the session was there.
+_SESSION_COOKIES = ("sessionid", "sessionid_ss", "sid_tt", "passport_csrf_token")
+
+#: A challenge: a page asking the person to prove something. Narrow on
+#: purpose, and only consulted when the session is present -- so it
+#: cannot be confused with being signed out.
+_CHALLENGE = ("滑动验证", "拖动滑块", "安全验证", "请完成验证", "验证码")
 
 #: A page that loaded but holds none of what was asked for.
 _EMPTY = ("暂无", "内容不存在", "页面不存在", "该作品已下架")
@@ -74,20 +83,74 @@ class PageRead:
 
 
 class Browser:
-    """A signed-in Chromium, kept open across many reads."""
+    """A signed-in Chromium, kept open across many reads.
+
+    One tab, reused. A tab per page was slower, and opening dozens of
+    them is itself the kind of traffic that gets a session challenged.
+    """
 
     def __init__(self, context, pause_seconds: float = 2.0) -> None:
         self._context = context
         self._pause = pause_seconds
         self._read_any = False
+        self._page = None
+
+    # -- session ---------------------------------------------------
+
+    def is_signed_in(self) -> bool:
+        """Whether the site has actually set a session cookie.
+
+        Asked of the cookie jar, not of the page. A rendered page
+        mentions signing in whether or not you are.
+        """
+        for cookie in self._context.cookies():
+            if cookie.get("name") not in _SESSION_COOKIES:
+                continue
+            if not (cookie.get("value") or "").strip():
+                continue
+            if "douyin.com" in (cookie.get("domain") or ""):
+                return True
+        return False
+
+    def wait_until_signed_in(self, timeout_seconds: float = 900.0) -> bool:
+        """Hold the browser open until a sign-in lands, or time runs out.
+
+        Polled rather than waiting on a keypress. The first version
+        waited for Enter and closed the browser the moment it got one
+        -- including the empty line left in a paste buffer -- which
+        shut the window while the code from an SMS was still being
+        typed into it. Nothing the operator does in the browser can
+        end this early except succeeding.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        said = 0.0
+        while time.monotonic() < deadline:
+            if self.is_signed_in():
+                return True
+            now = time.monotonic()
+            if now - said > 20:
+                remaining = int(deadline - now)
+                print(
+                    f"  still waiting for the sign-in ({remaining}s left) -- "
+                    "take as long as you need",
+                    flush=True,
+                )
+                said = now
+            time.sleep(2.0)
+        return self.is_signed_in()
+
+    # -- reading ---------------------------------------------------
 
     def read(self, url: str, settle_seconds: float = 2.5) -> PageRead:
-        """Navigate, let the page render, and hand back its HTML."""
+        """Navigate the tab, let the page render, hand back its HTML."""
         if self._read_any and self._pause:
             time.sleep(self._pause)
         self._read_any = True
 
-        page = self._context.new_page()
+        if self._page is None or self._page.is_closed():
+            self._page = self._context.new_page()
+        page = self._page
+
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
             status = response.status if response is not None else None
@@ -101,26 +164,49 @@ class Browser:
             time.sleep(settle_seconds)
             html = page.content()
             text = page.inner_text("body")[:4000]
+            landed = page.url
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
-        finally:
-            page.close()
 
         return PageRead(
             Fetched(url=url, html=html, http_status=status),
-            wall=any(marker in text for marker in _WALL),
+            wall=self._is_wall(landed, text),
         )
 
-    def wait_for_person(self, message: str) -> None:
-        """Stop and let the operator deal with what is on screen."""
+    def _is_wall(self, landed: str, text: str) -> bool:
+        """Whether the page asked for a person instead of answering.
+
+        Two different situations, and they are told apart by the
+        cookie jar rather than by the words on the page: no session
+        means signed out, and a session plus a challenge means the
+        site wants this particular request proved.
+        """
+        if not self.is_signed_in():
+            return True
+        if "verify" in landed or "captcha" in landed:
+            return True
+        return any(marker in text for marker in _CHALLENGE)
+
+    def wait_for_person(self, message: str, timeout_seconds: float = 900.0) -> None:
+        """Stop and let the operator deal with what is on screen.
+
+        Enter carries on, but losing the terminal does not end the
+        wait: without one it polls until the session is back, because
+        closing the browser mid-challenge is the one thing that must
+        not happen.
+        """
         print(f"\n  {message}")
         print("  Deal with it in the browser window, then press Enter here.")
         try:
             input()
+            return
         except EOFError:
-            # Not attached to a terminal: carry on and let the page be
-            # recorded as unreadable rather than hanging forever.
-            print("  (no terminal to wait on -- continuing)")
+            print("  (no terminal to wait on -- watching the session instead)")
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if self.is_signed_in():
+                return
+            time.sleep(3.0)
 
 
 @contextmanager
@@ -156,11 +242,12 @@ def open_browser(
 
 
 def signed_in(browser: Browser) -> bool:
-    """Whether the profile's session still opens the site."""
-    read = browser.read("https://www.douyin.com/", settle_seconds=3.0)
-    if read.fetched.html is None:
-        return False
-    return not read.wall
+    """Whether the profile still holds a session for the site.
+
+    A page has to have been opened first: cookies for a domain are
+    only in the jar once something from it has been loaded.
+    """
+    return browser.is_signed_in()
 
 
 def host_of(url: str) -> str:

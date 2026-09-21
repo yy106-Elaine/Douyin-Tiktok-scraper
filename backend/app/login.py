@@ -36,6 +36,9 @@ def main() -> None:  # pragma: no cover - interactive by nature
 
     if args.check:
         with open_browser(profile, headless=True) as browser:
+            # Cookies for a domain reach the jar only once something
+            # from it has loaded.
+            browser.read("https://www.douyin.com/", settle_seconds=1.0)
             if signed_in(browser):
                 print(f"{profile}: the session still opens douyin.com")
             else:
@@ -47,15 +50,24 @@ def main() -> None:  # pragma: no cover - interactive by nature
 
     with open_browser(profile, headless=False) as browser:
         browser.read("https://www.douyin.com/", settle_seconds=1.0)
-        browser.wait_for_person(
-            "Sign in to Douyin in the window that opened."
+        if browser.is_signed_in():
+            print(f"Already signed in; {profile}/ still holds a session.")
+            return
+
+        print(
+            "\nA browser window is open at douyin.com.\n"
+            "Sign in there however you normally would -- scan the code, or\n"
+            "take the SMS route. Nothing is typed or read by this program.\n"
+            "The window stays open until the sign-in lands: no keypress here\n"
+            "will close it, so there is no way to cut yourself off halfway."
         )
-        if signed_in(browser):
-            print(f"Signed in. The session is saved in {profile}/")
+        if browser.wait_until_signed_in():
+            print(f"\nSigned in. The session is saved in {profile}/")
+            print("Now: ./.venv/bin/python -m app.fetch_videos --apply --limit 5")
         else:
             print(
-                "The site is still asking to sign in. Nothing was saved that "
-                "will let a fetch run through; try again."
+                "\nNo session appeared before the wait ran out, so nothing "
+                "was saved that a fetch run could use. Run this again."
             )
 
 
