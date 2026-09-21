@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from .links import extract
 from .models import SharedLink
-from .pairing import backfill_author_handles, pair_shared_link
+from .pairing import backfill_author_handles, pair_shared_link, pair_unpaired
 from .parsers import PLATFORM_TABLES
 from .platforms import family_for_platform
 
@@ -163,6 +163,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     init_db()
     with SessionLocal() as session:
         print(resolve_pending(session, on_progress=show))
+        # A link resolved before its capture arrived stayed unpaired
+        # for good; both halves are usually here by now.
+        caught_up = pair_unpaired(session)
+        if caught_up:
+            print(f"paired {caught_up} link(s) whose capture arrived later")
         # Posts paired before handles were adopted still have an empty
         # one; this is where that gets repaired, so re-running the
         # command is all an existing database needs.

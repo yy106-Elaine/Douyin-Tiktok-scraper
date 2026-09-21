@@ -66,6 +66,34 @@ def pair_shared_link(session: Session, link: SharedLink) -> int | None:
     return best.id
 
 
+def pair_unpaired(session: Session) -> int:
+    """Try again for links whose capture had not arrived yet.
+
+    Pairing used to be attempted once, when a link was resolved. The
+    phone uploads links and captures on their own schedules and the
+    server follows a new link about a minute after it arrives, so a
+    link routinely reached its id before the post it was copied from
+    reached the server -- and a resolved link is skipped by every
+    later pass, so it stayed unpaired for good. One run: eleven links
+    resolved, none paired, with the matching fingerprints sitting in
+    `capture_events` the whole time.
+
+    Nothing here is new evidence; it is the same exact match, asked
+    once more now that both halves are present.
+    """
+    paired = 0
+    links = session.scalars(
+        select(SharedLink).where(
+            SharedLink.video_id.isnot(None),
+            SharedLink.matched_capture_id.is_(None),
+        )
+    ).all()
+    for link in links:
+        if pair_shared_link(session, link) is not None:
+            paired += 1
+    return paired
+
+
 def undo_window_pairings(session: Session) -> int:
     """Take back every id that was attached on time alone.
 

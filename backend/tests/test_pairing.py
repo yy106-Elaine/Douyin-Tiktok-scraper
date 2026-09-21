@@ -355,3 +355,37 @@ def test_an_attached_handle_is_forgotten_but_the_name_is_kept(client, api_key):
         assert post.author_handle is None
         assert post.author_name == "moyani"
         assert post.caption == "#lwl"
+
+
+def test_a_capture_that_arrives_after_its_link_still_pairs(client, api_key):
+    """Eleven links resolved, none paired, fingerprints matching.
+
+    The phone uploads links and captures on their own schedules and
+    the server follows a new link about a minute after it lands, so
+    a link often reaches its id first — and a resolved link is
+    skipped by every later pass.
+    """
+    from app.models import SharedLink, TikTokPost
+    from app.pairing import pair_unpaired
+
+    # The link arrives and resolves while no capture exists yet.
+    _share_with_fingerprint(
+        client,
+        api_key,
+        "https://www.tiktok.com/@someuser/video/7301234567890123456",
+        "fp-late",
+        "2026-09-14T12:00:30Z",
+    )
+    with SessionLocal() as session:
+        link = session.query(SharedLink).one()
+        assert link.video_id == "7301234567890123456"
+        assert link.matched_capture_id is None
+
+    # The post it was copied from turns up afterwards.
+    _capture(client, api_key, fingerprint="fp-late")
+
+    with SessionLocal() as session:
+        assert pair_unpaired(session) == 1
+        post = session.query(TikTokPost).one()
+        assert post.video_id == "7301234567890123456"
+        assert session.query(SharedLink).one().pairing_method == "fingerprint"
