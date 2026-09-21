@@ -93,9 +93,11 @@ object ShareSheet {
         Regex("""[链連鏈]接已复制"""),
         Regex("""^send to$""", RegexOption.IGNORE_CASE),
         Regex("""^share to$""", RegexOption.IGNORE_CASE),
-        // TikTok's own sheet, in Chinese.
-        Regex("""^分享到"""),
-        Regex("""^[发發]送[给給]"""),
+        // No Chinese TikTok sheet wording here yet, on purpose. A
+        // guessed `^分享到` read 分享到日常 -- an action on the account,
+        // one of the entries this must never press -- as "a sheet is
+        // open", and the test below caught it. The wording goes in
+        // when a real sheet has been read, not before.
         // The comment panel belongs here for the same reason: it
         // covers the feed, so the share control underneath is not
         // reachable and a swipe scrolls comments. A run found itself

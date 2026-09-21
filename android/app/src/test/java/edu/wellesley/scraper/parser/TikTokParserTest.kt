@@ -309,7 +309,8 @@ class TikTokInChineseTest {
     fun `keeps the caption and the publication time`() {
         val post = parser.parse(onePost())!!
         assertEquals("They set the bar too high…#wlw", post.caption)
-        assertEquals("· 1 天前", post.postedAtRaw)
+        // The parser drops the separator the app draws in front of it.
+        assertEquals("1 天前", post.postedAtRaw)
     }
 
     @Test
