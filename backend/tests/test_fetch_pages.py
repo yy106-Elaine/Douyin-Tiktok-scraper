@@ -315,3 +315,73 @@ def test_a_page_with_no_html_but_an_api_answer_still_counts(client, api_key):
         assert row.author_handle == "70056222078"
         assert row.like_count == 18
         assert row.parsed_by == "api"
+
+
+def test_a_removed_video_served_as_another_is_not_stored_as_alive(client, api_key):
+    """Douyin answers a request for a removed video by playing the next one.
+
+    Status 200, no removal wording anywhere, and an API response
+    describing a different video. One run filed "Johnny Dear -- 第一颗
+    纽扣错了" under the id of a video that was gone -- and the caption,
+    counts and author all belonged to the replacement.
+    """
+    from app.models import LinkCheck
+    from app.recheck import GONE, classify
+
+    _link(client, api_key, "a", "7686427432119291057")
+    someone_else = {
+        "aweme_id": "7686999999999999999",
+        "desc": "第一颗纽扣错了 通常到最后才发现",
+        "create_time": 1789917000,
+        "author": {"nickname": "Johnny Dear", "sec_uid": "MS4wOther"},
+        "statistics": {"digg_count": 5421},
+    }
+    browser = _FakeBrowser("<html>外壳</html>", payloads=[{"aweme_detail": someone_else}])
+
+    with SessionLocal() as session:
+        report = fetch_videos.run(
+            session,
+            ["7686427432119291057"],
+            pause_seconds=0,
+            fetcher=fetch_videos.through(browser),
+        )
+        assert report["served_another"] == 1
+        assert report["read"] == 0
+
+        # Nothing of the other video's was kept against this id.
+        row = session.query(WebVideo).one()
+        assert row.video_id == "7686427432119291057"
+        assert row.caption is None
+        assert row.author_name is None
+        assert row.like_count is None
+
+        # And it reaches the takedown findings as a removal.
+        check = session.query(LinkCheck).one()
+        assert check.video_id == "7686427432119291057"
+        assert classify(check) == GONE
+
+
+def test_the_video_asked_for_is_recorded_as_alive(client, api_key):
+    from app.models import LinkCheck
+    from app.recheck import ALIVE, classify
+
+    record = {
+        "aweme_id": "7687820515369510629",
+        "desc": "再来一次 我不会再与你相恋#wlw",
+        "create_time": 1789917000,
+        "author": {"nickname": "35", "sec_uid": _SEC_UID, "unique_id": "70056222078"},
+        "statistics": {"digg_count": 18},
+    }
+    _link(client, api_key, "a", "7687820515369510629")
+    browser = _FakeBrowser("<html>外壳</html>", payloads=[{"aweme_detail": record}])
+
+    with SessionLocal() as session:
+        fetch_videos.run(
+            session,
+            ["7687820515369510629"],
+            pause_seconds=0,
+            fetcher=fetch_videos.through(browser),
+        )
+        check = session.query(LinkCheck).one()
+        assert classify(check) == ALIVE
+        assert session.query(WebVideo).one().like_count == 18

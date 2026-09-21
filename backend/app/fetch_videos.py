@@ -30,7 +30,9 @@ from sqlalchemy.orm import Session
 
 from .clock import now as utc_now
 from .browser import VIDEO_URL as BROWSER_VIDEO_URL, DEFAULT_PROFILE, open_browser
+from .models import LinkCheck
 from .douyin_page import VIDEO_URL, fetch, video_facts
+from .recheck import ID_CONFIRMED, SERVED_ANOTHER
 from .models import SharedLink, WebVideo
 
 #: Seconds between requests. Same reasoning as `app/resolve.py`.
@@ -56,6 +58,33 @@ def wanted(session: Session, refresh: bool = False) -> list[str]:
         )
     }
     return sorted(set(ids) - already)
+
+
+def record_check(
+    session: Session, video_id: str, page, evidence: str, url: str
+) -> None:
+    """File this fetch as a check, so removals reach the findings.
+
+    A browser signed in to the site is a better probe than the
+    anonymous fetch `app.recheck` makes: Douyin answers that one with
+    a download wall, which is no evidence either way. Here the
+    exchange either returns the video asked for or it does not, and
+    that is what gets recorded.
+    """
+    session.add(
+        LinkCheck(
+            platform="douyin",
+            target_kind="video",
+            video_id=video_id,
+            url=url,
+            checked_at=utc_now(),
+            http_status=page.http_status,
+            final_url=None,
+            error=page.error,
+            evidence=evidence,
+        )
+    )
+    session.commit()
 
 
 def store(session: Session, video_id: str, page, facts) -> WebVideo:
@@ -116,7 +145,7 @@ def run(
     fetcher=anonymous,
     on_progress=None,
 ) -> dict[str, int]:
-    report = {"read": 0, "surface_only": 0, "unreadable": 0}
+    report = {"read": 0, "surface_only": 0, "unreadable": 0, "served_another": 0}
     total = len(video_ids)
 
     for index, video_id in enumerate(video_ids):
@@ -129,6 +158,39 @@ def run(
             if (page.html or page.payloads)
             else None
         )
+
+        # The record has to be the one that was asked for. Douyin
+        # answers a request for a removed video by playing the next
+        # recommended one, and its API response describes that video:
+        # status 200, no removal wording, someone else's caption and
+        # counts. One run filed "Johnny Dear -- 第一颗纽扣错了" under
+        # the id of a video that was gone.
+        if facts is not None and facts.video_id and facts.video_id != video_id:
+            record_check(
+                session,
+                video_id,
+                page,
+                SERVED_ANOTHER,
+                BROWSER_VIDEO_URL.format(video_id=video_id),
+            )
+            report["served_another"] += 1
+            store(session, video_id, page, None)
+            if on_progress:
+                on_progress(
+                    index + 1,
+                    total,
+                    f"gone -- the site served {facts.video_id} instead",
+                )
+            continue
+
+        if facts is not None and not facts.is_empty():
+            record_check(
+                session,
+                video_id,
+                page,
+                ID_CONFIRMED if facts.video_id == video_id else "",
+                BROWSER_VIDEO_URL.format(video_id=video_id),
+            )
 
         if facts is None or facts.is_empty():
             report["unreadable"] += 1
@@ -249,7 +311,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 )
         print(
             f"read {report['read']}, of which {report['surface_only']} "
-            f"only off the surface; {report['unreadable']} unreadable"
+            f"only off the surface; {report['unreadable']} unreadable; "
+            f"{report['served_another']} gone (the site served another video)"
         )
 
 

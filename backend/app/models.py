@@ -242,6 +242,18 @@ class LinkCheck(Base):
     #: failure is not a takedown and must never be counted as one.
     error: Mapped[str | None] = mapped_column(String(128))
 
+    #: A fact the fetch itself established, as opposed to wording
+    #: found on the page.
+    #:
+    #: Douyin answers a request for a removed video by playing the
+    #: next recommended one: status 200, no removal wording anywhere,
+    #: and an API response describing a different video entirely. One
+    #: run stored "Johnny Dear -- 第一颗纽扣错了" against the id of a
+    #: video that was gone. No amount of reading the page finds that;
+    #: what finds it is noticing the record came back with someone
+    #: else's id, which is a fact about the exchange.
+    evidence: Mapped[str | None] = mapped_column(String(64))
+
 
 class AuthorIdentity(Base):
     """An account's stable id, learned from its profile page.

@@ -226,6 +226,27 @@ time). The screen reading is kept, not replaced: the two are different
 observations — what a viewer saw in the app, and what the site served to a
 fetch — and a study about removals should be able to show both.
 
+**A page that answers is not the same as a page that answers about this
+video.** Douyin serves a request for a removed video by playing the next
+recommended one: status 200, no removal wording anywhere on it, and an API
+response describing a different video entirely. One run stored "Johnny Dear —
+第一颗纽扣错了", with that video's caption, author and 5,421 likes, against the
+id of a video that was gone.
+
+Nothing in the page finds this, which is why classification cannot rest on
+page wording alone. What finds it is that the record came back carrying
+someone else's `aweme_id` — a fact about the exchange, not about the text. So
+`app.fetch_videos` checks the id it asked for against the id it got, stores
+nothing from a mismatch, and files the mismatch as a check whose
+`LinkCheck.evidence` reads `served another video`. `classify` reads evidence
+ahead of markers for exactly this reason, and the removal reaches the
+findings.
+
+This also makes the signed-in browser the better takedown probe for Douyin.
+The anonymous fetch in `app.recheck` is answered with a download wall, which
+is no evidence either way; here the exchange either returns the video asked
+for or it does not.
+
 **The fetch is made by a signed-in browser.** Douyin's own pages render in
 the browser and gate a great deal behind a session — a profile fetched without
 cookies is a download prompt — and a run of requests eventually meets a

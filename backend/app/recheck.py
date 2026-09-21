@@ -194,6 +194,19 @@ def searchable_text(check: LinkCheck) -> str:
     return f"{check.page_title or ''}\n{check.excerpt or ''}"
 
 
+#: `LinkCheck.evidence` values, and what each one means. These are
+#: facts about the exchange rather than wording on a page, which is
+#: why they outrank the markers: a site that answers a request for a
+#: removed video by serving a different one leaves no wording to find.
+SERVED_ANOTHER = "served another video"
+ID_CONFIRMED = "id confirmed"
+
+_BY_EVIDENCE = {
+    SERVED_ANOTHER: GONE,
+    ID_CONFIRMED: ALIVE,
+}
+
+
 def classify(check: LinkCheck) -> str:
     """The verdict for one recorded check.
 
@@ -202,6 +215,11 @@ def classify(check: LinkCheck) -> str:
     """
     if check.error:
         return UNREACHABLE
+
+    # What the exchange established beats what the page said: the page
+    # for a removed Douyin video says nothing about removal.
+    if check.evidence in _BY_EVIDENCE:
+        return _BY_EVIDENCE[check.evidence]
 
     verdicts = {verdict for _, verdict in matched_markers(searchable_text(check))}
     for candidate in _PRECEDENCE:
