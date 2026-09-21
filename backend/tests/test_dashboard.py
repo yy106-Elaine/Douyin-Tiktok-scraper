@@ -347,3 +347,40 @@ def test_a_handle_attached_after_the_fact_is_not_shown(client, api_key):
     body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
     assert "颜小颜" in body
     assert "🍚" not in body
+
+
+def test_the_at_sign_does_not_make_two_videos(client, api_key):
+    """    恶魔钉（流量回家。）     link only
+        @恶魔钉（流量回家。）    no link yet
+
+    One video. The feed's title node renders the name with an @ and
+    the share text writes it without; comparing them literally split
+    the halves of 51 posts across two rows each.
+    """
+    _capture(
+        client,
+        api_key,
+        {
+            "platform_package": "com.ss.android.ugc.aweme",
+            "fingerprint": "douyin::@恶魔钉::嗯嗯嗯",
+            "captured_at": "2026-09-19T18:18:00Z",
+            "payload": {
+                "author_name": "@恶魔钉（流量回家。）",
+                "caption": "嗯嗯嗯文艺复兴#lwl #文艺复兴",
+                "like_raw": "289",
+            },
+        },
+    )
+    _douyin_link(
+        client,
+        api_key,
+        "one",
+        "恶魔钉（流量回家。）",
+        "嗯嗯嗯文艺复兴# lwl # 文艺复兴",
+        "2026-09-19T18:18:30Z",
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "2 seen" in body
+    # One video, not two -- the link is still unresolved, so no id yet.
+    assert "0 of 1 collected" in body

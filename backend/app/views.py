@@ -458,7 +458,11 @@ def _repeat_key(row: VideoRow) -> tuple[str, str] | None:
     truncates a long one with an ellipsis. Comparing a short head of
     the stripped text is what makes those meet.
     """
-    author = (row.author_name or row.author_handle or "").strip()
+    # The leading @ is part of where the name was read, not part of
+    # the name: the feed's title node renders `@恶魔钉（流量回家。）`
+    # and the share text writes `【恶魔钉（流量回家。）的作品】`. One
+    # character kept the two halves of 51 posts apart.
+    author = (row.author_name or row.author_handle or "").lstrip("@").strip()
     caption = "".join((row.caption or "").split())
     if not author or not caption:
         return None
