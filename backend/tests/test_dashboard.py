@@ -431,7 +431,7 @@ def test_a_video_with_no_publication_time_goes_last(client, api_key):
 
         link = (
             session.query(SharedLink)
-            .filter(SharedLink.raw_text.contains("有时间的的作品"))
+            .filter(SharedLink.raw_text.contains("v.douyin.com/d/"))
             .one()
         )
         link.video_id = "7687820515369510629"
