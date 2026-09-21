@@ -39,7 +39,7 @@ import re
 import urllib.error
 import urllib.request
 import zlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -62,12 +62,21 @@ AUTHOR_URL = "https://www.iesdouyin.com/share/user/{sec_uid}"
 
 @dataclass
 class Fetched:
-    """A page, or the reason there isn't one."""
+    """A page, or the reason there isn't one.
+
+    `payloads` holds JSON the page itself fetched while rendering.
+    douyin.com does not put the video in its HTML -- `RENDER_DATA`
+    carries the page shell and not even the video's id -- so the
+    record arrives in an XHR after hydration. Captured, that response
+    is the same aweme record the app reads, and no selector has to be
+    guessed at.
+    """
 
     url: str
     html: str | None = None
     http_status: int | None = None
     error: str | None = None
+    payloads: list[dict] = field(default_factory=list)
 
 
 def fetch(url: str, timeout: float = 20.0) -> Fetched:
@@ -291,9 +300,14 @@ def _meta_tags(html: str) -> dict[str, str]:
     return {m.group("key").lower(): unescape(m.group("value")) for m in _META.finditer(html)}
 
 
-def video_facts(html: str) -> VideoFacts:
-    """Read a video page. The embedded record first, the surface after."""
-    for blob in embedded(html):
+def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
+    """Read a video page.
+
+    In order of how attached the answer is to the video: what the
+    page's own API returned, then anything embedded in the HTML, then
+    the surface.
+    """
+    for blob in list(payloads) + list(embedded(html)):
         for record in dicts_with(blob, ("desc", "author")):
             author = record.get("author") or {}
             if not isinstance(author, dict):
@@ -318,7 +332,7 @@ def video_facts(html: str) -> VideoFacts:
                 collect_count=_int(
                     _first(statistics, "collect_count", "collectCount")
                 ),
-                parsed_by="embedded",
+                parsed_by="api" if blob in list(payloads) else "embedded",
             )
             if not facts.is_empty():
                 return facts
@@ -381,9 +395,9 @@ class AuthorFacts:
         return not any((self.author_handle, self.author_name, self.follower_count))
 
 
-def author_facts(html: str) -> AuthorFacts:
+def author_facts(html: str, payloads: Sequence[dict] = ()) -> AuthorFacts:
     """Read a profile page. The 抖音号 is the point of the visit."""
-    for blob in embedded(html):
+    for blob in list(payloads) + list(embedded(html)):
         for record in dicts_with(blob, ("nickname", "sec_uid")):
             facts = AuthorFacts(
                 sec_uid=_text(record.get("sec_uid")),
@@ -397,7 +411,7 @@ def author_facts(html: str) -> AuthorFacts:
                 following_count=_int(record.get("following_count")),
                 total_favorited=_int(record.get("total_favorited")),
                 video_count=_int(record.get("aweme_count")),
-                parsed_by="embedded",
+                parsed_by="api" if blob in list(payloads) else "embedded",
             )
             if not facts.is_empty():
                 facts.video_ids = _video_ids(blob)

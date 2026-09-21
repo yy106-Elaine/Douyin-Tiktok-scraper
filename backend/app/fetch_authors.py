@@ -116,7 +116,11 @@ def run(
             time.sleep(pause_seconds)
 
         page = fetcher(sec_uid)
-        facts = author_facts(page.html) if page.html else None
+        facts = (
+            author_facts(page.html or "", page.payloads)
+            if (page.html or page.payloads)
+            else None
+        )
 
         if facts is None or facts.is_empty():
             report["unreadable"] += 1

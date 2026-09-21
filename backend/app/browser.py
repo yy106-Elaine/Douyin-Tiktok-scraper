@@ -79,6 +79,22 @@ _CHALLENGE = ("滑动验证", "拖动滑块", "安全验证", "请完成验证",
 #: A page that loaded but holds none of what was asked for.
 _EMPTY = ("暂无", "内容不存在", "页面不存在", "该作品已下架")
 
+#: The site's own API calls worth keeping the answer to.
+#:
+#: douyin.com renders the video after the document arrives: its
+#: `RENDER_DATA` holds the page shell and not even the video's id, so
+#: there is nothing in the HTML to parse. The record comes back in
+#: one of these, and it is the same aweme record the app reads --
+#: `desc`, `author`, `statistics`, `create_time` -- so capturing the
+#: response beats guessing at the markup it eventually becomes.
+_WANTED_RESPONSES = (
+    "/aweme/detail/",
+    "/aweme/v1/web/aweme/detail",
+    "/user/profile/other",
+    "/user/profile/self",
+    "/aweme/post/",
+)
+
 
 @dataclass
 class PageRead:
@@ -180,6 +196,17 @@ class Browser:
             self._page = self._context.new_page()
         page = self._page
 
+        payloads: list[dict] = []
+
+        def keep(response) -> None:
+            if not any(part in response.url for part in _WANTED_RESPONSES):
+                return
+            try:
+                payloads.append(response.json())
+            except Exception:  # noqa: BLE001 - a body that is not JSON
+                pass
+
+        page.on("response", keep)
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
             status = response.status if response is not None else None
@@ -191,14 +218,24 @@ class Browser:
             except Exception:
                 pass
             time.sleep(settle_seconds)
+            # The record arrives after hydration, so give it a moment
+            # more when nothing has come back yet.
+            waited = 0.0
+            while not payloads and waited < 8.0:
+                page.wait_for_timeout(500)
+                waited += 0.5
             html = page.content()
             text = page.inner_text("body")[:4000]
             landed = page.url
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
+        finally:
+            page.remove_listener("response", keep)
 
         return PageRead(
-            Fetched(url=url, html=html, http_status=status),
+            Fetched(
+                url=url, html=html, http_status=status, payloads=payloads
+            ),
             wall=self._is_wall(landed, text),
         )
 

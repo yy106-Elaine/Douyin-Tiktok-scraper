@@ -213,8 +213,9 @@ def test_the_page_overrules_the_screen_on_the_dashboard(client, api_key):
 class _FakeBrowser:
     """A browser that meets a verification page once, then answers."""
 
-    def __init__(self, html: str, walls: int = 0) -> None:
+    def __init__(self, html: str, walls: int = 0, payloads=None) -> None:
         self.html = html
+        self.payloads = payloads or []
         self.walls = walls
         self.visits: list[str] = []
         self.waits = 0
@@ -226,7 +227,14 @@ class _FakeBrowser:
         if self.walls:
             self.walls -= 1
             return PageRead(Fetched(url=url, html="请完成验证", http_status=200), wall=True)
-        return PageRead(Fetched(url=url, html=self.html, http_status=200))
+        return PageRead(
+            Fetched(
+                url=url,
+                html=self.html,
+                http_status=200,
+                payloads=list(self.payloads),
+            )
+        )
 
     def wait_for_person(self, message: str) -> None:
         self.waits += 1
@@ -274,3 +282,36 @@ def test_the_profile_pass_uses_the_browser_too(client, api_key):
 
     assert browser.visits == [f"https://www.douyin.com/user/{_SEC_UID}"]
     assert "70056222078" in page.html
+
+
+def test_a_page_with_no_html_but_an_api_answer_still_counts(client, api_key):
+    """douyin.com's HTML says nothing about the video; the XHR does."""
+    record = {
+        "aweme_id": "7687820515369510629",
+        "desc": "再来一次 我不会再与你相恋#wlw",
+        "create_time": 1789917000,
+        "author": {
+            "nickname": "35",
+            "sec_uid": _SEC_UID,
+            "unique_id": "70056222078",
+        },
+        "statistics": {"digg_count": 18, "comment_count": 9, "share_count": 1},
+    }
+    browser = _FakeBrowser("<html>页面外壳</html>", payloads=[{"aweme_detail": record}])
+    _link(client, api_key, "a", "7687820515369510629")
+
+    with SessionLocal() as session:
+        report = fetch_videos.run(
+            session,
+            ["7687820515369510629"],
+            pause_seconds=0,
+            fetcher=fetch_videos.through(browser),
+        )
+        assert report["read"] == 1
+        assert report["surface_only"] == 0
+
+        row = session.query(WebVideo).one()
+        assert row.author_name == "35"
+        assert row.author_handle == "70056222078"
+        assert row.like_count == 18
+        assert row.parsed_by == "api"

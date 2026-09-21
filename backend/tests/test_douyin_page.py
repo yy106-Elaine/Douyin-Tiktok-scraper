@@ -157,3 +157,40 @@ def test_the_account_id_is_read_even_off_the_surface():
     facts = video_facts(html)
     assert facts.sec_uid == "MS4wLjABAAAAQ3osBXG0LqnkGyPJZ11GS"
     assert facts.parsed_by == "surface"
+
+
+def test_the_api_response_is_preferred_and_labelled():
+    """douyin.com puts nothing about the video in its HTML.
+
+    Its `RENDER_DATA` holds the page shell -- the video's id does not
+    appear in it at all -- and the record arrives in an XHR after
+    hydration. Captured, that response is the aweme record itself.
+    """
+    payload = {"aweme_detail": _RECORD}
+    facts = video_facts("<html>没有数据</html>", [payload])
+
+    assert facts.parsed_by == "api"
+    assert facts.author_name == "35"
+    assert facts.like_count == 0
+    assert facts.share_count == 2
+    assert facts.posted_on == datetime(2026, 9, 20, 15, 10)
+
+
+def test_the_api_answer_beats_the_surface():
+    html = '<meta property="og:description" content="标题里混着作者名于2026">'
+    facts = video_facts(html, [{"aweme_detail": _RECORD}])
+    assert facts.caption == "再来一次 我不会再与你相恋#wlw"
+
+
+def test_a_profile_api_response_gives_the_handle():
+    payload = {
+        "user": {
+            "nickname": "35",
+            "sec_uid": "MS4wLjABAAAAQ3osBXG0LqnkGyPJZ11GS",
+            "unique_id": "70056222078",
+            "follower_count": 1,
+        }
+    }
+    facts = author_facts("", [payload])
+    assert facts.author_handle == "70056222078"
+    assert facts.parsed_by == "api"

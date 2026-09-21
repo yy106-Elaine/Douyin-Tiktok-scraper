@@ -124,7 +124,11 @@ def run(
             time.sleep(pause_seconds)
 
         page = fetcher(video_id)
-        facts = video_facts(page.html) if page.html else None
+        facts = (
+            video_facts(page.html or "", page.payloads)
+            if (page.html or page.payloads)
+            else None
+        )
 
         if facts is None or facts.is_empty():
             report["unreadable"] += 1
@@ -135,7 +139,9 @@ def run(
                 outcome += f" -- wrote {video_id}.html"
         else:
             report["read"] += 1
-            outcome = f"{facts.author_name or '?'} | {(facts.caption or '')[:36]}"
+            outcome = (
+                f"{facts.author_name or '?'} | {(facts.caption or '')[:36]}"
+            )
             if facts.parsed_by == "surface":
                 report["surface_only"] += 1
                 # The interesting failure now. A page read off its
