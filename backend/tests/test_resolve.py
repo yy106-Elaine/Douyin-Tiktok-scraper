@@ -170,98 +170,32 @@ def test_each_link_reports_as_it_is_settled(client, api_key):
     assert seen[1][2] == "could not be followed"
 
 
-def test_a_repeated_id_is_refused_and_stops_the_pass(client, api_key):
-    """Douyin answers a rate limit with a redirect, not a refusal.
+def test_many_links_to_one_video_all_resolve(client, api_key):
+    """One video, copied over and over, is what this collection does.
 
-    One pass wrote the same id to 130 rows: past some number of
-    requests every short link landed on the same fallback page, and
-    an id read off it looks exactly like a real one.
-
-    A run of them in a row is the signal, not a repeat on its own --
-    see the test below for why.
+    When a day's search results run out the feed stops advancing and
+    the loop keeps copying whatever is on screen: 晒月亮, shares 3,629,
+    took 130 links in a single run. Two guards were written against
+    that shape on the theory that a repeated id meant Douyin had
+    started redirecting everything to one fallback page. It had not,
+    and the second guard deadlocked every pass -- the queue is walked
+    in the same order each time, so a refusal at the head never
+    clears.
     """
-    for number in range(8):
-        _copy_link(
-            client,
-            api_key,
-            f"https://v.douyin.com/link{number}/",
-            fingerprint=f"fp-{number}",
-        )
-
-    followed: list[str] = []
-
-    def follower(url: str) -> str:
-        followed.append(url)
-        if url.endswith("link0/"):
-            return "https://www.iesdouyin.com/share/video/7686868494994886976/"
-        # The fallback page, handed to everything after the limit.
-        return "https://www.iesdouyin.com/share/video/7686345975925663411/"
-
-    with SessionLocal() as session:
-        report = resolve_pending(session, follower=follower, pause_seconds=0)
-
-    assert report.rate_limited is True
-    assert report.resolved == 1  # only the one that resolved before the limit
-    # It stopped rather than working through the rest at one id each.
-    assert len(followed) == 4
-
-    with SessionLocal() as session:
-        ids = [
-            link.video_id
-            for link in session.query(SharedLink).all()
-            if link.video_id
-        ]
-        assert len(ids) == len(set(ids))
-
-
-def test_repair_returns_duplicated_ids_to_pending(client, api_key):
-    from app.resolve import unresolve_duplicates
-
-    _capture(client, api_key)
-    for number in range(3):
-        _copy_link(
-            client,
-            api_key,
-            f"https://v.douyin.com/link{number}/",
-            fingerprint="fp-1" if number == 0 else f"fp-{number}",
-        )
-
-    # Simulate the damage the guard now prevents.
-    with SessionLocal() as session:
-        for link in session.query(SharedLink).all():
-            link.video_id = "7686345975925663411"
-        session.commit()
-
-        assert unresolve_duplicates(session) == 3
-
-        for link in session.query(SharedLink).all():
-            assert link.video_id is None
-            assert link.canonical_url is None
-            assert link.matched_capture_id is None
-        # And the copied text, which is the observation, is still there.
-        assert all(link.raw_text for link in session.query(SharedLink).all())
-
-
-def test_interleaved_repeats_are_all_resolved(client, api_key):
-    """A repeat that is not a run is ordinary, and is data.
-
-    The first guard refused any id another link already held, on the
-    reasoning that every share link names a different post. It does
-    not: a feed brings the same video round again, it gets copied a
-    second time, and the two share links differ while naming one post.
-    That guard rejected three real rows in one pass and then stopped.
-    """
-    for slug in ("a", "b", "c", "d", "e"):
+    for slug in ("a", "b", "c", "d", "e", "f", "g"):
         _copy_link(
             client, api_key, f"https://v.douyin.com/{slug}/", fingerprint=f"fp-{slug}"
         )
 
+    spun_on = "7686479376405819109"
     landing = {
-        "a": "7686931682436826341",
-        "b": "7686913835698122345",
-        "c": "7686886744431564474",
-        "d": "7686931682436826341",
+        "a": spun_on,
+        "b": spun_on,
+        "c": spun_on,
+        "d": spun_on,
         "e": "7686913835698122345",
+        "f": spun_on,
+        "g": "7686886744431564474",
     }
 
     def follower(url: str) -> str:
@@ -271,5 +205,9 @@ def test_interleaved_repeats_are_all_resolved(client, api_key):
     with SessionLocal() as session:
         report = resolve_pending(session, follower=follower, pause_seconds=0)
 
-    assert report.rate_limited is False
-    assert report.resolved == 5
+    assert report.resolved == 7
+    with SessionLocal() as session:
+        held = [
+            link.video_id for link in session.query(SharedLink).all() if link.video_id
+        ]
+        assert held.count(spun_on) == 5

@@ -44,34 +44,17 @@ Follower = Callable[[str], str]
 Progress = Callable[[int, int, str], None]
 
 
-#: How many links in a row may land on one id before the pass gives
-#: up. Douyin answers a rate limit by redirecting every request to the
-#: same page rather than by refusing it; one bad pass wrote 130 rows
-#: the same id.
-#:
-#: *In a row* is the whole distinction. A repeat on its own is
-#: ordinary -- the same video comes round again in a feed and gets
-#: copied twice, and the two share links differ while naming one post.
-#: A first attempt refused every repeat and started rejecting real
-#: data. Only an unbroken run means the redirect has stopped varying
-#: with the link.
-COLLISION_LIMIT = 3
-
-
 @dataclass
 class ResolveReport:
     attempted: int = 0
     resolved: int = 0
     paired: int = 0
     failed: int = 0
-    #: True when the pass stopped early on repeated ids.
-    rate_limited: bool = False
 
     def __str__(self) -> str:
-        limited = ", stopped: rate limited" if self.rate_limited else ""
         return (
             f"attempted {self.attempted}, resolved {self.resolved}, "
-            f"paired {self.paired}, failed {self.failed}{limited}"
+            f"paired {self.paired}, failed {self.failed}"
         )
 
 
@@ -111,15 +94,20 @@ def resolve_pending(
 
     Each resolved link is committed on its own, so stopping partway
     keeps everything done so far and a re-run picks up the rest.
+
+    Many links landing on one id is ordinary here and is not guarded
+    against. When a day's search results run out the loop keeps
+    copying whatever is on screen, so one video collected 130 links
+    in a single run -- 晒月亮, `shares=3,629`, the same post the run
+    log shows it spinning on. A guard that read a repeated id as a
+    rate-limit fallback page refused those, and then blocked every
+    pass behind them: the queue is walked in the same order each
+    time, so a refusal at the head is a refusal forever.
     """
     report = ResolveReport()
     targets = list(links) if links is not None else pending_links(session)
 
     total = len(targets)
-    # The id the last few links landed on, and those links, so a run of
-    # them can be given back when it turns out to be a fallback page.
-    run_id: str | None = None
-    run: list[SharedLink] = []
 
     def note(index: int, outcome: str) -> None:
         if on_progress:
@@ -151,24 +139,6 @@ def resolve_pending(
             note(index, f"no video id in the page it landed on: {final_url}")
             continue
 
-        if parsed.video_id == run_id:
-            run.append(link)
-        else:
-            run_id, run = parsed.video_id, [link]
-
-        if len(run) >= COLLISION_LIMIT:
-            # The run so far is the fallback page's id, not data, and
-            # the links before this one already took it. Give it back.
-            for stored in run[:-1]:
-                _unresolve(session, stored)
-                report.resolved -= 1
-            session.commit()
-            report.failed += 1
-            report.rate_limited = True
-            note(index, f"{parsed.video_id} for {len(run)} links in a row")
-            note(index, "stopping: the redirects have stopped naming the post")
-            break
-
         link.video_id = parsed.video_id
         link.canonical_url = parsed.canonical_url or final_url
         if parsed.author_handle and not link.author_handle:
@@ -184,62 +154,7 @@ def resolve_pending(
     return report
 
 
-def unresolve_duplicates(session: Session) -> int:
-    """Undo ids a fallback page handed out, and return how many.
-
-    Repair for a pass that ran before [COLLISION_LIMIT] existed: 214
-    links holding 47 ids, one of them 130 times. The rows are not
-    deleted -- the copied text is the collected observation and is
-    still good -- they go back to pending and resolve again, slower.
-
-    Two links can legitimately name one video, on two different days.
-    So this is a command someone runs after seeing a count like the
-    one above, never something a resolve pass decides on its own.
-    """
-    duplicated = [
-        video_id
-        for video_id, _ in session.execute(
-            select(SharedLink.video_id, func.count())
-            .where(SharedLink.video_id.isnot(None))
-            .group_by(SharedLink.video_id)
-            .having(func.count() > 1)
-        )
-    ]
-    if not duplicated:
-        return 0
-
-    links = list(
-        session.scalars(select(SharedLink).where(SharedLink.video_id.in_(duplicated)))
-    )
-    for link in links:
-        _unresolve(session, link)
-    session.commit()
-    return len(links)
-
-
-def _unresolve(session: Session, link: SharedLink) -> None:
-    """Return one link to pending, and take the id off its post."""
-    if link.matched_capture_id is not None:
-        family = family_for_platform(link.platform) or link.platform or ""
-        registered = PLATFORM_TABLES.get(family)
-        if registered is not None:
-            model, _ = registered
-            posts = session.scalars(
-                select(model).where(model.capture_event_id == link.matched_capture_id)
-            )
-            for post in posts:
-                if post.video_id == link.video_id:
-                    post.video_id = None
-                    post.video_url = None
-    link.matched_capture_id = None
-    link.pairing_method = None
-    link.video_id = None
-    link.canonical_url = None
-
-
 def main() -> None:  # pragma: no cover - thin CLI wrapper
-    import sys
-
     from .db import SessionLocal, init_db
 
     def show(done: int, total: int, outcome: str) -> None:
@@ -247,9 +162,6 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
-        if "--repair" in sys.argv:
-            undone = unresolve_duplicates(session)
-            print(f"returned {undone} link(s) to pending")
         print(resolve_pending(session, on_progress=show))
         # Posts paired before handles were adopted still have an empty
         # one; this is where that gets repaired, so re-running the
