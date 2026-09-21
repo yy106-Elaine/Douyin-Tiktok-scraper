@@ -488,3 +488,46 @@ def test_a_youtube_video_checked_an_hour_ago_is_due_again(client):
         )
 
     assert [item.video_id for item in due] == ["abc123"]
+
+
+def test_a_douyin_page_that_never_mentions_the_video_is_not_a_survival():
+    """Douyin answers an anonymous request with an app-download wall.
+
+    Status 200, no removal wording -- and none about the video either,
+    present or absent. Three checks were filed `alive` off that wall,
+    one of them for a video already taken down. A survival invented
+    from a page that never named the video is worse than no record,
+    because the survival curve is computed from these rows.
+    """
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, ALIVE, UNKNOWN, classify
+
+    wall = LinkCheck(
+        platform="douyin",
+        target_kind="video",
+        video_id="7686427432119291057",
+        url="https://www.douyin.com/video/7686427432119291057",
+        http_status=200,
+        excerpt="打开抖音 看更多精彩内容",
+    )
+    assert classify(wall) == UNKNOWN
+
+    # The signed-in browser can still establish it, because there the
+    # site either returns the id asked for or it does not.
+    wall.evidence = ID_CONFIRMED
+    assert classify(wall) == ALIVE
+
+
+def test_other_platforms_still_read_a_page_that_loaded_as_alive():
+    from app.models import LinkCheck
+    from app.recheck import ALIVE, classify
+
+    page = LinkCheck(
+        platform="youtube",
+        target_kind="video",
+        video_id="dQw4w9WgXcQ",
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        http_status=200,
+        excerpt="youtube api: privacyStatus=public",
+    )
+    assert classify(page) == ALIVE

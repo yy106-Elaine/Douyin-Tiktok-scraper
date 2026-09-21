@@ -247,6 +247,17 @@ The anonymous fetch in `app.recheck` is answered with a download wall, which
 is no evidence either way; here the exchange either returns the video asked
 for or it does not.
 
+And no evidence either way must be recorded as that. The download wall is a
+200 with no wording about the video, so the ordinary "it loaded, so it is
+alive" reading called it `alive` — three Douyin checks were filed that way,
+one of them for a video that had already been taken down. A survival invented
+from a page that never named the video is worse than no observation, because
+the survival curve is computed from these rows and nothing downstream can
+tell the invented ones apart. So a Douyin check that reaches 200 with nothing
+to read is `unknown`, and only `LinkCheck.evidence` — the id the site actually
+served — can say `alive`. The visible effect is a Douyin takedown rate
+computed over fewer checks than were made, which is the honest number.
+
 **The fetch is made by a signed-in browser.** Douyin's own pages render in
 the browser and gate a great deal behind a session — a profile fetched without
 cookies is a download prompt — and a run of requests eventually meets a

@@ -385,3 +385,24 @@ def test_the_video_asked_for_is_recorded_as_alive(client, api_key):
         check = session.query(LinkCheck).one()
         assert classify(check) == ALIVE
         assert session.query(WebVideo).one().like_count == 18
+
+
+def test_a_profile_no_video_points_at_is_forgotten(client, api_key):
+    """The mis-stored row brought a stranger's profile in with it.
+
+    Johnny Dear was read only because a removed video's page served
+    his video instead. Once that row is emptied his `sec_uid` appears
+    nowhere in the corpus, and a 4.6-million-follower account that was
+    never collected should not sit in the study's data.
+    """
+    with SessionLocal() as session:
+        session.add(WebVideo(video_id="7687820515369510629", sec_uid=_SEC_UID))
+        session.add(WebAuthor(sec_uid=_SEC_UID, author_name="35"))
+        session.add(WebAuthor(sec_uid="MS4wOther", author_name="Johnny Dear"))
+        session.commit()
+
+        assert fetch_authors.forget_orphans(session) == 1
+        assert [row.author_name for row in session.query(WebAuthor)] == ["35"]
+
+        # Nothing left to drop, so a second pass is a no-op.
+        assert fetch_authors.forget_orphans(session) == 0

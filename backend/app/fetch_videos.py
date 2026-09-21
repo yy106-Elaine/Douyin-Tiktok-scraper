@@ -87,6 +87,44 @@ def record_check(
     session.commit()
 
 
+#: Fields that describe the video itself, as opposed to the fetch.
+_CONTENT = (
+    "sec_uid",
+    "author_name",
+    "author_handle",
+    "caption",
+    "posted_on",
+    "like_count",
+    "comment_count",
+    "share_count",
+    "collect_count",
+)
+
+
+def wipe(session: Session, video_id: str, page) -> None:
+    """Empty a row whose contents turned out to be another video's.
+
+    A mismatch used to leave the fields alone, which meant a row
+    written before the id was checked kept them: the removed video
+    `7686427432119291057` went on showing Johnny Dear, his 449,443
+    likes and his 抖音号 long after the check beside it said `gone`.
+    Nothing here belongs to this id, so none of it stays.
+    """
+    row = session.scalars(
+        select(WebVideo).where(WebVideo.video_id == video_id)
+    ).first()
+    if row is None:
+        row = WebVideo(video_id=video_id, platform="douyin")
+        session.add(row)
+    for field in _CONTENT:
+        setattr(row, field, None)
+    row.http_status = page.http_status
+    row.error = page.error
+    row.parsed_by = None
+    row.fetched_at = utc_now()
+    session.commit()
+
+
 def store(session: Session, video_id: str, page, facts) -> WebVideo:
     row = session.scalars(
         select(WebVideo).where(WebVideo.video_id == video_id)
@@ -174,7 +212,7 @@ def run(
                 BROWSER_VIDEO_URL.format(video_id=video_id),
             )
             report["served_another"] += 1
-            store(session, video_id, page, None)
+            wipe(session, video_id, page)
             if on_progress:
                 on_progress(
                     index + 1,

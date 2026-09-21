@@ -33,6 +33,31 @@ from .models import WebAuthor, WebVideo
 PAUSE_SECONDS = 2.0
 
 
+def forget_orphans(session: Session) -> int:
+    """Drop profiles that no video in the corpus points at any more.
+
+    A video page that served a different video handed over that
+    video's account, and the profile pass then went and read it:
+    Johnny Dear, 4.6 million followers, nothing to do with this
+    study. Once the mis-stored row is emptied nothing refers to him,
+    and a person who is not in the corpus should not be on file.
+    """
+    live = {
+        sec_uid
+        for (sec_uid,) in session.execute(
+            select(WebVideo.sec_uid).where(WebVideo.sec_uid.isnot(None))
+        )
+    }
+    dropped = 0
+    for author in session.scalars(select(WebAuthor)):
+        if author.sec_uid not in live:
+            session.delete(author)
+            dropped += 1
+    if dropped:
+        session.commit()
+    return dropped
+
+
 def wanted(session: Session, refresh: bool = False) -> list[str]:
     """Accounts we have a `sec_uid` for and no profile reading of."""
     known = [
@@ -169,6 +194,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
+        forgotten = forget_orphans(session)
+        if forgotten:
+            print(f"forgot {forgotten} profile(s) no video points at any more")
         targets = wanted(session, refresh=args.refresh)
         if args.limit is not None:
             targets = targets[: args.limit]

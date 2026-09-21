@@ -206,6 +206,22 @@ _BY_EVIDENCE = {
     ID_CONFIRMED: ALIVE,
 }
 
+#: Platforms that answer an anonymous request for any video -- present
+#: or removed -- with the same 200 and the same app-download wall. The
+#: page carries no wording about the video at all, so there is nothing
+#: for the markers to catch and nothing in the status code to read.
+#:
+#: Calling that ALIVE fabricates survivals: three Douyin checks were
+#: recorded alive off a download wall, one of them for a video that had
+#: already been taken down. A survival record invented from a page that
+#: never mentioned the video is worse than no record, because the
+#: survival curve is computed from exactly these rows.
+#:
+#: So here 200-with-nothing-to-read is UNKNOWN, and only evidence about
+#: the exchange itself -- the id the site actually served, recorded by
+#: `app.fetch_videos` through the signed-in browser -- can say alive.
+EVIDENCE_REQUIRED = frozenset({"douyin"})
+
 
 def classify(check: LinkCheck) -> str:
     """The verdict for one recorded check.
@@ -240,6 +256,11 @@ def classify(check: LinkCheck) -> str:
         # path is not the video.
         if check.final_url and _looks_like_a_dead_end(check.final_url):
             return WITHHELD
+        if check.platform in EVIDENCE_REQUIRED:
+            # 200 here means the host answered, not that the video is
+            # there. Without evidence about which video was served,
+            # this check learned nothing.
+            return UNKNOWN
         return ALIVE
     return UNKNOWN
 
