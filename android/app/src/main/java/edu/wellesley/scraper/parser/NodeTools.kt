@@ -124,11 +124,25 @@ object NodeTools {
             fragments.any { id.endsWith("/$it") || id.contains(it) }
         }
 
-    /** First capture group of the first description/text matching [pattern]. */
+    /**
+     * First non-empty capture group of the first description/text
+     * matching [pattern].
+     *
+     * Non-empty, not first: a pattern that says the same thing in two
+     * languages does it with alternation, and the branch that did not
+     * match still contributes a group. Kotlin reports that group as
+     * "" rather than null, so taking group 1 blindly returned an empty
+     * author name for every Chinese-interface frame -- a match that
+     * looks like a miss, which is the hardest kind to notice.
+     */
     fun firstGroup(nodes: List<FlatNode>, pattern: Regex): String? {
         for (node in nodes) {
             for (candidate in listOfNotNull(node.description, node.text)) {
-                pattern.find(candidate)?.groupValues?.getOrNull(1)?.let { return it.trim() }
+                val match = pattern.find(candidate) ?: continue
+                match.groupValues
+                    .drop(1)
+                    .firstOrNull { it.isNotBlank() }
+                    ?.let { return it.trim() }
             }
         }
         return null

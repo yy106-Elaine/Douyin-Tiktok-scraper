@@ -15,11 +15,33 @@ class TikTokParser : PostParser {
     override val platform: String = "tiktok"
 
     private companion object {
-        val LIKE = Regex("""Like video\.\s*([\d.,]+[KMB]?)\s*likes""", RegexOption.IGNORE_CASE)
+        /**
+         * The engagement labels, in both of TikTok's interface
+         * languages.
+         *
+         * TikTok localises its accessibility descriptions, and this
+         * parser was written against the English ones only. A run on
+         * a phone whose TikTok was in Chinese therefore read captions
+         * fine -- those come from a view id -- and returned null for
+         * every count, every handle and every feed name, with nothing
+         * in the output to say why. It also never found the share
+         * control, so the run collected no links at all: 348 frames,
+         * 0 links, stopped after 3 failures.
+         *
+         * So each label is matched in either language. The Chinese
+         * builds separate the name from the count with a full-width
+         * 。and count in 万/亿 rather than K/M/B ("点赞视频。2.7 万 个赞");
+         * the count is kept as the displayed string either way and
+         * `app/counts.py` reads both scales.
+         */
+        val COUNT = """([\d.,]+\s*[KMB万亿萬億]?)"""
+
+        val LIKE = Regex("""(?:Like video\.\s*$COUNT\s*likes|点[赞讚]视频。\s*$COUNT\s*个[赞讚])""", RegexOption.IGNORE_CASE)
         val COMMENT = Regex(
-            """Read or add comments\.\s*([\d.,]+[KMB]?)\s*comments""", RegexOption.IGNORE_CASE
+            """(?:Read or add comments\.\s*$COUNT\s*comments|[阅閱][读讀]或添加[评評][论論]。\s*$COUNT\s*[条條][评評][论論])""",
+            RegexOption.IGNORE_CASE,
         )
-        val SHARE = Regex("""Share video\.\s*([\d.,]+[KMB]?)\s*shares""", RegexOption.IGNORE_CASE)
+        val SHARE = Regex("""(?:Share video\.\s*$COUNT\s*shares|分享视频。\s*$COUNT\s*次分享)""", RegexOption.IGNORE_CASE)
 
         /**
          * Favourites count, where a build exposes one.
@@ -32,11 +54,11 @@ class TikTokParser : PostParser {
          * column to fill.
          */
         val SAVE_MARKER = Regex(
-            """(?:add to |remove from )?favou?rites?|bookmark|collect""",
+            """(?:add to |remove from )?favou?rites?|bookmark|collect|[将將]此视频添加到或移出收藏|收藏""",
             RegexOption.IGNORE_CASE,
         )
         val SAVE_INLINE = Regex(
-            """([\d.,]+[KMB]?)\s*(?:favou?rites?|bookmarks?)""", RegexOption.IGNORE_CASE
+            """$COUNT\s*(?:favou?rites?|bookmarks?|次收藏|个收藏)""", RegexOption.IGNORE_CASE
         )
 
         /** "· 2025-05-31", and sometimes a relative form instead. */
@@ -52,9 +74,10 @@ class TikTokParser : PostParser {
          * withheld, since that is what the overlay's text hijacks.
          */
         val BROWSER_URL = Regex("""^(?:https?://|www\.)[\w.\-]+""", RegexOption.IGNORE_CASE)
-        val COUNT_SHAPED = Regex("""^\d{1,3}([.,]\d+)?[KMB]?$""", RegexOption.IGNORE_CASE)
+        val COUNT_SHAPED = Regex("""^\d{1,3}([.,]\d+)?\s*[KMB万亿萬億]?$""", RegexOption.IGNORE_CASE)
 
-        val AUTHOR = Regex("""(.+?)\s+profile""", RegexOption.IGNORE_CASE)
+        /** "YUE profile" in English, "YUE 主页" in Chinese. */
+        val AUTHOR = Regex("""(?:(.+?)\s+profile|(.+?)\s*主[页頁])""", RegexOption.IGNORE_CASE)
 
         /**
          * A node that is nothing but an `@handle`.
@@ -75,13 +98,21 @@ class TikTokParser : PostParser {
         val HAS_A_LETTER = Regex("""[A-Za-z]""")
 
         /** "Follow SierraLocklear" -- another rendering of the name. */
-        val FOLLOW = Regex("""^Follow\s+(.+)$""", RegexOption.IGNORE_CASE)
+        val FOLLOW = Regex("""^(?:Follow\s+(.+)|[关關]注\s*(.+))$""", RegexOption.IGNORE_CASE)
 
         /** Nodes belonging to the comment composer, not to the post. */
         val COMMENT_BAR_IDS = listOf("ed5", "kgq", "lcn", "lk6")
 
         /** "Search · wlw relationship moments" -- the sampling frame. */
-        val SEARCH_CONTEXT = Regex("""^Search\s*[·・]\s*(.+)$""")
+        /**
+         * The strip naming the search a video was opened from.
+         *
+         * This is the only place a TikTok row records which keyword
+         * produced it, and on TikTok the keyword is the sample
+         * definition -- see docs/METHODOLOGY.md -- so losing it to a
+         * language setting loses more than a label.
+         */
+        val SEARCH_CONTEXT = Regex("""^(?:Search|搜索|搜尋)\s*[·・]\s*(.+)$""")
 
         /**
          * The caption TextView also renders the "expand" affordance, so
@@ -92,7 +123,11 @@ class TikTokParser : PostParser {
          * a UI control into the data is the worse of the two.
          */
         val TRAILING_EXPAND = Regex("""\s*(?:\.{3}|…)?\s*more\s*$""", RegexOption.IGNORE_CASE)
-        val MUSIC = Regex("""Sound:\s*(.+)""", RegexOption.IGNORE_CASE)
+        /** "Sound: X", "音乐：X", and "X 创作的原声" the other way round. */
+        val MUSIC = Regex(
+            """(?:Sound:\s*(.+)|音[乐樂][：:]\s*(.+)|(.+?)\s*[创創]作的原[声聲])""",
+            RegexOption.IGNORE_CASE,
+        )
 
         /**
          * Markers that only an open comment sheet produces, each named
@@ -130,7 +165,10 @@ class TikTokParser : PostParser {
         /** Guard against stripping a short caption into uselessness. */
         const val MIN_STRIPPED_LENGTH = 3
 
-        val FEEDS = setOf("For You", "Following", "Friends", "Explore", "Shop", "LIVE")
+        val FEEDS = setOf(
+            "For You", "Following", "Friends", "Explore", "Shop", "LIVE",
+            "推荐", "推薦", "关注", "關注", "朋友", "探索", "商城", "直播",
+        )
         val FEED_SLUGS = mapOf(
             "For You" to "recommend",
             "Following" to "following",

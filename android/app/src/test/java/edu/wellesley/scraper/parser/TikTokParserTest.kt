@@ -238,3 +238,104 @@ class TikTokParserTest {
         assertEquals("lilly \uD83E\uDD1A", post.authorName)
     }
 }
+
+/**
+ * The same tree with TikTok's interface language set to Chinese.
+ *
+ * Every node below is copied from a real self-check: a 30-minute run
+ * that read 348 frames, stored captions, and returned null for every
+ * count, every handle and every feed name -- then stopped after three
+ * videos because it could not find the share control, having
+ * collected no links at all. Nothing in the output said "wrong
+ * language"; the fields were simply empty.
+ */
+class TikTokInChineseTest {
+
+    private val parser = TikTokParser()
+
+    private fun node(
+        viewId: String? = null,
+        text: String? = null,
+        description: String? = null,
+        selected: Boolean = false,
+        depth: Int = 1,
+        top: Int = 0,
+    ) = FlatNode(viewId, text, description, null, selected, depth, top)
+
+    /** Verbatim from the failing run's "last screen read". */
+    private fun onePost() = listOf(
+        node(viewId = "com.zhiliaoapp.musically:id/long_press_layout", description = "视频", depth = 1),
+        node(viewId = "com.zhiliaoapp.musically:id/user_avatar", description = "YUE 主页", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/ivc", description = "关注 YUE", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/g6o", description = "点赞视频。2.7 万 个赞", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/eor", description = "阅读或添加评论。58 条评论", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/i74", description = "将此视频添加到或移出收藏。", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/pmj", description = "音乐：AntonioVivald 创作的 Saxophones", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/g6o", description = "分享视频。1182 次分享", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/title", text = "YUE", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/tv_post_time", text = "· 1 天前", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/desc", text = "They set the bar too high…#wlw", depth = 2),
+        node(viewId = "com.zhiliaoapp.musically:id/vf9", text = "搜索 · chinese twitter", depth = 2),
+    )
+
+    @Test
+    fun `reads the counts off the Chinese labels`() {
+        val post = parser.parse(onePost())!!
+        // Kept as displayed; app/counts.py reads 万 as well as K.
+        assertEquals("2.7 万", post.likeRaw)
+        assertEquals("58", post.commentRaw)
+        assertEquals("1182", post.shareRaw)
+    }
+
+    @Test
+    fun `reads the author from the profile label`() {
+        val post = parser.parse(onePost())!!
+        assertEquals("YUE", post.authorName)
+    }
+
+    @Test
+    fun `an alternation branch that did not match is not an empty name`() {
+        // "YUE 主页" matches the second branch, so the first group is
+        // "" rather than null. Taking group 1 blindly stored an empty
+        // author for every Chinese frame -- a match that reads as a miss.
+        val post = parser.parse(
+            onePost().filterNot { it.viewId?.endsWith("title") == true }
+        )!!
+        assertEquals("YUE", post.authorName)
+    }
+
+    @Test
+    fun `keeps the caption and the publication time`() {
+        val post = parser.parse(onePost())!!
+        assertEquals("They set the bar too high…#wlw", post.caption)
+        assertEquals("· 1 天前", post.postedAtRaw)
+    }
+
+    @Test
+    fun `records which search the video came from`() {
+        // On TikTok the keyword is the sample definition, so losing it
+        // to a language setting loses more than a label.
+        assertEquals("search:chinese twitter", parser.feed(onePost()))
+    }
+
+    @Test
+    fun `recognises the share control the run gave up on`() {
+        val share = edu.wellesley.scraper.service.ShareSheet
+        assertEquals(
+            share.Role.SHARE,
+            share.roleOf("分享视频。1182 次分享"),
+        )
+    }
+
+    @Test
+    fun `still refuses the labels that act on someone elses account`() {
+        // Widening the share pattern must never widen it this far:
+        // 建群分享 creates a group chat. Pinned here because the new
+        // Chinese branch sits next to it.
+        val share = edu.wellesley.scraper.service.ShareSheet
+        assertNull(share.roleOf("建群分享"))
+        assertNull(share.roleOf("分享你此刻的想法"))
+        assertNull(share.roleOf("合拍"))
+        assertNull(share.roleOf("举报"))
+    }
+}

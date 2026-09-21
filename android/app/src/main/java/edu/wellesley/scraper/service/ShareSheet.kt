@@ -37,7 +37,10 @@ object ShareSheet {
      * Share video, so the start of the label is enough.
      */
     private val SHARE = listOf(
-        Regex("""^share video$""", RegexOption.IGNORE_CASE),
+        // Prefix, not whole label: this build folds the count into the
+        // same string ("Share video. 88 shares"), exactly as the
+        // Chinese one does below.
+        Regex("""^share video\b""", RegexOption.IGNORE_CASE),
         Regex("""^share$""", RegexOption.IGNORE_CASE),
         // Whole label, not a prefix. `^分享` matched 分享你此刻的想法 --
         // the comment box's placeholder -- and a run tapped it, which
@@ -45,6 +48,14 @@ object ShareSheet {
         // then on the search results page. Douyin's control reads
         // 分享，按钮 or 分享8，按钮 with the count folded in.
         Regex("""^分享\d*(?:[，,]\s*按钮)?$"""),
+        // TikTok in Chinese, which is a different label from Douyin's:
+        // 分享视频。1182 次分享. Anchored to 分享视频 rather than to 分享,
+        // which keeps it clear of 建群分享 and 分享你此刻的想法 for the
+        // reasons above. Without this a run on a Chinese-interface
+        // TikTok found no share control at all and gave up after three
+        // videos, having collected 0 links.
+        Regex("""^分享视[频頻]"""),
+        Regex("""^分享視[频頻]"""),
     )
 
     /**
@@ -82,6 +93,9 @@ object ShareSheet {
         Regex("""[链連鏈]接已复制"""),
         Regex("""^send to$""", RegexOption.IGNORE_CASE),
         Regex("""^share to$""", RegexOption.IGNORE_CASE),
+        // TikTok's own sheet, in Chinese.
+        Regex("""^分享到"""),
+        Regex("""^[发發]送[给給]"""),
         // The comment panel belongs here for the same reason: it
         // covers the feed, so the share control underneath is not
         // reachable and a swipe scrolls comments. A run found itself
