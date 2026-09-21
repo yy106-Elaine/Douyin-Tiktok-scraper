@@ -1,5 +1,6 @@
 package edu.wellesley.scraper.parser
 
+import edu.wellesley.scraper.service.ShareSheet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -320,11 +321,9 @@ class TikTokInChineseTest {
 
     @Test
     fun `recognises the share control the run gave up on`() {
-        val share = edu.wellesley.scraper.service.ShareSheet
-        assertEquals(
-            share.Role.SHARE,
-            share.roleOf("分享视频。1182 次分享"),
-        )
+        assertEquals(ShareSheet.Role.SHARE, ShareSheet.roleOf("分享视频。1182 次分享"))
+        // The English build folds the count in the same way.
+        assertEquals(ShareSheet.Role.SHARE, ShareSheet.roleOf("Share video. 88 shares"))
     }
 
     @Test
@@ -332,10 +331,9 @@ class TikTokInChineseTest {
         // Widening the share pattern must never widen it this far:
         // 建群分享 creates a group chat. Pinned here because the new
         // Chinese branch sits next to it.
-        val share = edu.wellesley.scraper.service.ShareSheet
-        assertNull(share.roleOf("建群分享"))
-        assertNull(share.roleOf("分享你此刻的想法"))
-        assertNull(share.roleOf("合拍"))
-        assertNull(share.roleOf("举报"))
+        assertNull(ShareSheet.roleOf("建群分享"))
+        assertNull(ShareSheet.roleOf("分享你此刻的想法"))
+        assertNull(ShareSheet.roleOf("合拍"))
+        assertNull(ShareSheet.roleOf("举报"))
     }
 }
