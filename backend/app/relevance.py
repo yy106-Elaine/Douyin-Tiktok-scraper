@@ -179,6 +179,14 @@ SOFT: tuple[tuple[str, str], ...] = (
 #: content, so anything that fails it is out of scope by definition.
 #: Hidden, not deleted -- `?show=all` lists them with the reason, and
 #: `app/views.py` keeps hand-collected rows visible regardless.
+#: The label [FICTION] assigns, as it is stored. Named because the
+#: dashboard and the survival analysis read the corpus as two strata
+#: and this is what divides them: the AI-produced 百合短剧 channels
+#: post episode after episode, have no author to interview about a
+#: takedown, and answer to different incentives from a person posting
+#: their own life. One rate over both explains neither.
+FICTION_STRATUM = "fiction"
+
 HIDDEN = frozenset(
     {
         "advertising",

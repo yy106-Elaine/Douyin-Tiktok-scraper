@@ -381,3 +381,56 @@ def test_only_in_scope_videos_are_tracked(client, api_key):
 
     assert "keep" in tracked
     assert "drop" not in tracked
+
+
+def test_the_two_strata_get_their_own_rate(client, api_key):
+    """A 百合短剧 channel and a person posting their own life.
+
+    Both are in the corpus. Neither explains the other: one posts
+    episodes on a schedule and has no author to interview about a
+    takedown. Pooling them produces a number that describes neither
+    population, and that number is what gets quoted.
+    """
+    from app import youtube
+    from app.db import SessionLocal
+    from app.views import fiction_ids
+
+    titles = {
+        "own": "我和女朋友的日常 #拉拉 #女同",
+        "drama": "【GL Anime】《盼你归来》EP03 #百合短剧 #双女主",
+    }
+
+    def caller(endpoint, params):
+        if endpoint == "search":
+            return {"items": [{"id": {"videoId": v}} for v in titles]}
+        return {
+            "items": [
+                {
+                    "id": video_id,
+                    "snippet": {
+                        "channelId": "UC1",
+                        "channelTitle": "c",
+                        "title": titles[video_id],
+                        "description": "",
+                        "publishedAt": "2026-09-16T08:30:00Z",
+                    },
+                    "statistics": {},
+                    "status": {"privacyStatus": "public"},
+                }
+                for video_id in params["id"].split(",")
+            ]
+        }
+
+    with SessionLocal() as session:
+        youtube.collect(session, ["拉拉"], caller=caller)
+        assert fiction_ids(session, "youtube") == {"drama"}
+
+    body = client.get("/dashboard/takedowns?key=test-admin-key&platform=youtube").text
+    assert "Rate — firsthand" in body
+    assert "Rate — scripted drama" in body
+
+    listing = client.get(
+        "/dashboard?key=test-admin-key&platform=youtube&show=fiction only"
+    ).text
+    assert "盼你归来" in listing
+    assert "我和女朋友的日常" not in listing

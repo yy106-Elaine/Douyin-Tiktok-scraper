@@ -109,6 +109,21 @@ video, which is worse than a duplicate. Only the derived row is deleted; the
 `capture_events` payload it came from stays, so the observation as the device
 reported it is still on file.
 
+**The corpus is two populations, and they are never pooled.** A keyword search
+returns both a person posting their own life and an AI-produced 百合短剧
+channel posting episode after episode. Both are Chinese-language WLW content
+and both can be taken down, so both are in the corpus and both are tracked.
+They are not one population: a channel on a production schedule has no author
+to interview about a removal and answers to different incentives, so a single
+rate over the two describes neither.
+
+`app.relevance` labels scripted drama `fiction`. The dashboard lists the two
+strata separately (`show=firsthand`, `show=fiction only`) and reports a
+takedown rate for each rather than one pooled figure; the export carries the
+label, so any analysis can make the same split. The boundary is a regular
+expression over the title and description and will misplace rows near it —
+read both lists before quoting either rate.
+
 **What is tracked is the corpus, not the search.** A YouTube search for the
 keywords returns mostly other things: of 1,126 videos collected over three
 days, 1,072 were excluded — 504 not in Chinese, 256 Japanese, 200 with no

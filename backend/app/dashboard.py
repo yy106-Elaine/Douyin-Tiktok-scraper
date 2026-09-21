@@ -22,11 +22,13 @@ from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
 from .platforms import filter_policy
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
-from .relevance import HIDDEN
+from .relevance import FICTION_STRATUM, HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
     daily_counts,
+    fiction_ids,
+    in_scope_filter,
     unique_in_scope,
     ID_ON_SCREEN,
     LINK_ONLY,
@@ -99,6 +101,29 @@ def dashboard(
 
     # Every exclusion reason with a count, so the filter is reviewable
     # category by category rather than as one number to trust.
+    # The corpus's two strata. Counted here rather than from `rows`,
+    # which is capped at _ROW_LIMIT.
+    in_corpus = in_scope_filter(model, platform)
+    fiction = (
+        session.scalar(
+            select(func.count())
+            .select_from(model)
+            .where(in_corpus, model.relevance == FICTION_STRATUM)
+        )
+        or 0
+    )
+    firsthand = (
+        session.scalar(
+            select(func.count())
+            .select_from(model)
+            .where(
+                in_corpus,
+                (model.relevance != FICTION_STRATUM) | model.relevance.is_(None),
+            )
+        )
+        or 0
+    )
+
     reasons = {
         reason: count
         for reason, count in session.execute(
@@ -133,6 +158,8 @@ def dashboard(
             dated=dated,
             filtered=filtered,
             reasons=reasons,
+            fiction=fiction,
+            firsthand=firsthand,
             show=show,
             unique=unique,
             day=day,
@@ -519,6 +546,12 @@ def _page(**ctx) -> str:
     if policy != "none":
         chips = [
             review("in scope", ""),
+            # The corpus splits in two, and the split is the point:
+            # scripted drama is in scope and is tracked, but it has no
+            # author to interview and a channel posting episodes on a
+            # schedule is not the population this study is about.
+            review("firsthand", "firsthand", ctx["firsthand"]),
+            review("scripted drama", "fiction only", ctx["fiction"]),
             review("everything", "all"),
             review("excluded", "excluded", ctx["filtered"]),
         ]
@@ -811,22 +844,45 @@ def takedowns(
     collected = [t for t in collected_targets(session) if t.platform == platform]
     due = due_targets(session, targets=collected)
 
+    # The corpus is two populations and they are not pooled. See
+    # app/relevance.py: a 百合短剧 channel posting episodes on a
+    # schedule and a person posting their own life do not face the
+    # same moderation, and one rate over both describes neither.
+    scripted = fiction_ids(session, platform)
+    fiction = summarise([item for item in items if item.video_id in scripted])
+    firsthand = summarise([item for item in items if item.video_id not in scripted])
+
     return HTMLResponse(
         _findings_page(
             key=key,
             platform=platform,
             items=items,
             summary=summary,
+            fiction=fiction,
+            firsthand=firsthand,
+            # Whether the corpus holds any scripted drama at all, which
+            # is what decides the split -- not whether any of it has
+            # been checked yet.
+            has_fiction=bool(scripted),
             collected=len(collected),
             due=len(due),
         )
     )
 
 
+def _rate_tile(label: str, summary) -> str:
+    """A takedown rate with the denominator it was computed over."""
+    rate = summary.rate
+    return _tile(
+        label,
+        "—" if rate is None else f"{round(100 * rate)}%",
+        f"{summary.gone:,} of {summary.gone + summary.alive:,} measured",
+    )
+
+
 def _findings_page(**ctx) -> str:
     platform = ctx["platform"]
     summary = ctx["summary"]
-    rate = summary.rate
 
     tabs = _nav("Takedowns", platform, ctx["key"])
 
@@ -838,11 +894,11 @@ def _findings_page(**ctx) -> str:
                 f"of {ctx['collected']:,} in the corpus with an ID",
             ),
             _tile("Disappeared", _compact(summary.gone), "at the latest check"),
-            _tile(
-                "Takedown rate",
-                "—" if rate is None else f"{round(100 * rate)}%",
-                f"{summary.gone:,} of {summary.gone + summary.alive:,} measured",
-            ),
+            _rate_tile("Takedown rate", summary)
+            if not ctx["has_fiction"]
+            # Two populations, never pooled: see app/relevance.py.
+            else _rate_tile("Rate — firsthand", ctx["firsthand"])
+            + _rate_tile("Rate — scripted drama", ctx["fiction"]),
             _tile(
                 "Not measured",
                 _compact(summary.unmeasured + summary.doubtful),

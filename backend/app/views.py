@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from .links import describe, extract
 from .models import SharedLink
 from .platforms import API_PLATFORMS
-from .relevance import HIDDEN
+from .relevance import FICTION_STRATUM, HIDDEN
 from .parsers import PLATFORM_TABLES
 from .snowflake import posted_at_from_video_id
 
@@ -189,6 +189,12 @@ def _row_from_link(link: SharedLink) -> VideoRow:
 #: What `show` may ask for beyond a specific exclusion reason.
 SHOW_ALL = "all"
 SHOW_EXCLUDED = "excluded"
+#: The two strata inside the corpus. Scripted drama is in scope and is
+#: tracked, but it is not the population the interviews are about, so
+#: it is read -- and its takedown rate quoted -- separately. See
+#: `app.relevance.FICTION_STRATUM`.
+SHOW_FICTION = "fiction only"
+SHOW_FIRSTHAND = "firsthand"
 
 
 def in_scope_filter(model, platform: str):
@@ -322,6 +328,13 @@ def video_rows(
         pass
     elif show == SHOW_EXCLUDED:
         statement = statement.where(~in_scope)
+    elif show == SHOW_FICTION:
+        statement = statement.where(in_scope, model.relevance == FICTION_STRATUM)
+    elif show == SHOW_FIRSTHAND:
+        statement = statement.where(
+            in_scope,
+            (model.relevance != FICTION_STRATUM) | model.relevance.is_(None),
+        )
     elif show:
         # One named reason. Still intersected with the carve-out, so a
         # hand-collected row never appears as excluded when it is not.
@@ -482,3 +495,24 @@ def _collapse_repeats(rows: list[VideoRow]) -> list[VideoRow]:
             _filled(held, row), repeats=held.repeats + row.repeats
         )
     return out
+
+
+def fiction_ids(session: Session, platform: str) -> set[str]:
+    """Video ids of the scripted-drama stratum, for splitting a rate.
+
+    A `Finding` is built from the check history and carries no
+    relevance, so the split has to be made from the post rows. See
+    `app.relevance.FICTION_STRATUM` for why the two are reported apart.
+    """
+    registered = PLATFORM_TABLES.get(platform)
+    if registered is None:
+        return set()
+    model, _ = registered
+    return {
+        video_id
+        for (video_id,) in session.execute(
+            select(model.video_id).where(
+                model.video_id.isnot(None), model.relevance == FICTION_STRATUM
+            )
+        )
+    }
