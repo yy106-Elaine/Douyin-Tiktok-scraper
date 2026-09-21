@@ -274,6 +274,44 @@ def record_author_identity(
     return filled
 
 
+def drop_attached_handles(session: Session, platform: str = "douyin") -> int:
+    """Forget handles that were attached rather than observed.
+
+        id ...958326   @handle 颜小颜   name moyani
+
+    On Douyin the handle is the 抖音号 and it is only on the author's
+    profile. One build read it there and attached it to whichever
+    link was nearest in time, which put it on the neighbouring
+    author's row as often as the right one. The display name is kept
+    -- it was read off the post itself -- and the handle column goes
+    empty until a profile is read properly and tied to its post.
+    """
+    from .parsers import PLATFORM_TABLES
+
+    registered = PLATFORM_TABLES.get(platform)
+    if registered is None:
+        return 0
+    model, _ = registered
+
+    cleared = 0
+    for post in session.scalars(select(model).where(model.author_handle.isnot(None))):
+        if (post.author_handle or "").lstrip("@").strip() != (
+            post.author_name or ""
+        ).lstrip("@").strip():
+            post.author_handle = None
+            cleared += 1
+    for link in session.scalars(
+        select(SharedLink).where(
+            SharedLink.platform == platform, SharedLink.author_handle.isnot(None)
+        )
+    ):
+        link.author_handle = None
+        cleared += 1
+
+    session.commit()
+    return cleared
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     """Undo pairings made on time alone. See [undo_window_pairings]."""
     import argparse
@@ -286,13 +324,21 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="unlink every post whose id came from a nearest-in-time match",
     )
+    parser.add_argument(
+        "--drop-attached-handles",
+        action="store_true",
+        help="forget Douyin handles attached from a profile visit, not observed",
+    )
     args = parser.parse_args()
-    if not args.undo_time_pairings:
-        parser.error("nothing to do; pass --undo-time-pairings")
+    if not (args.undo_time_pairings or args.drop_attached_handles):
+        parser.error("nothing to do; pass --undo-time-pairings or --drop-attached-handles")
 
     init_db()
     with SessionLocal() as session:
-        print(f"unlinked {undo_window_pairings(session)} time-based pairing(s)")
+        if args.undo_time_pairings:
+            print(f"unlinked {undo_window_pairings(session)} time-based pairing(s)")
+        if args.drop_attached_handles:
+            print(f"cleared {drop_attached_handles(session)} attached handle(s)")
 
 
 if __name__ == "__main__":  # pragma: no cover

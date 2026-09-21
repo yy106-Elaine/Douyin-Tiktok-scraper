@@ -317,3 +317,41 @@ def test_undoing_a_time_pairing_leaves_two_honest_rows(client, api_key):
         assert link.matched_capture_id is None
         assert link.pairing_method is None
         assert link.video_id == "7301234567890123456"
+
+
+def test_an_attached_handle_is_forgotten_but_the_name_is_kept(client, api_key):
+    """    id ...958326   @handle 颜小颜   name moyani
+
+    The 抖音号 was read on a profile and attached to whichever link
+    was nearest in time. The name was read off the post itself.
+    """
+    from app.pairing import drop_attached_handles
+    from app.parsers import PLATFORM_TABLES
+
+    model, _ = PLATFORM_TABLES["douyin"]
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [
+                {
+                    "platform_package": "com.ss.android.ugc.aweme",
+                    "fingerprint": "douyin::moyani::a",
+                    "captured_at": "2026-09-19T18:16:00Z",
+                    "payload": {
+                        "author_name": "moyani",
+                        "author_handle": "颜小颜",
+                        "caption": "#lwl",
+                    },
+                }
+            ],
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    with SessionLocal() as session:
+        assert drop_attached_handles(session) == 1
+        post = session.query(model).one()
+        assert post.author_handle is None
+        assert post.author_name == "moyani"
+        assert post.caption == "#lwl"
