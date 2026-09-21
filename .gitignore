@@ -5,6 +5,11 @@ __pycache__/
 *.db
 .env
 
+# A signed-in browser session. Local state, like the database, and it
+# would hand anyone who cloned this the account it belongs to.
+.browser-profile/
+backend/.browser-profile/
+
 # Android / Gradle
 .gradle/
 build/

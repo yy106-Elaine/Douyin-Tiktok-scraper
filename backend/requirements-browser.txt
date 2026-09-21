@@ -1,0 +1,7 @@
+# Only the page fetchers need these, and only on the machine doing the
+# fetching. The server, the dashboard and the daily job run without
+# them, which is why they are not in requirements.txt.
+#
+#     ./.venv/bin/pip install -r requirements-browser.txt
+#     ./.venv/bin/playwright install chromium
+playwright==1.49.1

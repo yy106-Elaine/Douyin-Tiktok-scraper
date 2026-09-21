@@ -26,6 +26,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .browser import AUTHOR_URL as BROWSER_AUTHOR_URL, DEFAULT_PROFILE, open_browser
 from .douyin_page import AUTHOR_URL, author_facts, fetch
 from .models import WebAuthor, WebVideo
 
@@ -81,12 +82,30 @@ def store(session: Session, sec_uid: str, page, facts) -> WebAuthor:
     return row
 
 
+def anonymous(sec_uid: str):
+    """Ask the share host, with no session behind the request."""
+    return fetch(AUTHOR_URL.format(sec_uid=sec_uid))
+
+
+def through(browser, on_wall=None):
+    """Read the site's own profile page in a signed-in browser."""
+
+    def read(sec_uid: str):
+        seen = browser.read(BROWSER_AUTHOR_URL.format(sec_uid=sec_uid))
+        if seen.wall and on_wall is not None:
+            on_wall(browser)
+            seen = browser.read(BROWSER_AUTHOR_URL.format(sec_uid=sec_uid))
+        return seen.fetched
+
+    return read
+
+
 def run(
     session: Session,
     sec_uids: list[str],
     pause_seconds: float = PAUSE_SECONDS,
     dump: Path | None = None,
-    fetcher=fetch,
+    fetcher=anonymous,
     on_progress=None,
 ) -> dict[str, int]:
     report = {"read": 0, "with_handle": 0, "unreadable": 0}
@@ -96,7 +115,7 @@ def run(
         if index and pause_seconds:
             time.sleep(pause_seconds)
 
-        page = fetcher(AUTHOR_URL.format(sec_uid=sec_uid))
+        page = fetcher(sec_uid)
         facts = author_facts(page.html) if page.html else None
 
         if facts is None or facts.is_empty():
@@ -128,6 +147,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--refresh", action="store_true", help="re-read profiles already read")
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS)
     parser.add_argument("--dump", default="", help="directory for pages that could not be read")
+    parser.add_argument(
+        "--anonymous",
+        action="store_true",
+        help=(
+            "ask the share host with no session, instead of a signed-in "
+            "browser -- lighter, but reads far less"
+        ),
+    )
+    parser.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="no window; a verification page then cannot be answered",
+    )
     args = parser.parse_args()
 
     init_db()
@@ -147,13 +180,35 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         def show(done: int, total: int, outcome: str) -> None:
             print(f"[{done}/{total}] {outcome}", flush=True)
 
-        report = run(
-            session,
-            targets,
-            pause_seconds=args.pause,
-            dump=Path(args.dump) if args.dump else None,
-            on_progress=show,
-        )
+        if args.anonymous:
+            report = run(
+                session,
+                targets,
+                pause_seconds=args.pause,
+                dump=Path(args.dump) if args.dump else None,
+                fetcher=anonymous,
+                on_progress=show,
+            )
+        else:
+            # A signed-in browser, and a stop rather than a retry when
+            # the site asks for a person. Hammering a challenge is how
+            # a session turns into a block.
+            def on_wall(browser) -> None:
+                browser.wait_for_person("Douyin is asking to sign in or verify.")
+
+            with open_browser(
+                Path(args.profile),
+                headless=args.headless,
+                pause_seconds=args.pause,
+            ) as browser:
+                report = run(
+                    session,
+                    targets,
+                    pause_seconds=0,  # the browser paces itself
+                    dump=Path(args.dump) if args.dump else None,
+                    fetcher=through(browser, on_wall=None if args.headless else on_wall),
+                    on_progress=show,
+                )
         print(
             f"read {report['read']} profile(s), {report['with_handle']} with a "
             f"抖音号; {report['unreadable']} unreadable"

@@ -214,6 +214,26 @@ time). The screen reading is kept, not replaced: the two are different
 observations — what a viewer saw in the app, and what the site served to a
 fetch — and a study about removals should be able to show both.
 
+**The fetch is made by a signed-in browser.** Douyin's own pages render in
+the browser and gate a great deal behind a session — a profile fetched without
+cookies is a download prompt — and a run of requests eventually meets a
+verification page rather than a video. `python -m app.login` opens a browser
+once, the researcher signs in by hand, and the session persists in a profile
+directory that every later run reuses. No credential is read, typed or stored
+by this code; what persists is what the site itself writes, as in any browser.
+
+The window is visible on purpose. A verification page is something a person
+can answer and a script cannot, so a run pauses for it instead of retrying —
+retrying a challenge is how a session becomes a block. `--anonymous` still
+fetches the share host with no session, which reads much less but touches no
+account.
+
+Which account does the fetching is a methodological choice, not a detail.
+Every request carries the signed-in identity, and this study is about what a
+platform removes from a community it polices. A research account used for
+nothing else keeps the collection off a personal one; `--profile DIR` keeps
+several apart, and the directory is never committed.
+
 `parsed_by` records how a row was read. `embedded` means it came out of the
 page's own data; `surface` means only the visible text and meta tags could be
 read, which yields a caption and a date but no counts. A row parsed off the

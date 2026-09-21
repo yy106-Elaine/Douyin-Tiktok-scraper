@@ -29,6 +29,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .browser import VIDEO_URL as BROWSER_VIDEO_URL, DEFAULT_PROFILE, open_browser
 from .douyin_page import VIDEO_URL, fetch, video_facts
 from .models import SharedLink, WebVideo
 
@@ -89,12 +90,30 @@ def store(session: Session, video_id: str, page, facts) -> WebVideo:
     return row
 
 
+def anonymous(video_id: str):
+    """Ask the share host, with no session behind the request."""
+    return fetch(VIDEO_URL.format(video_id=video_id))
+
+
+def through(browser, on_wall=None):
+    """Read the site's own page in a signed-in browser."""
+
+    def read(video_id: str):
+        seen = browser.read(BROWSER_VIDEO_URL.format(video_id=video_id))
+        if seen.wall and on_wall is not None:
+            on_wall(browser)
+            seen = browser.read(BROWSER_VIDEO_URL.format(video_id=video_id))
+        return seen.fetched
+
+    return read
+
+
 def run(
     session: Session,
     video_ids: list[str],
     pause_seconds: float = PAUSE_SECONDS,
     dump: Path | None = None,
-    fetcher=fetch,
+    fetcher=anonymous,
     on_progress=None,
 ) -> dict[str, int]:
     report = {"read": 0, "surface_only": 0, "unreadable": 0}
@@ -104,7 +123,7 @@ def run(
         if index and pause_seconds:
             time.sleep(pause_seconds)
 
-        page = fetcher(VIDEO_URL.format(video_id=video_id))
+        page = fetcher(video_id)
         facts = video_facts(page.html) if page.html else None
 
         if facts is None or facts.is_empty():
@@ -136,6 +155,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--refresh", action="store_true", help="re-read pages already read")
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS)
     parser.add_argument("--dump", default="", help="directory for pages that could not be read")
+    parser.add_argument(
+        "--anonymous",
+        action="store_true",
+        help=(
+            "ask the share host with no session, instead of a signed-in "
+            "browser -- lighter, but reads far less"
+        ),
+    )
+    parser.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="no window; a verification page then cannot be answered",
+    )
     args = parser.parse_args()
 
     init_db()
@@ -151,13 +184,35 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         def show(done: int, total: int, outcome: str) -> None:
             print(f"[{done}/{total}] {outcome}", flush=True)
 
-        report = run(
-            session,
-            targets,
-            pause_seconds=args.pause,
-            dump=Path(args.dump) if args.dump else None,
-            on_progress=show,
-        )
+        if args.anonymous:
+            report = run(
+                session,
+                targets,
+                pause_seconds=args.pause,
+                dump=Path(args.dump) if args.dump else None,
+                fetcher=anonymous,
+                on_progress=show,
+            )
+        else:
+            # A signed-in browser, and a stop rather than a retry when
+            # the site asks for a person. Hammering a challenge is how
+            # a session turns into a block.
+            def on_wall(browser) -> None:
+                browser.wait_for_person("Douyin is asking to sign in or verify.")
+
+            with open_browser(
+                Path(args.profile),
+                headless=args.headless,
+                pause_seconds=args.pause,
+            ) as browser:
+                report = run(
+                    session,
+                    targets,
+                    pause_seconds=0,  # the browser paces itself
+                    dump=Path(args.dump) if args.dump else None,
+                    fetcher=through(browser, on_wall=None if args.headless else on_wall),
+                    on_progress=show,
+                )
         print(
             f"read {report['read']}, of which {report['surface_only']} "
             f"only off the surface; {report['unreadable']} unreadable"
