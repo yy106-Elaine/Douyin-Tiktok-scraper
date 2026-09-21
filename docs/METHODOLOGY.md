@@ -109,6 +109,15 @@ video, which is worse than a duplicate. Only the derived row is deleted; the
 `capture_events` payload it came from stays, so the observation as the device
 reported it is still on file.
 
+**Times are stored in UTC and read in Eastern.** Every column holds UTC,
+because an instant is an instant and a database that mixes zones cannot be
+compared with itself. Everything shown converts, and so does every day
+boundary: a collection run at 22:52 in Boston is 02:52 the next day in UTC,
+and the per-day chart was filing that evening's work under tomorrow while the
+day it happened on read zero. `app/clock.py` is the only place that converts,
+and `display_timezone` in the settings is the zone — set it to wherever the
+study is actually run from.
+
 **The corpus is two populations, and they are never pooled.** A keyword search
 returns both a person posting their own life and an AI-produced 百合短剧
 channel posting episode after episode. Both are Chinese-language WLW content

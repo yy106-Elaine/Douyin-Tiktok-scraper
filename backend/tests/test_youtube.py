@@ -383,4 +383,4 @@ def test_youtube_publication_time_reaches_the_findings_page(client):
     body = client.get(
         "/dashboard/takedowns?key=test-admin-key&platform=youtube"
     ).text
-    assert "2026-09-16 08:30" in body
+    assert "2026-09-16 04:30" in body

@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import is_admin_key
+from .clock import local
 from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
@@ -303,7 +304,7 @@ def _video_rows(rows) -> str:
             f"{_cell(row.author_handle)}"
             f"{_cell(row.author_name)}"
             f'<td class="caption">{escape((row.caption or "—")[:110])}</td>'
-            f"<td class=\"when\">{escape(row.when.strftime('%m-%d %H:%M'))}</td>"
+            f"<td class=\"when\">{escape(local(row.when).strftime('%m-%d %H:%M'))}</td>"
             f"{_num(row.like_count)}{_num(row.comment_count)}{_num(row.share_count)}"
             f"{_notes_cell(row)}"
             f"{_cell(row.feed)}"
@@ -593,7 +594,8 @@ def _page(**ctx) -> str:
 
 <h1>Capture dashboard</h1>
 <p class="sub">Read-only. Engagement counts are read from the rendered app UI and
-are approximate wherever flagged.</p>
+are approximate wherever flagged. Times are {escape(settings.display_timezone)};
+stored in UTC.</p>
 
 <div class="tabs">{tabs}</div>
 <div class="tiles">{tiles}</div>
@@ -817,11 +819,11 @@ def _finding_rows(items: list[Finding]) -> str:
             f'<td>{state}{doubtful}</td>'
             f'<td class="vid">{link}</td>'
             f"{_cell(finding.author_handle)}"
-            f'<td class="when">{escape(published.strftime("%Y-%m-%d %H:%M")) if published else "—"}</td>'
+            f'<td class="when">{escape(local(published).strftime("%Y-%m-%d %H:%M")) if published else "—"}</td>'
             f"{_lifetime_cell(finding)}"
-            f'<td class="when">{escape(finding.last_alive_at.strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
-            f'<td class="when">{escape(finding.first_gone_at.strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
-            f'<td class="when">{escape(finding.last_checked_at.strftime("%m-%d %H:%M")) if finding.last_checked_at else "—"}</td>'
+            f'<td class="when">{escape(local(finding.last_alive_at).strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
+            f'<td class="when">{escape(local(finding.first_gone_at).strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
+            f'<td class="when">{escape(local(finding.last_checked_at).strftime("%m-%d %H:%M")) if finding.last_checked_at else "—"}</td>'
             f'<td class="n">{finding.checks}</td>'
             "</tr>"
         )

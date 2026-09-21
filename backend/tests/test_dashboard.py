@@ -167,7 +167,7 @@ def test_publication_time_is_decoded_from_the_video_id(client, api_key):
         headers={"X-API-Key": api_key},
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
-    assert "2023-11-14 08:39" in body
+    assert "2023-11-14 03:39" in body
     assert "from id" in body
 
 

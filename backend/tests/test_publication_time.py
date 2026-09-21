@@ -78,13 +78,13 @@ class TestPrecedence:
             "7301234567890123456", datetime(2026, 1, 1), "11h ago"
         )
         assert posted_at == datetime(2023, 11, 14, 8, 39, 3)
-        assert display == "2023-11-14 08:39"
+        assert display == "2023-11-14 03:39"
         assert source == "video id"
 
     def test_the_parsed_screen_value_is_the_fallback(self):
         posted_at, display, source = publication(None, datetime(2026, 5, 4, 7, 6), "5-4")
         assert posted_at == datetime(2026, 5, 4, 7, 6)
-        assert display == "2026-05-04 07:06"
+        assert display == "2026-05-04 03:06"
         assert source == "screen"
 
     def test_an_unparsed_string_still_beats_an_empty_column(self):

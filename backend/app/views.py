@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .clock import local, local_date, start_of_local_day
 from .links import describe, extract
 from .models import SharedLink
 from .platforms import API_PLATFORMS
@@ -107,10 +108,10 @@ def publication(
     """
     derived = posted_at_from_video_id(video_id)
     if derived is not None:
-        return derived, derived.strftime("%Y-%m-%d %H:%M"), "video id"
+        return derived, local(derived).strftime("%Y-%m-%d %H:%M"), "video id"
     if posted_on is not None:
         source = "api" if (platform or "").startswith("youtube") else "screen"
-        return posted_on, posted_on.strftime("%Y-%m-%d %H:%M"), source
+        return posted_on, local(posted_on).strftime("%Y-%m-%d %H:%M"), source
     if posted_at_raw:
         return None, posted_at_raw, "as shown"
     return None, None, ""
@@ -277,19 +278,23 @@ def daily_counts(
 ) -> list[tuple[str, int]]:
     """Distinct in-scope videos first collected on each of the last `days`."""
     moment = now or datetime.utcnow()
-    start = (moment - timedelta(days=days - 1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    # Days are the researcher's, not UTC's. An evening collection run
+    # in Eastern time is already tomorrow in UTC, which put a day's
+    # work under the next date and left the day it happened on
+    # reading zero. See app/clock.py.
+    last = local_date(moment)
+    first = last - timedelta(days=days - 1)
+    start = start_of_local_day(first)
 
     counts: dict[str, int] = {}
     for captured_at in first_seen(session, platform).values():
         if captured_at >= start:
-            key = captured_at.date().isoformat()
+            key = local_date(captured_at).isoformat()
             counts[key] = counts.get(key, 0) + 1
 
     return [
-        ((start + timedelta(days=offset)).date().isoformat(),
-         counts.get((start + timedelta(days=offset)).date().isoformat(), 0))
+        ((first + timedelta(days=offset)).isoformat(),
+         counts.get((first + timedelta(days=offset)).isoformat(), 0))
         for offset in range(days)
     ]
 
