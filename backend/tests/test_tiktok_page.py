@@ -83,7 +83,7 @@ def test_the_caption_alone_is_read_off_the_surface():
 
 def test_both_kinds_of_address_are_offered():
     """A bare string and the capitalised ladder under bitrateInfo."""
-    urls = file_urls([{"itemInfo": {"itemStruct": _item()}}])
+    urls = file_urls(payloads=[{"itemInfo": {"itemStruct": _item()}}])
     assert urls == ["https://cdn.tiktok/play.mp4", "https://cdn.tiktok/rung.mp4"]
 
 
@@ -94,9 +94,9 @@ def test_a_record_about_another_video_offers_no_address():
     is not "this is the right video".
     """
     other = [{"itemInfo": {"itemStruct": _item("7000000000000000000")}}]
-    assert file_urls(other, video_id="7687820515369510629") == []
+    assert file_urls(payloads=other, video_id="7687820515369510629") == []
     anonymous = [{"video": {"playAddr": "https://cdn.tiktok/x.mp4"}}]
-    assert file_urls(anonymous, video_id="7687820515369510629") == []
+    assert file_urls(payloads=anonymous, video_id="7687820515369510629") == []
 
 
 def test_the_handle_is_part_of_the_address():

@@ -139,7 +139,7 @@ def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
 
 
 def file_urls(
-    payloads: Sequence[dict] = (), video_id: str | None = None
+    html: str = "", payloads: Sequence[dict] = (), video_id: str | None = None
 ) -> list[str]:
     """Every address the record offers for the video file itself.
 
@@ -149,8 +149,12 @@ def file_urls(
     reason: a page carries its neighbours' records too, and some of
     them name no id at their own level.
     """
+    # Both sources, because the record does not always arrive the
+    # same way: Douyin's comes back as a captured API response, and
+    # TikTok writes it into the page. Reading only the responses left
+    # every TikTok video reporting "no file address for this id".
     urls: list[str] = []
-    for blob in payloads:
+    for blob in list(payloads) + list(embedded(html or "")):
         for record in dicts_with(blob, ("video",)):
             if video_id is not None:
                 if _text(_first(record, "id", "awemeId", "aweme_id")) != video_id:

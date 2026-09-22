@@ -166,7 +166,9 @@ def fetch_one(
     if read.fetched.error:
         return None, read.fetched.error
 
-    urls = site.file_urls(read.fetched.payloads, video_id=video_id)
+    urls = site.file_urls(
+        read.fetched.html or "", read.fetched.payloads, video_id=video_id
+    )
     if not urls:
         return None, "no file address for this id"
 

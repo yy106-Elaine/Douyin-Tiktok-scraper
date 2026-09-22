@@ -45,7 +45,7 @@ class _FakeBrowser:
 
 def test_the_file_addresses_come_out_of_the_record():
     payloads = [_record("7688128736507805041", "https://cdn/a.mp4")]
-    assert file_urls(payloads) == ["https://cdn/a.mp4"]
+    assert file_urls(payloads=payloads) == ["https://cdn/a.mp4"]
 
 
 def test_a_record_about_another_video_offers_no_address():
@@ -57,7 +57,7 @@ def test_a_record_about_another_video_offers_no_address():
     indistinguishable from the real thing later.
     """
     payloads = [_record("7686999999999999999", "https://cdn/someone-else.mp4")]
-    assert file_urls(payloads, video_id="7688128736507805041") == []
+    assert file_urls(payloads=payloads, video_id="7688128736507805041") == []
 
 
 def test_an_error_page_is_not_saved_as_a_video():
@@ -164,9 +164,9 @@ def test_a_record_with_no_id_of_its_own_offers_no_address():
     which is the case the id check exists for.
     """
     anonymous = {"aweme_detail": {"video": {"play_addr": {"url_list": ["https://cdn/x.mp4"]}}}}
-    assert file_urls([anonymous], video_id="7688128736507805041") == []
+    assert file_urls(payloads=[anonymous], video_id="7688128736507805041") == []
     # Still offered when no particular video was asked for.
-    assert file_urls([anonymous]) == ["https://cdn/x.mp4"]
+    assert file_urls(payloads=[anonymous]) == ["https://cdn/x.mp4"]
 
 
 def _tiktok_record(video_id: str, url: str) -> dict:
@@ -259,3 +259,35 @@ def test_each_platform_keeps_its_own_folder_and_manifest(db, tmp_path):
     assert download_videos.default_dir("douyin").parent == (
         download_videos.default_dir("tiktok").parent
     )
+
+
+def test_addresses_are_found_in_the_page_as_well_as_the_responses():
+    """The record does not always arrive the same way.
+
+    Douyin's comes back as a captured API response; TikTok writes it
+    into the page and this browser captured no responses from it at
+    all. Reading only the responses left every TikTok video saying
+    "no file address for this id".
+    """
+    import json
+
+    from app.tiktok_page import file_urls as tiktok_urls
+
+    item = {
+        "id": "7687820515369510629",
+        "desc": "#wlw",
+        "author": {"uniqueId": "someone"},
+        "video": {"playAddr": "https://cdn.tiktok/in-the-page.mp4"},
+    }
+    html = (
+        '<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">'
+        + json.dumps({"__DEFAULT_SCOPE__": {"webapp.video-detail": {
+            "itemInfo": {"itemStruct": item}}}})
+        + "</script>"
+    )
+
+    assert tiktok_urls(html, video_id="7687820515369510629") == [
+        "https://cdn.tiktok/in-the-page.mp4"
+    ]
+    # And the id check still applies to what the page holds.
+    assert tiktok_urls(html, video_id="7000000000000000000") == []

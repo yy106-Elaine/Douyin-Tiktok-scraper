@@ -104,11 +104,18 @@ _EMPTY = ("暂无", "内容不存在", "页面不存在", "该作品已下架")
 #: `desc`, `author`, `statistics`, `create_time` -- so capturing the
 #: response beats guessing at the markup it eventually becomes.
 _WANTED_RESPONSES = (
+    # Douyin
     "/aweme/detail/",
     "/aweme/v1/web/aweme/detail",
     "/user/profile/other",
     "/user/profile/self",
     "/aweme/post/",
+    # TikTok. Absent for a while, which is why a TikTok page never
+    # produced a single captured response and the downloader went
+    # looking for file addresses in an empty list.
+    "/api/item/detail",
+    "/api/post/item_list",
+    "/api/user/detail",
 )
 
 

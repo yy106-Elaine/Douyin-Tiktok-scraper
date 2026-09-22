@@ -103,7 +103,15 @@ PAUSE_SECONDS = 2.0
 def wanted(
     session: Session, platform: str = "douyin", refresh: bool = False
 ) -> list[str]:
-    """Video ids we hold a link for and have not read the page of."""
+    """Video ids we hold a link for and have not read the page of.
+
+    `refresh` returns them all instead, which is what a daily
+    re-check is: this pass doubles as the takedown probe on the page
+    platforms -- a signed-in exchange either returns the video asked
+    for or it does not -- and without `refresh` it says `read 0`
+    once every page has been read once, which reads like a failure
+    and is in fact nothing left to do.
+    """
     ids = [
         video_id
         for (video_id,) in session.execute(
@@ -366,7 +374,23 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="fetch; otherwise count and stop")
     parser.add_argument("--limit", type=int, default=None, help="stop after N videos")
-    parser.add_argument("--refresh", action="store_true", help="re-read pages already read")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "re-read pages already read -- this is the daily re-check: "
+            "without it only videos never read before are fetched"
+        ),
+    )
+    parser.add_argument(
+        "--skip-gone",
+        action="store_true",
+        help=(
+            "leave out videos already found gone. A removal reversed "
+            "then goes unseen, which is the cost of not spending a "
+            "page visit on every video that has already disappeared"
+        ),
+    )
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS)
     parser.add_argument("--dump", default="", help="directory for pages that could not be read")
     parser.add_argument(
@@ -402,6 +426,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     with SessionLocal() as session:
         targets = wanted(session, args.platform, refresh=args.refresh)
         handle_for = handles(session, args.platform)
+
+        if args.skip_gone:
+            from .recheck import disappeared
+
+            gone = disappeared(session)
+            before = len(targets)
+            targets = [video_id for video_id in targets if video_id not in gone]
+            if before != len(targets):
+                print(f"skipping {before - len(targets)} already found gone")
+
         if args.limit is not None:
             targets = targets[: args.limit]
 

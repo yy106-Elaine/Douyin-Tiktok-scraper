@@ -167,7 +167,9 @@ def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
 #: `download_addr` is the same video as the app's own save button
 #: produces; `bit_rate` holds the ladder of encodings, used only when
 #: the first two are missing.
-def file_urls(payloads: Sequence[dict] = (), video_id: str | None = None) -> list[str]:
+def file_urls(
+    html: str = "", payloads: Sequence[dict] = (), video_id: str | None = None
+) -> list[str]:
     """Every address the record offers for the video file itself.
 
     Returned in the order to try them, duplicates removed. The list
@@ -196,7 +198,11 @@ def file_urls(payloads: Sequence[dict] = (), video_id: str | None = None) -> lis
             if isinstance(url, str) and url.startswith("http"):
                 urls.append(url)
 
-    for blob in payloads:
+    # Both sources, because the record does not always arrive the
+    # same way: Douyin's comes back as a captured API response, and
+    # TikTok writes it into the page. Reading only the responses left
+    # every TikTok video reporting "no file address for this id".
+    for blob in list(payloads) + list(embedded(html or "")):
         for record in dicts_with(blob, ("video",)):
             if video_id is not None:
                 if _text(_first(record, "aweme_id", "awemeId")) != video_id:
