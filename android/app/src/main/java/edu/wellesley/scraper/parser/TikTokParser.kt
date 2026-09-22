@@ -105,14 +105,30 @@ class TikTokParser : PostParser {
 
         /** "Search · wlw relationship moments" -- the sampling frame. */
         /**
-         * The strip naming the search a video was opened from.
+         * TikTok's own related-search suggestion for a video.
          *
-         * This is the only place a TikTok row records which keyword
-         * produced it, and on TikTok the keyword is the sample
-         * definition -- see docs/METHODOLOGY.md -- so losing it to a
-         * language setting loses more than a label.
+         * NOT the query anyone typed, although it is drawn as
+         * "Search · <phrase>" and was read as one here for a while.
+         * TikTok generates it per video from the video's content --
+         * the Creator Search Insights feature -- so it changes as you
+         * scroll, and it describes the video rather than the search.
+         *
+         * What settled it: a video captioned "Meet Genevieve.
+         * #chinesecrested" -- a dog -- carried "搜索 · chinese
+         * twitter", and a run in which `Chinese lesbian` was the only
+         * term typed produced 71 rows labelled with 14 different
+         * phrases, none of them that one, the largest being "brys
+         * lovely beloved wife social media".
+         *
+         * It is kept, because TikTok's own topical label for a video
+         * is worth having, but it is prefixed `anchor:` so nothing
+         * downstream can read it as the sampling frame. The frame on
+         * this platform is the query typed into the search box, which
+         * the fullscreen player does not show at all -- see
+         * `TikTokSearchParser`, which reads it off the results grid,
+         * and docs/METHODOLOGY.md.
          */
-        val SEARCH_CONTEXT = Regex("""^(?:Search|搜索|搜尋)\s*[·・]\s*(.+)$""")
+        val SEARCH_ANCHOR = Regex("""^(?:Search|搜索|搜尋)\s*[·・]\s*(.+)$""")
 
         /**
          * The caption TextView also renders the "expand" affordance, so
@@ -180,6 +196,14 @@ class TikTokParser : PostParser {
             "For You", "Following", "Friends", "Explore", "Shop", "LIVE",
             "推荐", "推薦", "关注", "關注", "朋友", "探索", "商城", "直播",
         )
+        /**
+         * One slug per tab, whichever language the tab was read in.
+         *
+         * Without the Chinese half, the same tab stored two different
+         * values depending on a phone setting -- one run's rows came
+         * back as `following` and `直播`, which a count by feed reads
+         * as two surfaces, and a count by surface silently splits.
+         */
         val FEED_SLUGS = mapOf(
             "For You" to "recommend",
             "Following" to "following",
@@ -187,6 +211,14 @@ class TikTokParser : PostParser {
             "Explore" to "explore",
             "Shop" to "shop",
             "LIVE" to "live",
+            "推荐" to "recommend",
+            "推薦" to "recommend",
+            "关注" to "following",
+            "關注" to "following",
+            "朋友" to "friends",
+            "探索" to "explore",
+            "商城" to "shop",
+            "直播" to "live",
         )
     }
 
@@ -206,18 +238,22 @@ class TikTokParser : PostParser {
      * guessing.
      */
     override fun feed(nodes: List<FlatNode>): String? {
-        // Browsing search results shows the query on screen; that is
-        // the sampling frame, and it outranks any tab label.
-        NodeTools.firstGroup(nodes, SEARCH_CONTEXT)?.let { return "search:${it.trim()}" }
-
         val selected = nodes.firstOrNull { node ->
             node.selected && labelOf(node) != null
         }?.let(::labelOf)
         if (selected != null) return FEED_SLUGS[selected] ?: selected
 
         val visible = nodes.mapNotNull(::labelOf).distinct()
-        val only = visible.singleOrNull() ?: return null
-        return FEED_SLUGS[only] ?: only
+        val only = visible.singleOrNull()
+        if (only != null) return FEED_SLUGS[only] ?: only
+
+        // Last, and clearly labelled as what it is. A fullscreen
+        // video hides the tab bar, so this is often the only thing on
+        // the frame that says anything about where the video came
+        // from -- but it is TikTok's guess about the video, not the
+        // researcher's query, and the two must never be read as one.
+        NodeTools.firstGroup(nodes, SEARCH_ANCHOR)?.let { return "anchor:${it.trim()}" }
+        return null
     }
 
     private fun labelOf(node: FlatNode): String? {
