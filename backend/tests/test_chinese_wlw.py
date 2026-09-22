@@ -184,3 +184,47 @@ def test_a_complete_caption_that_fails_the_rule_is_still_excluded(client, api_ke
     )
     body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
     assert "opposites attract" not in body
+
+
+def test_remark_judges_a_row_on_the_page_caption_not_the_screen_one(client, api_key):
+    """The stored verdict and the displayed one have to be the same.
+
+    The phone reads what the interface rendered, and the interface
+    truncates. `remark` was marking a row off topic on the half of
+    its caption that fitted the screen, while the dashboard -- which
+    already preferred the page's text -- showed it in scope. The CSV
+    export reads the stored column, so the two disagreed about what
+    the corpus was.
+    """
+    from app.db import SessionLocal
+    from app.models import TikTokPost, WebVideo
+    from app.relevance import remark
+
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [{
+                "platform_package": "com.zhiliaoapp.musically",
+                "fingerprint": "tt::someuser::truncated",
+                "captured_at": "2026-09-14T12:00:00Z",
+                "payload": {
+                    "author_handle": "someuser",
+                    "caption": "our anniversary trip ...more",
+                    "video_id_hint": "7301234567890123456",
+                },
+            }],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    with SessionLocal() as session:
+        post = session.query(TikTokPost).one()
+        assert post.relevance == NO_CHINESE_MARK, post.relevance
+        session.add(WebVideo(
+            platform="tiktok",
+            video_id="7301234567890123456",
+            caption="our anniversary trip #chinese #wlw #lesbiancouple",
+        ))
+        session.commit()
+        remark(session)
+        assert session.query(TikTokPost).one().relevance is None

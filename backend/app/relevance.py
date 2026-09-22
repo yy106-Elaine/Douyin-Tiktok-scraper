@@ -438,9 +438,27 @@ def remark(session) -> dict[str, int]:
 
     from sqlalchemy import select
 
-    from .models import CaptureEvent
+    from .models import CaptureEvent, WebVideo
     from .parsers import PLATFORM_TABLES
     from .platforms import filter_policy
+
+    # The caption the video's own page gave, which is the authority
+    # and the reason the page is fetched at all. The phone reads what
+    # the interface rendered, and the interface truncates: a caption
+    # stored as 与女朋友的...展开 was being marked off topic on the half
+    # of itself that fitted the screen. The dashboard already
+    # preferred this text; the stored column did not, so the two
+    # disagreed about which rows were in the corpus -- and the CSV
+    # export, which reads the column, exported the wrong set.
+    page_caption: dict[str, str] = {
+        video_id: caption
+        for video_id, caption in session.execute(
+            select(WebVideo.video_id, WebVideo.caption).where(
+                WebVideo.video_id.isnot(None), WebVideo.caption.isnot(None)
+            )
+        )
+        if caption.strip()
+    }
 
     payloads: dict[int, dict] = {}
     for event in session.scalars(select(CaptureEvent)):
@@ -459,8 +477,9 @@ def remark(session) -> dict[str, int]:
             # policy has to be cleared, or loosening the filter would
             # leave the past hidden and the change would look broken.
             payload = payloads.get(post.capture_event_id, {})
+            fuller = page_caption.get(post.video_id) if post.video_id else None
             reason = classify(
-                payload.get("caption") or post.caption,
+                fuller or payload.get("caption") or post.caption,
                 payload.get("description"),
                 policy=policy,
             )
