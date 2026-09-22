@@ -125,3 +125,98 @@ def test_the_names_can_be_listed_without_the_values():
     assert ("ttwid", ".douyin.com") in listed
     assert all("secret" not in str(entry) for entry in listed)
     assert browser.session_cookies() == ["sessionid"]
+
+
+class _FlakyContext:
+    """A context whose first tab fails every navigation."""
+
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.pages: list[_FlakyPage] = []
+
+    def new_page(self):
+        page = _FlakyPage(self, len(self.pages))
+        self.pages.append(page)
+        return page
+
+    def cookies(self):
+        return [{"name": "sessionid", "value": "x", "domain": ".douyin.com"}]
+
+
+class _FlakyPage:
+    def __init__(self, context, index: int) -> None:
+        self.context = context
+        self.index = index
+        self.closed = False
+        self.url = "https://www.douyin.com/video/1"
+
+    def is_closed(self):
+        return self.closed
+
+    def close(self):
+        self.closed = True
+
+    def on(self, event, handler):
+        pass
+
+    def remove_listener(self, event, handler):
+        pass
+
+    def goto(self, url, **kwargs):
+        if self.index < self.context.failures:
+            raise RuntimeError("Target page, context or browser has been closed")
+
+        class _Response:
+            status = 200
+
+        return _Response()
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+    def content(self):
+        return "<html>the video</html>"
+
+    def inner_text(self, _selector):
+        return "the video"
+
+
+def test_a_tab_that_stopped_working_is_replaced_once():
+    """Eight videos in a row failed, then a new tab read the rest.
+
+    The cure was the operator closing the window by hand. Nothing in
+    the run could tell "this page is bad" from "this tab is bad", so
+    it reported eight unreadable videos that were perfectly readable.
+    """
+    from app.browser import Browser
+
+    context = _FlakyContext(failures=1)
+    browser = Browser(context, pause_seconds=0)
+
+    page = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    assert page.fetched.error is None
+    assert page.fetched.html == "<html>the video</html>"
+    # One thrown away, one working.
+    assert len(context.pages) == 2
+    assert context.pages[0].closed
+
+
+def test_it_does_not_keep_opening_tabs():
+    """A second tab failing the same way is not a tab problem.
+
+    Hammering it is how a session becomes a block, so the error is
+    reported instead -- the first one, which describes the page.
+    """
+    from app.browser import Browser
+
+    context = _FlakyContext(failures=99)
+    browser = Browser(context, pause_seconds=0)
+
+    page = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    assert page.fetched.error == "RuntimeError"
+    assert len(context.pages) == 2

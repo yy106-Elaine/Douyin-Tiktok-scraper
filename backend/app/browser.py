@@ -209,13 +209,53 @@ class Browser:
     # -- reading ---------------------------------------------------
 
     def read(self, url: str, settle_seconds: float = 2.5) -> PageRead:
-        """Navigate the tab, let the page render, hand back its HTML."""
+        """Navigate the tab, let the page render, hand back its HTML.
+
+        A failed read is retried once on a fresh tab, because a tab
+        can get into a state every later navigation fails from. One
+        TikTok run reported `Error` for eight videos in a row and
+        then read the rest perfectly -- the cure was the operator
+        closing the window by hand, which is to say: a new tab. Eight
+        videos is not a rate limit and not a bad page, it is one tab
+        that stopped working, and nothing in the run could tell the
+        difference.
+
+        Retried once, not repeatedly. If a second tab fails the same
+        way the fault is not the tab, and hammering it is how a
+        session becomes a block.
+        """
+        first = self._read_once(url, settle_seconds)
+        if first.fetched.error is None:
+            return first
+
+        self._discard_page()
+        again = self._read_once(url, settle_seconds)
+        if again.fetched.error is None:
+            return again
+        # Both failed. Report the first error, which is the one that
+        # describes the page rather than the retry.
+        return first
+
+    def _discard_page(self) -> None:
+        """Throw the tab away, so the next read opens a new one."""
+        page, self._page = self._page, None
+        if page is None:
+            return
+        try:
+            page.close()
+        except Exception:  # noqa: BLE001 - already gone is the goal
+            pass
+
+    def _read_once(self, url: str, settle_seconds: float = 2.5) -> PageRead:
         if self._read_any and self._pause:
             time.sleep(self._pause)
         self._read_any = True
 
-        if self._page is None or self._page.is_closed():
-            self._page = self._context.new_page()
+        try:
+            if self._page is None or self._page.is_closed():
+                self._page = self._context.new_page()
+        except Exception as problem:  # noqa: BLE001 - recorded, not raised
+            return PageRead(Fetched(url=url, error=type(problem).__name__))
         page = self._page
 
         payloads: list[dict] = []
