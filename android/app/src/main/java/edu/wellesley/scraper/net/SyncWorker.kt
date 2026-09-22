@@ -61,7 +61,28 @@ class SyncWorker(context: Context, params: WorkerParameters) :
         private const val WORK_NAME = "capture-sync"
         private val RETENTION_MILLIS = TimeUnit.DAYS.toMillis(7)
 
-        fun enqueue(context: Context) {
+        /**
+         * Ask for an upload.
+         *
+         * [now] is for the button a person pressed, and it exists
+         * because the automatic path has to back off and the person
+         * must not inherit that wait.
+         *
+         * A failed attempt is retried on an exponential backoff from
+         * 30 seconds, so a handful of failures -- a laptop that had
+         * closed its lid, a backend that was not running -- puts the
+         * next automatic attempt half an hour out. `APPEND_OR_REPLACE`
+         * then queues a pressed "Upload now" *behind* that waiting
+         * attempt, so the button did nothing at all and said nothing
+         * either. Seven links sat on a phone with the backend up and
+         * reachable, and the only evidence was a stale failure line in
+         * the self-check.
+         *
+         * Replacing the chain loses no data: the queue is on disk and
+         * the worker reads it afresh, so a cancelled attempt has
+         * nothing in it to lose.
+         */
+        fun enqueue(context: Context, now: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(
                     Constraints.Builder()
@@ -70,8 +91,11 @@ class SyncWorker(context: Context, params: WorkerParameters) :
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
-            WorkManager.getInstance(context)
-                .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME,
+                if (now) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request,
+            )
         }
     }
 }

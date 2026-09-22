@@ -42,7 +42,9 @@ class MainActivity : AppCompatActivity() {
         binding.registerButton.setOnClickListener {
             startActivity(Intent(this, RegisterActivity::class.java))
         }
-        binding.syncButton.setOnClickListener { SyncWorker.enqueue(this) }
+        // `now`: a pressed button must not wait out the automatic
+        // path's backoff. See SyncWorker.enqueue.
+        binding.syncButton.setOnClickListener { SyncWorker.enqueue(this, now = true) }
         binding.pasteButton.setOnClickListener { saveTypedLink() }
         binding.selfCheckRefresh.setOnClickListener { showSelfCheck() }
         binding.selfCheckCopy.setOnClickListener { copySelfCheck() }
