@@ -35,6 +35,17 @@ def _video_page(video_id: str, **over) -> str:
     return _page({"item_list": [record]})
 
 
+def _in(url: str) -> str:
+    """The id in the address.
+
+    The fetcher is handed a URL now, not an id -- `run` builds the
+    address, because only it knows which site and which handle -- so a
+    fake stands in for the site by answering about whatever the
+    address asked for.
+    """
+    return url.rstrip("/").rsplit("/", 1)[-1]
+
+
 def _link(client, api_key, slug, video_id, author="35", caption="#wlw"):
     client.post(
         "/api/links/shared",
@@ -68,8 +79,8 @@ def test_only_links_whose_page_has_not_been_read_are_wanted(client, api_key):
             session,
             ["7687820515369510629"],
             pause_seconds=0,
-            fetcher=lambda video_id: Fetched(
-                url=video_id, html=_video_page(video_id), http_status=200
+            fetcher=lambda url: Fetched(
+                url=url, html=_video_page(_in(url)), http_status=200
             ),
         )
         # The one already read drops out; --refresh brings it back.
@@ -85,8 +96,8 @@ def test_what_the_page_said_is_stored_against_the_id_in_its_address(client, api_
             session,
             ["7687820515369510629"],
             pause_seconds=0,
-            fetcher=lambda video_id: Fetched(
-                url=video_id, html=_video_page(video_id), http_status=200
+            fetcher=lambda url: Fetched(
+                url=url, html=_video_page(_in(url)), http_status=200
             ),
         )
         assert report["read"] == 1
@@ -110,7 +121,7 @@ def test_a_page_that_cannot_be_read_is_recorded_as_such(client, api_key):
             session,
             ["7687820515369510629"],
             pause_seconds=0,
-            fetcher=lambda video_id: Fetched(url=video_id, http_status=403, error="HTTPError"),
+            fetcher=lambda url: Fetched(url=url, http_status=403, error="HTTPError"),
         )
         assert report["unreadable"] == 1
         row = session.query(WebVideo).one()
@@ -143,8 +154,8 @@ def test_the_profile_pass_visits_each_account_once(client, api_key):
                 session,
                 [video_id],
                 pause_seconds=0,
-                fetcher=lambda wanted: Fetched(
-                    url=wanted, html=_video_page(wanted), http_status=200
+                fetcher=lambda url: Fetched(
+                    url=url, html=_video_page(_in(url)), http_status=200
                 ),
             )
         # Two videos, one account.
@@ -179,8 +190,8 @@ def test_the_page_overrules_the_screen_on_the_dashboard(client, api_key):
             session,
             ["7687820515369510629"],
             pause_seconds=0,
-            fetcher=lambda video_id: Fetched(
-                url=video_id, html=_video_page(video_id), http_status=200
+            fetcher=lambda url: Fetched(
+                url=url, html=_video_page(_in(url)), http_status=200
             ),
         )
         fetch_authors.run(
@@ -244,7 +255,7 @@ def test_the_browser_reads_the_sites_own_page(client, api_key):
     browser = _FakeBrowser(_video_page("7687820515369510629"))
     read = fetch_videos.through(browser)
 
-    page = read("7687820515369510629")
+    page = read("https://www.douyin.com/video/7687820515369510629")
 
     assert browser.visits == ["https://www.douyin.com/video/7687820515369510629"]
     assert "再来一次" in page.html
@@ -255,7 +266,7 @@ def test_a_verification_page_waits_for_a_person_and_then_retries(client, api_key
     browser = _FakeBrowser(_video_page("7687820515369510629"), walls=1)
     read = fetch_videos.through(browser, on_wall=browser.wait_for_person)
 
-    page = read("7687820515369510629")
+    page = read("https://www.douyin.com/video/7687820515369510629")
 
     assert browser.waits == 1
     assert len(browser.visits) == 2
@@ -406,3 +417,117 @@ def test_a_profile_no_video_points_at_is_forgotten(client, api_key):
 
         # Nothing left to drop, so a second pass is a no-op.
         assert fetch_authors.forget_orphans(session) == 0
+
+
+def test_a_tiktok_page_fills_a_row_the_same_way(client, api_key):
+    """The two platforms share the hardened half.
+
+    Verifying the record is about the video asked for, emptying a row
+    whose contents turned out to be another video's, and filing each
+    fetch as a takedown check took a mistake each to get right. They
+    are the same on both sites, so TikTok gets them by construction
+    rather than by a second implementation that has to learn them
+    again.
+    """
+    from app import fetch_videos
+    from app.models import LinkCheck, WebVideo
+
+    item = {
+        "id": "7687820515369510629",
+        "desc": "作品 109 | #Chinesecouple #Chineselesbian #wlw #fyp",
+        "createTime": 1789917000,
+        "author": {
+            "uniqueId": "rulebreaker2424",
+            "nickname": "Rule Breaker🌈",
+            "secUid": "MS4wLjABAAAAexample",
+        },
+        "stats": {"diggCount": 12000, "commentCount": 33, "shareCount": 466},
+    }
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                "https://www.tiktok.com/@rulebreaker2424/video/7687820515369510629"
+            ),
+            "shared_at": "2026-09-21T20:15:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    asked: list[str] = []
+
+    def fetcher(url: str):
+        asked.append(url)
+        return Fetched(url=url, http_status=200, payloads=[{"itemInfo": {"itemStruct": item}}])
+
+    with SessionLocal() as session:
+        assert fetch_videos.wanted(session, "tiktok") == ["7687820515369510629"]
+        # Douyin's queue is untouched by TikTok's.
+        assert fetch_videos.wanted(session, "douyin") == []
+
+        report = fetch_videos.run(
+            session,
+            ["7687820515369510629"],
+            pause_seconds=0,
+            fetcher=fetcher,
+            site=fetch_videos.SITES["tiktok"],
+            handle_for=fetch_videos.handles(session, "tiktok"),
+        )
+        assert report["read"] == 1
+
+        # The handle off the link is in the address it asked for.
+        assert asked == [
+            "https://www.tiktok.com/@rulebreaker2424/video/7687820515369510629"
+        ]
+
+        row = session.query(WebVideo).one()
+        assert row.platform == "tiktok"
+        assert row.author_name == "Rule Breaker🌈"
+        assert row.author_handle == "rulebreaker2424"
+        assert row.like_count == 12000
+
+        check = session.query(LinkCheck).one()
+        assert check.platform == "tiktok"
+        assert check.evidence == "id confirmed"
+
+
+def test_a_tiktok_page_serving_another_video_is_recorded_as_gone(client, api_key):
+    from app import fetch_videos
+    from app.models import LinkCheck, WebVideo
+    from app.recheck import GONE, classify
+
+    someone_else = {
+        "id": "7000000000000000000",
+        "desc": "a different video entirely",
+        "createTime": 1789917000,
+        "author": {"uniqueId": "elsewhere", "nickname": "Elsewhere"},
+        "stats": {"diggCount": 5},
+    }
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@gone/video/7687820515369510629",
+            "shared_at": "2026-09-21T20:15:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    with SessionLocal() as session:
+        report = fetch_videos.run(
+            session,
+            ["7687820515369510629"],
+            pause_seconds=0,
+            fetcher=lambda url: Fetched(
+                url=url,
+                http_status=200,
+                payloads=[{"itemInfo": {"itemStruct": someone_else}}],
+            ),
+            site=fetch_videos.SITES["tiktok"],
+        )
+        assert report["served_another"] == 1
+
+        row = session.query(WebVideo).one()
+        assert row.caption is None
+        assert row.author_name is None
+
+        assert classify(session.query(LinkCheck).one()) == GONE

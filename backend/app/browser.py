@@ -47,6 +47,22 @@ from .douyin_page import Fetched
 #: not persist.
 DEFAULT_PROFILE = Path(__file__).resolve().parent.parent / ".browser-profile"
 
+#: One profile per site, so signing in to one never disturbs the
+#: other -- and so a blocked or challenged session on one platform
+#: costs only that platform's collection.
+PROFILES: dict[str, Path] = {
+    "douyin": DEFAULT_PROFILE,
+    "tiktok": DEFAULT_PROFILE.with_name(".browser-profile-tiktok"),
+}
+
+#: Where the site's cookies live, for deciding whether a session is
+#: actually present, and where to open to find out.
+DOMAINS: dict[str, str] = {"douyin": "douyin.com", "tiktok": "tiktok.com"}
+HOMES: dict[str, str] = {
+    "douyin": "https://www.douyin.com/",
+    "tiktok": "https://www.tiktok.com/",
+}
+
 #: The site's own pages, which is what a signed-in browser can read.
 #: The share host stays the fallback for an anonymous fetch.
 VIDEO_URL = "https://www.douyin.com/video/{video_id}"
@@ -114,9 +130,15 @@ class Browser:
     them is itself the kind of traffic that gets a session challenged.
     """
 
-    def __init__(self, context, pause_seconds: float = 2.0) -> None:
+    def __init__(
+        self, context, pause_seconds: float = 2.0, domain: str = "douyin.com"
+    ) -> None:
         self._context = context
         self._pause = pause_seconds
+        #: Which site's cookies count as a session here. Both sites are
+        #: the same company's and use the same cookie names, so without
+        #: this a TikTok profile would read a Douyin session as its own.
+        self._domain = domain
         self._read_any = False
         self._page = None
 
@@ -131,7 +153,7 @@ class Browser:
                 continue
             if not (cookie.get("value") or "").strip():
                 continue
-            if "douyin.com" in (cookie.get("domain") or ""):
+            if self._domain in (cookie.get("domain") or ""):
                 found.append(name)
         return found
 
@@ -305,8 +327,16 @@ def open_browser(
     profile: Path = DEFAULT_PROFILE,
     headless: bool = False,
     pause_seconds: float = 2.0,
+    platform: str = "douyin",
 ):
-    """A browser using `profile`, created on first use."""
+    """A browser using `profile`, created on first use.
+
+    `platform` decides the locale it presents and which site's cookies
+    count as a session. A Chinese locale on tiktok.com is not wrong,
+    exactly -- the record is parsed from JSON, not from the interface
+    -- but it invites a different region's page for no benefit.
+    """
+    chinese = platform.startswith("douyin")
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as missing:  # pragma: no cover - environment
@@ -321,13 +351,17 @@ def open_browser(
         context = playwright.chromium.launch_persistent_context(
             str(profile),
             headless=headless,
-            locale="zh-CN",
-            timezone_id="Asia/Shanghai",
+            locale="zh-CN" if chinese else "en-US",
+            timezone_id="Asia/Shanghai" if chinese else "America/New_York",
             viewport={"width": 1280, "height": 900},
             args=["--disable-blink-features=AutomationControlled"],
         )
         try:
-            yield Browser(context, pause_seconds=pause_seconds)
+            yield Browser(
+                context,
+                pause_seconds=pause_seconds,
+                domain=DOMAINS.get(platform, "douyin.com"),
+            )
         finally:
             context.close()
 
