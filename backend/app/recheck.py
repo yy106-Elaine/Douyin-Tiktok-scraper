@@ -160,7 +160,21 @@ def fetch(url: str, timeout: float = 20.0) -> FetchResult:
         except Exception:  # pragma: no cover - defensive
             pass
         return FetchResult(status=error.code, final_url=error.url, body=body)
-    except (urllib.error.URLError, OSError, ValueError) as error:
+    except Exception as error:  # noqa: BLE001 - see below
+        # Every failure is one unreadable video, never a stopped
+        # round. This is a loop over addresses built out of scraped
+        # text, and urllib raises a whole family of things at it:
+        # URLError, OSError, ValueError, and -- the one that actually
+        # happened -- http.client.InvalidURL, which is none of those.
+        # A display name pasted into a path took down a whole day's
+        # checking, leaving every video after it unchecked on a day
+        # whose observations cannot be gone back for.
+        #
+        # An unreadable check is already a first-class outcome here:
+        # it is recorded, it is excluded from the rate rather than
+        # counted as a survival, and a large count of them is
+        # reported as the rate being untrustworthy. So the broad
+        # catch loses nothing and the narrow one lost a day.
         return FetchResult(error=type(error).__name__)
 
 
@@ -498,8 +512,29 @@ def _record(
     return check
 
 
-def author_url(platform: str, handle: str) -> str:
-    handle = handle.lstrip("@")
+#: What an identifier on these platforms is made of. A Douyin 抖音号
+#: or sec_uid and a TikTok handle are both ASCII: letters, digits,
+#: and a few separators. A display name is not -- and one of them,
+#: `▓ Lwl . ▓`, reached this function and was pasted into a path.
+#: urllib refused it, which took the whole round down: not one
+#: skipped account, every remaining video unchecked, on a day whose
+#: observations cannot be gone back for.
+_IDENTIFIER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def author_url(platform: str, handle: str) -> str | None:
+    """Where to look for this account, or None if this is not one.
+
+    None rather than a guess. A display name that happens to be
+    URL-safe would give a page belonging to somebody else, and an
+    "account gone" reading off the wrong account is worse than no
+    reading -- it is the difference between one video pulled and a
+    whole account removed, which is the distinction this check exists
+    to make.
+    """
+    handle = (handle or "").lstrip("@").strip()
+    if not _IDENTIFIER.match(handle):
+        return None
     if platform.startswith("tiktok"):
         return f"https://www.tiktok.com/@{handle}"
     return f"https://www.douyin.com/user/{handle}"
@@ -603,10 +638,11 @@ def run_round(
             and target.author_handle
             and target.platform != "youtube"
         ):
-            if pause_seconds:
-                time.sleep(pause_seconds)
             url = author_url(target.platform, target.author_handle)
-            _record(session, target, "author", url, fetcher(url), moment)
+            if url is not None:
+                if pause_seconds:
+                    time.sleep(pause_seconds)
+                _record(session, target, "author", url, fetcher(url), moment)
 
     return report
 
