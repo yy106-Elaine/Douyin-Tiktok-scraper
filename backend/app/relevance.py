@@ -205,6 +205,45 @@ TAGGED = re.compile(
 #: LWL回顾经典 or 威龙LWL6666668888.
 LOOSE_TAG = re.compile(r"(?<![A-Za-z])(?:lwl|wlw|les)(?![A-Za-z])", re.IGNORECASE)
 
+#: A Chinese element in the caption, for the TikTok policy.
+#:
+#: The search term names the population, but the results do not obey
+#: it: `Chinese lesbian` returns `#butchfemme #femme4butch
+#: #lesbiansoftiktok`, which is lesbian content with nothing Chinese
+#: about it. That is a real video and the wrong population -- this
+#: study is of Chinese WLW content, and a takedown rate computed over
+#: whatever else the recommender attached to the query is a rate for
+#: a different thing.
+#:
+#: Chinese characters count (kana is a HARD exclusion, so Japanese
+#: cannot pass here), as do the English words a diaspora creator
+#: actually writes. Deliberately *not* `asian`: it names a population
+#: several times larger, and admitting it would quietly restore the
+#: drift this rule exists to stop.
+CHINESE_MARK = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|"
+    r"chinese|china|mandarin|cantonese|[cC]-?drama|"
+    r"[华華]人|中[国國]|中文|[国國][语語]",
+    re.IGNORECASE,
+)
+
+#: A WLW element, for the same policy. Wider than `ALONE` because an
+#: English caption says it differently -- `wlw`, `lwl`, `sapphic`,
+#: `gl` -- and narrower than "anything queer": `lgbt` and `queer`
+#: alone cover gay men, trans and bi content, which are neighbouring
+#: populations and not this one. They still count when something
+#: else on this list is present, which is the ordinary case.
+WLW_MARK = re.compile(
+    r"lesbian|sapphic|wlw|lwl|girls?\s*love|\bgl\b|\bles\b|"
+    r"[女]同|拉拉|百合|女女|蕾[丝絲][边邊]|同性[恋戀]|"
+    r"wlwtiktok|femme4femme|butch|femme",
+    re.IGNORECASE,
+)
+
+#: Why such a row is out.
+NO_CHINESE_MARK = "nothing chinese in the caption"
+NO_WLW_MARK = "no wlw term in the caption"
+
 #: Why such a row is out.
 UNTAGGED = "no community tag in the caption"
 
@@ -235,6 +274,8 @@ HIDDEN = frozenset(
         "no topic term",
         "no text",
         UNTAGGED,
+        NO_CHINESE_MARK,
+        NO_WLW_MARK,
     }
 )
 
@@ -268,6 +309,15 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     the app is mainland-only.
     """
     text = "\n".join(str(part) for part in parts if part)
+
+    # The TikTok policy is the "search" policy plus two requirements
+    # on the caption, checked at the end. Everything in between --
+    # the hard exclusions, the kana rule, the collision rules -- is
+    # shared, so it is expressed as a variant of "search" rather
+    # than as a second path through this function.
+    marks_required = policy == "chinese-wlw"
+    if marks_required:
+        policy = "search"
 
     if policy == "tags":
         # Douyin, and strictly. The sample is drawn by searching the
@@ -338,6 +388,20 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     # Male-only content that reached here through a shared term.
     if MALE_ONLY.search(text) and not FEMALE.search(text):
         return "not wlw"
+
+    # The search names the population; the results do not obey it.
+    # `Chinese lesbian` returns `#butchfemme #femme4butch
+    # #lesbiansoftiktok` -- real, and a different population. Both
+    # halves of the name have to be somewhere in the caption.
+    #
+    # Last, so that a row failing this is reported as failing this,
+    # rather than as whatever earlier rule it also failed. The order
+    # is Chinese first because that is the half the search gets wrong.
+    if marks_required:
+        if not CHINESE_MARK.search(text):
+            return NO_CHINESE_MARK
+        if not WLW_MARK.search(text):
+            return NO_WLW_MARK
 
     # In the corpus, but labelled: fiction is not excluded, and an
     # analysis that needs real accounts can filter on this.
@@ -518,6 +582,64 @@ def sample(session, reason: str | None, limit: int = 25) -> list[tuple[str, str]
     return out[:limit]
 
 
+def preview(session, platform: str, policy: str) -> list[tuple[str, str | None, str | None, str]]:
+    """What a policy change would do, without doing it.
+
+    Returns (video_id, current reason, proposed reason, caption) for
+    every distinct video on a platform, so the change can be read
+    caption by caption before it is written. A filter is only worth
+    trusting once someone has read what it removes, and a tally of
+    counts is not reading -- the `#lwl` rule looked right as a number
+    and was matching account names.
+
+    Captions come from the page where one has been fetched, because
+    that is the fuller text and the authority; the screen reading is
+    the fallback.
+    """
+    from sqlalchemy import select
+
+    from .models import SharedLink, WebVideo
+    from .parsers import PLATFORM_TABLES
+
+    registered = PLATFORM_TABLES.get(platform)
+    if registered is None:
+        return []
+    model, _ = registered
+
+    from_page = {
+        video_id: caption
+        for video_id, caption in session.execute(
+            select(WebVideo.video_id, WebVideo.caption).where(
+                WebVideo.platform == platform, WebVideo.caption.isnot(None)
+            )
+        )
+    }
+
+    seen: dict[str, tuple[str | None, str]] = {}
+    for video_id, caption, reason in session.execute(
+        select(model.video_id, model.caption, model.relevance)
+        .where(model.video_id.isnot(None))
+        .order_by(model.captured_at)
+    ):
+        seen.setdefault(video_id, (reason, caption or ""))
+
+    # A link row is a video too, and on TikTok most ids arrive that
+    # way; those carry no stored reason yet.
+    for (video_id,) in session.execute(
+        select(SharedLink.video_id).where(
+            SharedLink.platform == platform, SharedLink.video_id.isnot(None)
+        )
+    ):
+        seen.setdefault(video_id, (None, ""))
+
+    out = []
+    for video_id, (reason, caption) in seen.items():
+        text = from_page.get(video_id) or caption
+        out.append((video_id, reason, classify(text, policy=policy), text))
+    out.sort(key=lambda row: (row[2] or "", row[0]))
+    return out
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     import argparse
 
@@ -553,6 +675,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument(
         "--limit", type=int, default=25, help="how many captions to print"
     )
+    parser.add_argument(
+        "--preview",
+        metavar="PLATFORM",
+        help="print what a policy would do to this platform, writing nothing",
+    )
+    parser.add_argument(
+        "--policy",
+        default=None,
+        help="the policy to preview; defaults to the platform's own",
+    )
     args = parser.parse_args()
 
     samples = list(args.test or [])
@@ -571,6 +703,24 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
     init_db()
+
+    if args.preview:
+        from .platforms import filter_policy
+
+        policy = args.policy or filter_policy(args.preview)
+        with SessionLocal() as session:
+            rows = preview(session, args.preview, policy)
+        kept = [r for r in rows if r[2] not in HIDDEN]
+        dropped = [r for r in rows if r[2] in HIDDEN]
+        print(f"policy {policy!r} over {len(rows)} {args.preview} video(s): "
+              f"{len(kept)} in, {len(dropped)} out\n")
+        for video_id, was, now, caption in rows:
+            mark = "OUT" if now in HIDDEN else " in"
+            change = "" if was == now else f"   (was: {was or 'in scope'})"
+            one_line = " ".join((caption or "(no caption)").split())
+            print(f"{mark}  {video_id}  {now or 'in scope'}{change}")
+            print(f"     {one_line[:160]}")
+        return
 
     if args.sample:
         with SessionLocal() as session:
