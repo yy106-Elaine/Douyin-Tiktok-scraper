@@ -88,7 +88,7 @@ COMPANION = re.compile(
     # Not bare 女生: "港女同內地女生有咩分別" is about girls from two
     # cities, and matched it. What signals the topic is a relation to
     # women, not a mention of them.
-    r"喜[欢歡]女|[爱愛]女|和女生|跟女生|女生在一起|"
+    r"喜[欢歡]女|[爱愛]女|和女生|跟女生|女生在一起|追女|"
     r"女友|女朋友|情[侣侶]|彩虹|同性|[两兩][个個]女|姬[圈吧]|拉圈|"
     r"lgbt|[恋戀]爱|老婆|媳[妇婦]|伴[侣侶]|[结結]婚|[监監][护護]|"
     # Genre markers. 百合 beside 短剧, GL or 双女主 is the topic; 百合
@@ -175,6 +175,35 @@ SOFT: tuple[tuple[str, str], ...] = (
     ("gossip", r"八卦|吃瓜|爆料|[黑料]料"),
 )
 
+#: Community tags, written as tags.
+#:
+#: `#lwl` is a label the poster attached to their own post. A bare
+#: `lwl` is a string, and on Douyin it turns up as an account name
+#: and inside unrelated titles -- LWL出游随拍记录, LWL回顾经典百听不厌,
+#: 威龙LWL6666668888. None of those is about anything this study is
+#: measuring, and all of them were in the corpus.
+#:
+#: This is the same argument that put Douyin on no topic filter at
+#: all, taken one step further: the hashtag is the community's own
+#: label, so it is evidence, and the loose token is a collision like
+#: 货拉拉 matching 拉拉.
+TAGGED = re.compile(r"[#＃]\s*(?:lwl|wlw|les|la|百合|拉拉|女同)", re.IGNORECASE)
+
+#: The tokens that need the tag. Only the Latin abbreviations: a
+#: caption containing 拉拉 or 女同 in running text is making a claim in
+#: a way `lwl` inside a username is not.
+#:
+#: Bounded by ASCII letters rather than by `\b`, which does not
+#: exist between `LWL` and `出`: Python counts CJK as word
+#: characters, so `\blwl\b` matched none of LWL出游随拍记录,
+#: LWL回顾经典 or 威龙LWL6666668888 -- every caption this rule was
+#: written for. Digits are deliberately not a boundary either, so the
+#: token still shows through a username like LWL6666668888.
+LOOSE_TAG = re.compile(r"(?<![A-Za-z])(?:lwl|wlw|les)(?![A-Za-z])", re.IGNORECASE)
+
+#: Why such a row is out.
+UNTAGGED = "community term, not written as a tag"
+
 #: Every reason hides the row: the requirement is Chinese-language WLW
 #: content, so anything that fails it is out of scope by definition.
 #: Hidden, not deleted -- `?show=all` lists them with the reason, and
@@ -201,6 +230,7 @@ HIDDEN = frozenset(
         "not in chinese",
         "no topic term",
         "no text",
+        UNTAGGED,
     }
 )
 
@@ -233,9 +263,29 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     "none" is for a platform where the search is the whole filter and
     the app is mainland-only.
     """
+    text = "\n".join(str(part) for part in parts if part)
+
+    if policy == "tags":
+        # Douyin. Nothing about language or topic terms runs here --
+        # the search is the filter, as it always was -- but a
+        # community abbreviation counts only where the poster wrote
+        # it as a tag. See [TAGGED].
+        if not text.strip():
+            return "no text"
+        if TAGGED.search(text):
+            return None
+        # Kept if anything else in the caption is about the topic --
+        # LWL第一次追女孩子到手了 is an account called LWL writing about
+        # pursuing a girl, and the tag rule must not take it. What is
+        # excluded is a caption whose only connection is the token.
+        if LOOSE_TAG.search(text) and not (
+            ALONE.search(text) or COMPANION.search(text)
+        ):
+            return UNTAGGED
+        return None
+
     if policy == "none":
         return None
-    text = "\n".join(str(part) for part in parts if part)
     if not text.strip():
         return "no text"
 

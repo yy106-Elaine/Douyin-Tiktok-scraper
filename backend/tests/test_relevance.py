@@ -923,3 +923,69 @@ def test_the_policy_for_an_unknown_platform_is_the_strictest_one():
 
     assert filter_policy("some_new_app") == "full"
     assert filter_policy(None) == "full"
+
+
+class TestDouyinWantsTheTagWritten:
+    """`#lwl` is a label the poster attached. `lwl` is a string.
+
+    Douyin ran no topic filter at all, on the argument that the
+    community hashtags are the filter. That argument survives; this
+    is it taken one step further. The bare token turns up as an
+    account name and inside unrelated titles, and every one of these
+    captions was in the corpus.
+    """
+
+    def _out(self, caption: str) -> str | None:
+        from app.relevance import classify
+
+        return classify(caption, policy="tags")
+
+    def test_the_token_alone_is_not_the_topic(self):
+        from app.relevance import UNTAGGED
+
+        for caption in (
+            "LWL出游随拍记录",
+            "LWL回顾经典，百听不厌",
+            "威龙LWL6666668888",
+        ):
+            assert self._out(caption) == UNTAGGED, caption
+
+    def test_written_as_a_tag_it_is(self):
+        for caption in (
+            "许愿这次别再丢下我#lwl#lwl",
+            "今夜的风悄悄月悄悄 吻你的眉梢#lwl",
+            "如果我想让你只属于我，你会不会觉得我太自私 #lwl #萌t",
+            "再来一次 我不会再与你相恋#wlw",
+            "维持现状就很好呢 说清楚就不可爱了#lwl",
+        ):
+            assert self._out(caption) is None, caption
+
+    def test_a_caption_about_the_topic_keeps_the_row(self):
+        """LWL第一次追女孩子到手了 is an account named LWL, writing
+        about pursuing a girl. The tag rule must not take it."""
+        assert self._out("LWL第一次追女孩子到手了") is None
+        assert self._out("LWL 和女朋友的日常") is None
+
+    def test_a_caption_with_no_token_is_untouched(self):
+        """Nothing else runs on this platform: no language test, no
+        topic term required. The search is still the filter."""
+        assert self._out("早安各位小主，挤公交上班") is None
+        assert self._out("我和女朋友的日常") is None
+        assert self._out("") == "no text"
+
+    def test_the_boundary_is_not_a_word_boundary(self):
+        """`\\blwl\\b` matched none of these.
+
+        Python counts CJK as word characters, so there is no boundary
+        between `LWL` and `出` -- and the rule silently did nothing to
+        every caption it was written for.
+        """
+        import re
+
+        from app.relevance import LOOSE_TAG
+
+        assert not re.search(r"\blwl\b", "LWL出游随拍记录", re.IGNORECASE)
+        assert LOOSE_TAG.search("LWL出游随拍记录")
+        assert LOOSE_TAG.search("威龙LWL6666668888")
+        # Still not a substring of an ordinary word.
+        assert not LOOSE_TAG.search("lesbian")

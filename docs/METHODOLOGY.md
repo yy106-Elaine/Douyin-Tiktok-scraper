@@ -716,7 +716,7 @@ The three frames therefore get three policies, in `FILTER_POLICY`:
 | --- | --- | --- |
 | YouTube | `full` | hard exclusions, Chinese-language requirement, **and a topic term must be present** |
 | TikTok | `search` | hard exclusions and keyword-collision rules only — no language test, no topic term |
-| Douyin | `none` | nothing; the search is the filter |
+| Douyin | `tags` | nothing, except that a community abbreviation must be written as a tag |
 
 TikTok was `language` first, on the assumption that a search there behaves
 like a Douyin one with a language problem attached: same community terms, so
@@ -746,6 +746,24 @@ each — on TikTok the term is not incidental to the sample, it *is* the sample
 definition. `TikTokSearchParser` records it on every row (`feed` reads
 `search:<query>:<sort>`), so the claim is checkable against the data rather
 than resting on someone's memory of what they typed.
+
+**Douyin's one rule is the same argument, one step further.** The reason
+Douyin runs no topic filter is that `#lwl`, `#wlw` and `#les` are labels the
+community attaches to its own posts, so the search already did the work. That
+is a claim about the *tag*, not about the letters. A bare `lwl` is just a
+string, and on Douyin it is an account name and a fragment of unrelated
+titles — LWL出游随拍记录, LWL回顾经典百听不厌, 威龙LWL6666668888 — all of which were
+in the corpus. So a caption whose only link to the topic is an untagged `lwl`,
+`wlw` or `les` is out, on the same footing as 货拉拉 matching 拉拉. A caption that
+says something else about the topic keeps its row: LWL第一次追女孩子到手了 is an
+account called LWL writing about pursuing a girl.
+
+The rule was written once and did nothing, which is worth recording. `\blwl\b`
+matches none of those three captions: Python counts CJK as word characters, so
+there is no word boundary between `LWL` and `出`. A filter that silently
+excludes nothing reads exactly like a filter that found nothing to exclude,
+and only running it against the captions it was written for showed the
+difference.
 
 An unrecognised platform gets `full`. A new one that quietly collected
 everything would be a change to the corpus definition that nobody decided on.

@@ -65,8 +65,8 @@ FILTER_POLICY: dict[str, str] = {
     "youtube": "full",
     "tiktok": "search",
     "tiktok_lite": "search",
-    "douyin": "none",
-    "douyin_lite": "none",
+    "douyin": "tags",
+    "douyin_lite": "tags",
 }
 
 

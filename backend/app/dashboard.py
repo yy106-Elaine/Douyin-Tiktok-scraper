@@ -661,6 +661,16 @@ def _page(**ctx) -> str:
         ]
         if policy == "full":
             said = "Review what the topic filter did."
+        elif policy == "tags":
+            said = (
+                "The search is the filter on this platform &mdash; it is "
+                "sampled from community hashtags (#lwl, #wlw, #les), which "
+                "are labels the community puts on its own posts. Nothing is "
+                "excluded here for language or for lacking a topic term. The "
+                "one rule: a caption's <em>only</em> link to the topic cannot "
+                "be a bare <code>lwl</code>, which turns up in account names "
+                "and unrelated titles &mdash; written as a tag it counts."
+            )
         elif policy == "search":
             said = (
                 "The search term is the filter on this platform. "
