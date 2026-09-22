@@ -40,6 +40,9 @@ def structure(payload: dict[str, Any], platform: str) -> dict[str, Any]:
         "feed": _clean(payload.get("feed")),
         "is_ad": _as_bool(payload.get("is_ad")),
         "is_ai_generated": _as_bool(payload.get("is_ai_generated")),
+        # Absent from builds before the one that records it, and
+        # absent is not false -- see `SocialPost.during_run`.
+        "during_run": _as_bool(payload.get("during_run")),
         # Present only when the device found an id already on screen.
         # Obtained passively, so it needed no interaction with the app.
         "video_id": _video_id(payload.get("video_id_hint")),

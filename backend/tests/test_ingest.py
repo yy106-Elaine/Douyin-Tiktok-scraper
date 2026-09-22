@@ -115,3 +115,53 @@ def test_export_returns_csv(client, api_key):
     lines = response.text.strip().splitlines()
     assert lines[0].startswith("id,participant_id,captured_at")
     assert "someuser" in lines[1]
+
+
+def test_a_frame_read_outside_a_run_is_marked_as_such(client, api_key):
+    """The service reads the screen; a run is what collects.
+
+    One TikTok session stored rows off the search discovery page, the
+    Following tab and a LIVE stream. All three were really on screen,
+    none was a result of the term searched, and nothing in the data
+    said which was which -- so the corpus had no definition that could
+    be checked rather than remembered.
+    """
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import TikTokPost
+
+    def send(caption: str, during_run) -> None:
+        payload = {"author_name": "someone", "caption": caption}
+        if during_run is not None:
+            payload["during_run"] = during_run
+        response = client.post(
+            "/api/captures/batch",
+            json={
+                "device_id": "pixel-7a",
+                "captures": [
+                    {
+                        "platform_package": "com.zhiliaoapp.musically",
+                        "fingerprint": f"tt::someone::{caption}",
+                        "captured_at": "2026-09-21T20:18:00Z",
+                        "payload": payload,
+                    }
+                ],
+            },
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 200
+
+    send("collected by the run", True)
+    send("seen while browsing by hand", False)
+    send("captured before the build that records it", None)
+
+    with SessionLocal() as session:
+        marks = {
+            post.caption: post.during_run
+            for post in session.scalars(select(TikTokPost))
+        }
+    assert marks["collected by the run"] is True
+    assert marks["seen while browsing by hand"] is False
+    # Absent is not false: an old build simply did not say.
+    assert marks["captured before the build that records it"] is None

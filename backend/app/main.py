@@ -268,6 +268,7 @@ _EXPORT_COLUMNS = [
     "counts_approximate",
     "is_ad",
     "is_ai_generated",
+    "during_run",
     "video_id",
     "video_url",
 ]

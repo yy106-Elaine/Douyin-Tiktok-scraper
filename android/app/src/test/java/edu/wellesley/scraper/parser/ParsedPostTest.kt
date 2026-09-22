@@ -35,4 +35,21 @@ class ParsedPostTest {
         val payload = ParsedPost(platform = "douyin", likeRaw = "12.3万").toPayload()
         assertEquals("12.3万", payload["like_raw"])
     }
+
+    @Test
+    fun `a post seen during a run stays marked as collected by it`() {
+        // A run's own sighting is what makes the row part of the
+        // corpus; a later sighting off the feed must not unmark it.
+        val duringRun = ParsedPost(platform = "tiktok", duringRun = true)
+        val byHand = ParsedPost(platform = "tiktok", caption = "later", duringRun = false)
+
+        assertEquals(true, duringRun.mergedWith(byHand).duringRun)
+        assertEquals(true, byHand.mergedWith(duringRun).duringRun)
+    }
+
+    @Test
+    fun `the mark reaches the payload`() {
+        val post = ParsedPost(platform = "tiktok", duringRun = false)
+        assertEquals(false, post.toPayload()["during_run"])
+    }
 }

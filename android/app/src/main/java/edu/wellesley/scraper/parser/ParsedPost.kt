@@ -46,6 +46,22 @@ data class ParsedPost(
      * the app and cannot influence what the feed serves next.
      */
     val videoIdHint: String? = null,
+    /**
+     * Whether an assisted run was live when this frame was read.
+     *
+     * The service reads whatever is in front of it for as long as it
+     * is switched on, which is not the same as the study collecting.
+     * One TikTok session stored rows from the search discovery page,
+     * the Following tab and a LIVE stream -- none of them results of
+     * the term that was searched, and nothing in the data said so.
+     *
+     * A row is not dropped for being incidental: it was really on
+     * screen, and dropping it would remove the evidence of what the
+     * run drifted into. It is marked, so the corpus can be defined as
+     * what a run collected and that definition can be checked rather
+     * than remembered.
+     */
+    val duringRun: Boolean? = null,
 ) {
     /**
      * Stable identity for this post across the several partial reads
@@ -91,6 +107,9 @@ data class ParsedPost(
         isAd = other.isAd ?: isAd,
         isAiGenerated = other.isAiGenerated ?: isAiGenerated,
         videoIdHint = other.videoIdHint ?: videoIdHint,
+        // True wins: a post seen once during a run was collected by
+        // it, whatever a later sighting off the feed says.
+        duringRun = (other.duringRun == true) || (duringRun == true),
     )
 
     fun toPayload(): Map<String, Any?> = mapOf(
@@ -107,5 +126,6 @@ data class ParsedPost(
         "is_ad" to isAd,
         "is_ai_generated" to isAiGenerated,
         "video_id_hint" to videoIdHint,
+        "during_run" to duringRun,
     )
 }

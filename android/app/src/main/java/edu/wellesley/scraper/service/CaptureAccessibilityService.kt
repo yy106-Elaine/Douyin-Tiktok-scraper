@@ -272,7 +272,8 @@ class CaptureAccessibilityService : AccessibilityService() {
             // stored row had the tab or the search term on it -- which
             // reads as the one field failing, and on TikTok that field
             // is the sampling frame.
-            val post = (parser.parse(segment) ?: continue).copy(feed = feed)
+            val post = (parser.parse(segment) ?: continue)
+                .copy(feed = feed, duringRun = auto.isRunning())
             parsedAny = true
             CaptureStats.onParsed(post)
             CaptureLog.parsed(post)

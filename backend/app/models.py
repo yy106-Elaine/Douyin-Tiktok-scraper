@@ -113,6 +113,25 @@ class _PostMixin:
     is_ad: Mapped[bool | None] = mapped_column(Boolean)
     is_ai_generated: Mapped[bool | None] = mapped_column(Boolean)
 
+    #: Whether an assisted run was live when this frame was read.
+    #:
+    #: The accessibility service reads whatever is in front of it for
+    #: as long as it is switched on, and that is not the same as the
+    #: study collecting. One TikTok session stored rows off the search
+    #: discovery page, the Following tab and a LIVE stream -- none of
+    #: them results of the term searched, and nothing in the data said
+    #: which was which.
+    #:
+    #: Marked rather than dropped, like every other exclusion here: the
+    #: row really was on screen, and it is the evidence of what a run
+    #: drifted into. What it buys is a corpus definition that can be
+    #: checked instead of remembered -- "what a run collected" rather
+    #: than "what the phone saw that evening".
+    #:
+    #: Null on every row captured before the build that records it, so
+    #: absent is not false.
+    during_run: Mapped[bool | None] = mapped_column(Boolean, index=True)
+
     #: Null when the row is in scope for the study, otherwise why it
     #: is not -- see app/relevance.py. A keyword search returns what
     #: the platform matched, not what the study is about, and in
