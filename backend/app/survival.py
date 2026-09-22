@@ -73,6 +73,12 @@ class Finding:
     #: every lifetime computed from it, was empty for YouTube.
     published_at: datetime | None = None
 
+    #: When this study first saw the video -- the earliest capture of
+    #: it, which is also an observation that it was watchable then.
+    #: Watching starts here, not at the first re-check, and a removal
+    #: before it was never observable. See `age_at_collection`.
+    collected_at: datetime | None = None
+
     @property
     def is_gone(self) -> bool:
         return self.first_gone_at is not None
@@ -106,12 +112,15 @@ def _informative(checks: list[LinkCheck]) -> list[tuple[LinkCheck, str]]:
 
 
 def finding_for(
-    checks: list[LinkCheck], posted_on: datetime | None = None
+    checks: list[LinkCheck],
+    posted_on: datetime | None = None,
+    collected_at: datetime | None = None,
 ) -> Finding | None:
     """Summarise one video's checks. `checks` must all be one video.
 
     `posted_on` is the publication time recorded when the video was
-    collected, used when the id does not encode one.
+    collected, used when the id does not encode one. `collected_at`
+    is when it was first collected, which is when watching began.
     """
     video_checks = [check for check in checks if check.target_kind == "video"]
     if not video_checks:
@@ -156,7 +165,52 @@ def finding_for(
         current=graded[-1][1] if graded else None,
         outcome=outcome,
         published_at=posted_at_from_video_id(first.video_id) or posted_on,
+        collected_at=collected_at,
     )
+
+
+def _collected_by_video(session: Session, platform: str | None) -> dict[str, datetime]:
+    """Earliest capture of each video, keyed by video id.
+
+    The moment watching began. A capture is itself a sighting of a
+    watchable video, so it is the left edge of every survival span --
+    and a removal before it could not have been seen from here. See
+    `age_at_collection`.
+    """
+    from .parsers import PLATFORM_TABLES
+
+    names = [platform] if platform else list(PLATFORM_TABLES)
+    out: dict[str, datetime] = {}
+    for name in names:
+        registered = PLATFORM_TABLES.get(name)
+        if registered is None:
+            continue
+        model, _ = registered
+        for video_id, captured_at in session.execute(
+            select(model.video_id, model.captured_at).where(model.video_id.isnot(None))
+        ):
+            if captured_at is None:
+                continue
+            held = out.get(video_id)
+            if held is None or captured_at < held:
+                out[video_id] = captured_at
+
+    # A link carries a sighting too, and on TikTok most ids arrive
+    # that way: the video was on screen when its link was copied.
+    from .models import SharedLink
+
+    for video_id, shared_at in session.execute(
+        select(SharedLink.video_id, SharedLink.shared_at).where(
+            SharedLink.video_id.isnot(None),
+            *([SharedLink.platform == platform] if platform else []),
+        )
+    ):
+        if shared_at is None:
+            continue
+        held = out.get(video_id)
+        if held is None or shared_at < held:
+            out[video_id] = shared_at
+    return out
 
 
 def _published_by_video(session: Session, platform: str | None) -> dict[str, datetime]:
@@ -211,10 +265,11 @@ def findings(session: Session, platform: str | None = None) -> list[Finding]:
                 checks.append(check)
 
     published = _published_by_video(session, platform)
+    collected = _collected_by_video(session, platform)
     result = [
         f
         for video_id, checks in by_video.items()
-        if (f := finding_for(checks, published.get(video_id)))
+        if (f := finding_for(checks, published.get(video_id), collected.get(video_id)))
     ]
     result.sort(key=lambda finding: finding.last_checked_at or datetime.min, reverse=True)
     return result
@@ -265,3 +320,143 @@ def summarise(items: list[Finding]) -> Summary:
         widths.sort()
         summary.median_uncertainty = widths[len(widths) // 2]
     return summary
+
+
+# --------------------------------------------------------------------
+# How old a video was when we started watching it
+# --------------------------------------------------------------------
+#
+# A removal that happened before the first sighting is not a removal
+# this study missed -- it is one this study could never have seen. A
+# TikTok search for a month-old phrase returns the videos that lasted
+# a month; the ones pulled on day one are absent from the results, not
+# present and alive. Pooling those with Douyin rows collected hours
+# after posting produces a rate that is mostly a statement about which
+# search was run.
+#
+# So two things are recorded. `age_at_collection` says how much of a
+# video's life had already happened before anyone here looked, and
+# `horizon` answers "removed within T of publication?" using only the
+# videos that were being watched before age T -- the rest are not
+# counted as survivors, they are left out, because for them the
+# question has no answer.
+
+
+def age_at_collection(finding: "Finding") -> timedelta | None:
+    """How old the video already was when this study first saw it."""
+    if finding.published_at is None:
+        return None
+    started = finding.collected_at or finding.first_checked_at
+    if started is None:
+        return None
+    return max(started - finding.published_at, timedelta(0))
+
+
+#: Upper edge of each band, and its label. Open-ended at the top.
+AGE_BANDS: tuple[tuple[timedelta | None, str], ...] = (
+    (timedelta(days=1), "under a day old"),
+    (timedelta(days=3), "1-3 days old"),
+    (timedelta(days=7), "3-7 days old"),
+    (timedelta(days=30), "1-4 weeks old"),
+    (None, "over a month old"),
+)
+
+UNDATED_BAND = "publication time unknown"
+
+
+def band_for(age: timedelta | None) -> str:
+    if age is None:
+        return UNDATED_BAND
+    for edge, label in AGE_BANDS:
+        if edge is None or age < edge:
+            return label
+    return AGE_BANDS[-1][1]
+
+
+def by_collection_age(items: list["Finding"]) -> list[tuple[str, "Summary"]]:
+    """The corpus split by how fresh each video was when collected.
+
+    In band order, and only the bands that have anything in them: an
+    empty row invites a reader to compare a rate against nothing.
+    """
+    grouped: dict[str, list[Finding]] = {}
+    for finding in items:
+        grouped.setdefault(band_for(age_at_collection(finding)), []).append(finding)
+    order = [label for _, label in AGE_BANDS] + [UNDATED_BAND]
+    return [(label, summarise(grouped[label])) for label in order if label in grouped]
+
+
+@dataclass
+class Horizon:
+    """Removals within `age` of publication, among videos watched that early.
+
+    `eligible` is the population the question can be asked of: a
+    publication time is known and the first sighting came before
+    `age`. A video first seen at three weeks is not a survivor of its
+    first three days; nothing was watching then, so it is left out
+    rather than counted alive.
+
+    `censored` is the other exclusion, at the far end: still watchable
+    at the last check, but that check came before `age`. Its fate at
+    `age` is simply not known yet, so it is out of the denominator too
+    and reported, because a large number here means the rate is early
+    rather than low.
+    """
+
+    age: timedelta
+    eligible: int = 0
+    removed: int = 0
+    survived: int = 0
+    censored: int = 0
+    #: Removed, but the check that found it gone was late enough that
+    #: the removal might have fallen after `age`. Counted as removed
+    #: -- the alternative is to drop the very events being measured --
+    #: and reported so the rate's precision is visible.
+    bracketed: int = 0
+
+    @property
+    def rate(self) -> float | None:
+        measured = self.removed + self.survived
+        return None if not measured else self.removed / measured
+
+
+def horizon(items: list["Finding"], age: timedelta) -> Horizon:
+    """Share removed within `age` of publication. See `Horizon`."""
+    out = Horizon(age=age)
+    for finding in items:
+        published = finding.published_at
+        if published is None:
+            continue
+        started = age_at_collection(finding)
+        if started is None or started >= age:
+            # Not watched early enough for this question.
+            continue
+        out.eligible += 1
+        if finding.is_gone:
+            assert finding.first_gone_at is not None
+            if finding.first_gone_at - published <= age:
+                out.removed += 1
+                if (
+                    finding.last_alive_at is not None
+                    and finding.last_alive_at - published > age
+                ):  # pragma: no cover - ordering makes this unreachable
+                    out.bracketed += 1
+            elif (
+                finding.last_alive_at is not None
+                and finding.last_alive_at - published <= age
+            ):
+                # Gone, but only seen gone after the horizon, and the
+                # last sighting alive was before it: the removal
+                # bracket straddles `age`.
+                out.removed += 1
+                out.bracketed += 1
+            else:
+                out.survived += 1
+        elif (
+            finding.last_checked_at is not None
+            and finding.last_checked_at - published >= age
+        ):
+            out.survived += 1
+        else:
+            out.censored += 1
+    return out

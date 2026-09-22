@@ -25,7 +25,13 @@ from .platforms import API_PLATFORMS, filter_policy
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
 from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
-from .survival import Finding, findings, summarise
+from .survival import (
+    Finding,
+    by_collection_age,
+    findings,
+    horizon,
+    summarise,
+)
 from .views import (
     FROM_PAGE,
     corpus_counts,
@@ -1071,6 +1077,68 @@ def _rate_tile(label: str, summary) -> str:
     )
 
 
+def _days(span) -> str:
+    """A span in the largest unit that still reads as a round number."""
+    hours = span.total_seconds() / 3600
+    if hours < 48:
+        return f"{round(hours)}h"
+    if hours < 24 * 14:
+        return f"{round(hours / 24)}d"
+    return f"{round(hours / 24 / 7)}w"
+
+
+def _age_rows(items) -> str:
+    """Takedown rate by how fresh each video was when first seen."""
+    rows = by_collection_age(items)
+    if not rows:
+        return '<tr><td colspan="6" class="empty">Nothing checked yet.</td></tr>'
+    out = []
+    for label, summary in rows:
+        rate = summary.rate
+        out.append(
+            "<tr>"
+            f"<td>{escape(label)}</td>"
+            f'<td class="n">{summary.tracked:,}</td>'
+            f'<td class="n">{summary.gone:,}</td>'
+            f'<td class="n">{summary.gone + summary.alive:,}</td>'
+            f'<td class="n">{"&mdash;" if rate is None else f"{round(100 * rate)}%"}</td>'
+            f'<td class="n">{summary.unmeasured:,}</td>'
+            "</tr>"
+        )
+    return "".join(out)
+
+
+def _horizon_rows(items) -> str:
+    """Removed within T of publication, for a few useful T."""
+    out = []
+    for span in (
+        timedelta(days=1),
+        timedelta(days=3),
+        timedelta(days=7),
+        timedelta(days=30),
+    ):
+        window = horizon(items, span)
+        if not window.eligible:
+            continue
+        rate = window.rate
+        out.append(
+            "<tr>"
+            f"<td>within {_days(span)} of posting</td>"
+            f'<td class="n">{window.eligible:,}</td>'
+            f'<td class="n">{window.removed:,}</td>'
+            f'<td class="n">{window.survived:,}</td>'
+            f'<td class="n">{"&mdash;" if rate is None else f"{round(100 * rate)}%"}</td>'
+            f'<td class="n">{window.censored:,}</td>'
+            "</tr>"
+        )
+    if not out:
+        return (
+            '<tr><td colspan="6" class="empty">No video was seen early '
+            "enough for any of these windows.</td></tr>"
+        )
+    return "".join(out)
+
+
 def _findings_page(**ctx) -> str:
     platform = ctx["platform"]
     summary = ctx["summary"]
@@ -1139,6 +1207,39 @@ disappeared somewhere between them, and nothing in the data says where.</p>
 <th class="n">Checks</th>
 </tr></thead>
 <tbody>{_finding_rows(ctx["items"], ctx["facts"])}</tbody>
+</table></div>
+
+<h2>How fresh was it when we first saw it?</h2>
+<p class="sub">A removal that happened before the first sighting could never have
+been observed from here. A search for a month-old phrase returns the videos that
+lasted a month; the ones pulled on day one are <em>absent from the results</em>,
+not present and alive. So the rate is reported per band rather than pooled &mdash;
+and a band of old videos is a statement about long-run survival, not about how
+fast this content gets removed.</p>
+<div class="panel"><table>
+<thead><tr>
+<th>Age when first collected</th>
+<th class="n">Videos</th><th class="n">Gone</th><th class="n">Measured</th>
+<th class="n">Rate</th><th class="n">Unmeasured</th>
+</tr></thead>
+<tbody>{_age_rows(ctx["items"])}</tbody>
+</table></div>
+
+<h2>Removed within N days of posting</h2>
+<p class="sub">Only videos already being watched before that age are counted.
+A video first seen at three weeks is <strong>not</strong> a survivor of its own
+first three days &mdash; nothing was watching then &mdash; so it is left out of
+both columns rather than counted alive. <em>Not watched long enough</em> is the
+other exclusion: still up at the last check, but that check came before the
+window closed.</p>
+<div class="panel"><table>
+<thead><tr>
+<th>Window</th>
+<th class="n">Watched from before</th><th class="n">Removed</th>
+<th class="n">Survived</th><th class="n">Rate</th>
+<th class="n">Not watched long enough</th>
+</tr></thead>
+<tbody>{_horizon_rows(ctx["items"])}</tbody>
 </table></div>
 
 <div class="caveats">
