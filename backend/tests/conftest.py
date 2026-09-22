@@ -39,6 +39,13 @@ def client() -> TestClient:
 
 
 @pytest.fixture()
+def db() -> None:
+    """An empty database, for the passes that never touch the API."""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+
+@pytest.fixture()
 def api_key(client: TestClient) -> str:
     response = client.post(
         "/api/auth/register",

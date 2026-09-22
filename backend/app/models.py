@@ -340,6 +340,34 @@ class WebVideo(Base):
 
     fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=_utcnow)
 
+    # -- the video file itself -------------------------------------
+    #
+    # A takedown study can re-check whether a video is still there,
+    # but once it is gone there is nothing left to look at: not the
+    # footage, not the frames, not what was said. Every question of
+    # the form "what kind of video gets removed" needs the video, and
+    # after the removal no amount of care with the metadata brings it
+    # back. So a copy is kept, and kept early -- 8 of one evening's 73
+    # videos were gone within hours of being posted.
+    #
+    # The file lives outside the database, under the directory the
+    # download was pointed at; the row records where, how big, and
+    # its digest. Only the path is stored, so moving the folder does
+    # not corrupt anything -- it just makes the copy findable again by
+    # re-running the download, which skips whatever is already there.
+    #
+    # `file_sha256` is what makes a claim about a specific video
+    # checkable later: the copy analysed is provably the copy
+    # downloaded, which matters when the original can no longer be
+    # compared against.
+    local_path: Mapped[str | None] = mapped_column(String(1024))
+    file_bytes: Mapped[int | None] = mapped_column(Integer)
+    file_sha256: Mapped[str | None] = mapped_column(String(64))
+    downloaded_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    #: Why a download did not produce a file. Kept so a video that
+    #: cannot be saved is distinguishable from one never attempted.
+    download_error: Mapped[str | None] = mapped_column(String(255))
+
 
 class WebAuthor(Base):
     """What an author's profile page says, fetched from a computer.

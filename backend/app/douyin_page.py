@@ -357,6 +357,57 @@ def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
     return facts
 
 
+#: Where a video record keeps its playable addresses. Several, in
+#: preference order: `play_addr` is what the page itself plays;
+#: `download_addr` is the same video as the app's own save button
+#: produces; `bit_rate` holds the ladder of encodings, used only when
+#: the first two are missing.
+def file_urls(payloads: Sequence[dict] = (), video_id: str | None = None) -> list[str]:
+    """Every address the record offers for the video file itself.
+
+    Returned in the order to try them, duplicates removed. The list
+    is long on purpose: a single URL expires, is region-restricted or
+    answers 403, and the next one down is usually the same footage
+    from another host.
+
+    Filtered to the video asked for when `video_id` is given, for the
+    same reason `app.fetch_videos` verifies the id: a page asked for
+    a removed video answers with a different video's record, and
+    downloading that would file someone else's footage under this id.
+    """
+    urls: list[str] = []
+
+    def take(addr: object) -> None:
+        if not isinstance(addr, dict):
+            return
+        for url in addr.get("url_list") or ():
+            if isinstance(url, str) and url.startswith("http"):
+                urls.append(url)
+
+    for blob in payloads:
+        for record in dicts_with(blob, ("video",)):
+            if video_id is not None:
+                found = _text(_first(record, "aweme_id", "awemeId"))
+                if found and found != video_id:
+                    continue
+            video = record.get("video")
+            if not isinstance(video, dict):
+                continue
+            take(_first(video, "play_addr", "playAddr"))
+            take(_first(video, "download_addr", "downloadAddr"))
+            for rung in video.get("bit_rate") or ():
+                if isinstance(rung, dict):
+                    take(_first(rung, "play_addr", "playAddr"))
+
+    seen: set[str] = set()
+    ordered = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            ordered.append(url)
+    return ordered
+
+
 def _parse_shown_time(shown: str) -> datetime | None:
     """`2026-09-20 23:10` as the page prints it.
 

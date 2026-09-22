@@ -766,6 +766,57 @@ correction free — `python -m app.relevance` re-marked the whole corpus, and
 nothing had to be collected again.
 
 
+### 12. The video file is kept, because a removal destroys the evidence
+
+The re-check establishes *that* a video went. It says nothing about what went:
+not the footage, not the frames, not what was said. Every question of the form
+"what kind of video gets removed" — which is the analytical question this
+corpus exists for — needs the video, and a takedown is precisely the moment it
+stops being available to anyone.
+
+So `python -m app.download_videos --apply` keeps a copy, and it runs on the
+same day as the collection rather than at the end of the study. Of one
+evening's 73 Douyin videos, 8 were gone within hours of being posted. Those
+eight can no longer be analysed by anyone; a copy taken that evening would
+have been the only one in existence.
+
+**How, and why not with an off-the-shelf tool.** The obvious candidates are
+Windows-only GUI programs distributed as binaries with no source in the
+repository, which cannot be run here, cannot be audited, and would be pointed
+at a signed-in account. Nothing new is needed anyway: the signed-in browser
+already captures Douyin's own API answer, and the file addresses are inside
+it. They are fetched through the browser's own request context, so the
+cookies, the user agent and the referer are the ones the site just served the
+page to — a plain HTTP request for the same address is answered with a short
+error body instead.
+
+Three things guard the folder, each for a failure already seen in this
+project:
+
+- **The id is checked before anything is downloaded.** A request for a removed
+  video is answered with the next recommended video's record, whose addresses
+  work perfectly well — they are simply not this video. Without the check the
+  folder fills with other people's footage filed under the ids of the removed
+  ones, which is worse than a gap because nothing downstream can tell.
+- **The bytes are checked to be a video.** An error page saved as `<id>.mp4`
+  gives a folder that looks complete and a corpus that is not, discovered at
+  the point of analysis, when the original is gone.
+- **The digest is recorded.** `file_sha256` makes a later claim checkable: the
+  copy analysed is provably the copy downloaded. That matters most for exactly
+  the videos whose originals can no longer be compared against.
+
+The files live outside the database and outside the repository, and the row
+records the path rather than the bytes. A moved or emptied folder is therefore
+not corruption — re-running the download refills it and skips what is already
+held.
+
+**What to report.** The download is not a measurement and never feeds a rate.
+It is preservation, and the thing to say in the methods section is when it ran
+relative to collection, since a video removed before the copy was taken is
+absent from the analysis while still being present in the takedown count. That
+asymmetry is a property of the archive, not of the platform.
+
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
@@ -782,3 +833,22 @@ nothing had to be collected again.
 
 Accessibility services are a powerful permission. The consent form should say
 plainly what is read, from which apps, and how to switch it off.
+
+**Holding copies of the videos raises its own questions**, separate from the
+collection ones above, and the application should answer them rather than
+leave them to the reader:
+
+- The copies are of public posts, kept for analysis and not redistributed.
+  Nothing in this pipeline publishes them, and the folder sits outside the
+  repository so that no ordinary `git add` can.
+- Some of the people in them will later have removed the video themselves.
+  A deletion by its author is a wish about the material, and an archive that
+  ignores it is doing something the platform's own removal is not. Say what
+  happens when an interviewee asks for their copy to be destroyed — the answer
+  should be that it is, and `local_path` makes that one file to delete.
+- Retention has an end. Name it, and name where the folder lives and who can
+  reach it; a laptop's Documents directory is a real answer only if the disk
+  is encrypted and the machine is the researcher's own.
+- The fetches carry the researcher's signed-in identity. A separate research
+  account keeps the collection off a personal one and is easier to describe
+  here.

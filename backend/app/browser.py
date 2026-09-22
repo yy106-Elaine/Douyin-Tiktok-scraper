@@ -253,6 +253,31 @@ class Browser:
             return True
         return any(marker in text for marker in _CHALLENGE)
 
+    # -- fetching a file -------------------------------------------
+
+    def download(self, url: str, referer: str | None = None, timeout_ms: int = 120_000):
+        """Fetch a URL's bytes through this signed-in context.
+
+        Not `requests`. A Douyin media URL is served to the session
+        that asked for it, checked against its cookies and the page it
+        came from; a bare request for the same address gets a 403 or a
+        few hundred bytes of error page that would otherwise be
+        written to disk as an .mp4. Going through the browser's own
+        request context means the cookies, the user agent and the
+        referer are the ones the site just saw.
+
+        Returns (bytes, status) and never raises: a video that could
+        not be fetched is recorded, not fatal to the run.
+        """
+        headers = {"referer": referer} if referer else {}
+        try:
+            response = self._context.request.get(
+                url, headers=headers, timeout=timeout_ms
+            )
+            return response.body(), response.status
+        except Exception as problem:  # noqa: BLE001 - reported by the caller
+            return None, type(problem).__name__
+
     def wait_for_person(self, message: str, timeout_seconds: float = 900.0) -> None:
         """Stop and let the operator deal with what is on screen.
 
