@@ -50,10 +50,15 @@ class ResolveReport:
     resolved: int = 0
     paired: int = 0
     failed: int = 0
+    #: Of the resolved, how many were an address already followed.
+    #: Worth printing: it is the size of the re-copying, which is a
+    #: property of the collection run rather than of the corpus.
+    repeated: int = 0
 
     def __str__(self) -> str:
+        again = f", {self.repeated} already known" if self.repeated else ""
         return (
-            f"attempted {self.attempted}, resolved {self.resolved}, "
+            f"attempted {self.attempted}, resolved {self.resolved}{again}, "
             f"paired {self.paired}, failed {self.failed}"
         )
 
@@ -107,6 +112,32 @@ def resolve_pending(
     report = ResolveReport()
     targets = list(links) if links is not None else pending_links(session)
 
+    # What each short link already resolved to, so the same address is
+    # never followed twice. Douyin cannot be told to skip videos
+    # already seen, so a run re-copies them; and when the day's results
+    # run out the loop keeps copying whatever is still on screen -- one
+    # video produced 130 links in a single run. Those are the same
+    # address, character for character, so this is an exact match and
+    # not a guess about which links are "the same video".
+    #
+    # It saves the pause as well as the request: 130 links at two
+    # seconds each is four minutes spent asking Douyin the same
+    # question, which is both slow and the kind of thing that gets a
+    # study rate-limited out of data it cannot go back for.
+    # Keyed on the *short* address, read back out of the raw text --
+    # not on `canonical_url`, which resolving overwrites with the long
+    # form. Keyed on the long one this matched nothing, which is a
+    # silent no-op rather than a wrong answer, and exactly the kind of
+    # thing a test has to hold down.
+    known: dict[str, tuple[str, str | None]] = {}
+    for raw_text, video_id, canonical in session.execute(
+        select(SharedLink.raw_text, SharedLink.video_id, SharedLink.canonical_url)
+        .where(SharedLink.video_id.isnot(None))
+    ):
+        address = extract(raw_text or "").raw_url
+        if address and video_id:
+            known.setdefault(address, (video_id, canonical))
+
     total = len(targets)
 
     def note(index: int, outcome: str) -> None:
@@ -114,13 +145,32 @@ def resolve_pending(
             on_progress(index + 1, total, outcome)
 
     for index, link in enumerate(targets):
-        source = link.canonical_url or extract(link.raw_text).raw_url
+        # The short address, which is what `known` is keyed on, with
+        # the canonical URL as the fallback for a row that has one
+        # and no readable raw text.
+        source = extract(link.raw_text or "").raw_url or link.canonical_url
         if not source:
             report.failed += 1
             note(index, "no link in this row")
             continue
 
         report.attempted += 1
+
+        seen = known.get(source)
+        if seen is not None:
+            # Already followed in this run or an earlier one. Recorded
+            # the same way a fresh follow would record it, so a
+            # re-copied video is one video with several sightings
+            # rather than a link left pending for ever.
+            link.video_id, link.canonical_url = seen[0], seen[1] or source
+            session.commit()
+            report.resolved += 1
+            report.repeated += 1
+            if pair_shared_link(session, link) is not None:
+                report.paired += 1
+            note(index, f"{seen[0]} (already known)")
+            continue
+
         if index and pause_seconds:
             time.sleep(pause_seconds)
 
@@ -141,6 +191,7 @@ def resolve_pending(
 
         link.video_id = parsed.video_id
         link.canonical_url = parsed.canonical_url or final_url
+        known[source] = (parsed.video_id, link.canonical_url)
         if parsed.author_handle and not link.author_handle:
             link.author_handle = parsed.author_handle
         session.commit()
