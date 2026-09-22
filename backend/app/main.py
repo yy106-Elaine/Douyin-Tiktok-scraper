@@ -231,17 +231,19 @@ def ingest_shared_link(
         # This used to be the other way round, on the reasoning that
         # only one of the two ever supplies a handle: the 抖音号 is
         # read off a Douyin profile, an `@handle` is parsed out of a
-        # TikTok URL, and they therefore never compete. They do. The
-        # phone reads an `@handle` off the TikTok screen as well, and
-        # it is a screen reading -- stitched to this link by what the
-        # device happened to have parsed last -- while the handle in
-        # `/@name/video/<id>` is part of the address that resolves the
-        # video.
+        # TikTok URL, and they therefore never compete. They do -- the
+        # phone reads an `@handle` off the TikTok screen as well.
         #
-        # A page fetch settled it: a link filed under `@wasabide`
-        # belonged to `@atlanticcoastpearl`, which is what the video's
-        # own page says. Same class of error as pairing by time, in
-        # the one field that names a person to contact.
+        # On the evidence so far they agree: across 25 TikTok links
+        # checked against the handle in their own address, and against
+        # what the video's page returned, every one matched. So this
+        # is a precedence chosen on principle rather than a repair of
+        # anything observed: the handle in `/@name/video/<id>` is part
+        # of what resolves the video, while a screen reading is
+        # stitched to a link by whatever the device parsed last, and
+        # the stitch is where this study's wrong rows have come from.
+        # The field names a person to interview, which is the last
+        # place to prefer the weaker source.
         #
         # Douyin URLs carry no handle, so `parsed.author_handle` is
         # empty there and the device's 抖音号 still wins by default.

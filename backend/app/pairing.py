@@ -358,16 +358,17 @@ def restore_url_handles(session: Session, platform: str = "tiktok") -> int:
     """Put back the handle the link's own address carries.
 
     The device also reads an `@handle` off the TikTok screen, and it
-    used to win over the one in `/@name/video/<id>`. It should never
-    have: the screen reading is stitched to this link by what the
-    device happened to have parsed last, while the handle in the
-    address is part of what resolves the video. A page fetch settled
-    it -- a link filed under `@wasabide` belonged to
-    `@atlanticcoastpearl`, which is what the video's own page says.
+    used to win over the one in `/@name/video/<id>`. Ingest prefers
+    the address now -- see `app/main.py` for why -- and this brings
+    the rows stored before that into line, reading the address each
+    row already holds, so nothing is re-collected and nothing is
+    guessed.
 
-    Ingest now prefers the address. This corrects the rows stored
-    before it did, reading the address they already hold, so nothing
-    is re-collected and nothing is guessed.
+    Expect it to report zero. Every TikTok link checked so far
+    already carried the handle its own address gives; the two sources
+    have not been seen to disagree. It exists so that the day they do
+    is a command rather than a migration, and so the claim "they
+    agree" stays checkable rather than remembered.
     """
     from .links import extract
 

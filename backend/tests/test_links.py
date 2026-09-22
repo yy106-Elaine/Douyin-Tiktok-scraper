@@ -123,10 +123,11 @@ def test_share_text_that_says_nothing_yields_nothing():
 def test_the_handle_in_the_address_beats_the_one_off_the_screen(client, api_key):
     """A TikTok URL names its author; a screen reading is a stitch.
 
-    The device sends an `@handle` it read off the feed, and that used
-    to win. A page fetch settled which is right: a link filed under
-    `@wasabide` belonged to `@atlanticcoastpearl`, which is what the
-    video's own page says -- and the address had said so all along.
+    The two have not been seen to disagree -- 25 links checked, all
+    matching -- so this pins a precedence rather than a repair: the
+    handle in the address is part of what resolves the video, and the
+    screen reading is attached to the link by whatever the device
+    parsed last.
     """
     from sqlalchemy import select
 
