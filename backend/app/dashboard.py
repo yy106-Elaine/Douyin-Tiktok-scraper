@@ -23,7 +23,7 @@ from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
 from .platforms import API_PLATFORMS, filter_policy
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
-from .relevance import FICTION_STRATUM, HIDDEN
+from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import Finding, findings, summarise
 from .views import (
@@ -31,7 +31,6 @@ from .views import (
     corpus_counts,
     daily_counts,
     fiction_ids,
-    in_scope_filter,
     unique_in_scope,
     ID_ON_SCREEN,
     LINK_ONLY,
@@ -44,6 +43,7 @@ from .views import (
     corpus,
     id_counts,
     page_facts,
+    strata,
     video_rows,
 )
 
@@ -111,28 +111,10 @@ def dashboard(
 
     # Every exclusion reason with a count, so the filter is reviewable
     # category by category rather than as one number to trust.
-    # The corpus's two strata. Counted here rather than from `rows`,
-    # which is capped at _ROW_LIMIT.
-    in_corpus = in_scope_filter(model, platform)
-    fiction = (
-        session.scalar(
-            select(func.count())
-            .select_from(model)
-            .where(in_corpus, model.relevance == FICTION_STRATUM)
-        )
-        or 0
-    )
-    firsthand = (
-        session.scalar(
-            select(func.count())
-            .select_from(model)
-            .where(
-                in_corpus,
-                (model.relevance != FICTION_STRATUM) | model.relevance.is_(None),
-            )
-        )
-        or 0
-    )
+    # The corpus's two strata, over the same merged population as the
+    # tiles: counted from the post table they read `firsthand 60` and
+    # `scripted drama 2` under a corpus of 85.
+    firsthand, fiction = strata(whole)
 
     reasons = {
         reason: count

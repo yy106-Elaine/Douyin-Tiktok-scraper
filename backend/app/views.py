@@ -306,6 +306,24 @@ def corpus(session: Session, platform: str, cap: int = CORPUS_CAP) -> list[Video
     return video_rows(session, platform, limit=cap)
 
 
+def strata(rows: list[VideoRow]) -> tuple[int, int]:
+    """The corpus's two strata, over the rows the page lists.
+
+    Counted from the same merged population as every other number on
+    the page rather than from the post table. Counted there, the two
+    chips read `firsthand 60` and `scripted drama 2` under a corpus
+    of 85 -- the 62 that started this whole correction, still on the
+    page in another place.
+
+    Scripted drama is in scope and is tracked; it just has no author
+    to interview, so it is reported apart. See
+    `app.relevance.FICTION_STRATUM`.
+    """
+    firsthand = sum(1 for row in rows if _listed(row.relevance, SHOW_FIRSTHAND))
+    fiction = sum(1 for row in rows if _listed(row.relevance, SHOW_FICTION))
+    return firsthand, fiction
+
+
 def first_seen(session: Session, platform: str) -> dict[str, datetime]:
     """Earliest observation of each distinct video in scope.
 

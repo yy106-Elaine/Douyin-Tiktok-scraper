@@ -688,3 +688,35 @@ def test_the_corpus_tile_equals_the_rows_the_table_can_show(client, api_key):
     linked = int(re.search(r"one row per link (\d+)", body).group(1))
     screen_only = int(re.search(r"screen only, no link (\d+)", body).group(1))
     assert in_corpus == linked + screen_only == 2
+
+
+def test_the_two_strata_add_up_to_the_corpus(client, api_key):
+    """`firsthand 60` and `scripted drama 2` under a corpus of 85.
+
+    The same bug in another place: the strata were counted over the
+    post table while everything above them counted merged rows, so
+    the chips a reader clicks to see the whole corpus in two halves
+    came to 62 instead.
+    """
+    import re
+
+    _capture(client, api_key)
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@elsewhere/video/7301111111111111111",
+            "shared_at": "2026-09-14T18:00:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    in_corpus = int(
+        re.search(
+            r'<div class="label">In the corpus</div><div class="value">([\d,]+)</div>',
+            body,
+        ).group(1).replace(",", "")
+    )
+    firsthand = int(re.search(r"firsthand (\d+)", body).group(1))
+    fiction = int(re.search(r"scripted drama (\d+)", body).group(1))
+    assert firsthand + fiction == in_corpus
