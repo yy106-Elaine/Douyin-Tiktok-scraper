@@ -571,6 +571,65 @@ def _newest_first(rows: list[VideoRow]) -> list[VideoRow]:
     return dated + undated
 
 
+@dataclass(frozen=True)
+class PageFact:
+    """What the video's own page said, for one video.
+
+    The authority for these fields -- see `WebVideo`. Pulled out of
+    `_with_page_facts` so the takedown table can use the same source
+    as the capture table: those two disagreeing about who posted a
+    video, or when, is worse than either of them being incomplete.
+    """
+
+    author_name: str | None = None
+    author_handle: str | None = None
+    caption: str | None = None
+    posted_on: datetime | None = None
+
+
+def page_facts(session: Session, video_ids) -> dict[str, PageFact]:
+    """Page readings for these ids, keyed by id.
+
+    The 抖音号 is looked up through the account rather than the video:
+    it lives on the profile, and one visit answers it for everything
+    that account posted.
+    """
+    wanted = {video_id for video_id in video_ids if video_id}
+    if not wanted:
+        return {}
+
+    pages = {
+        page.video_id: page
+        for page in session.scalars(
+            select(WebVideo).where(WebVideo.video_id.in_(wanted))
+        )
+    }
+    if not pages:
+        return {}
+
+    handles = {
+        author.sec_uid: author.author_handle
+        for author in session.scalars(
+            select(WebAuthor).where(
+                WebAuthor.sec_uid.in_(
+                    {page.sec_uid for page in pages.values() if page.sec_uid}
+                )
+            )
+        )
+        if author.author_handle
+    }
+
+    return {
+        video_id: PageFact(
+            author_name=page.author_name,
+            author_handle=handles.get(page.sec_uid or "") or page.author_handle,
+            caption=page.caption,
+            posted_on=page.posted_on,
+        )
+        for video_id, page in pages.items()
+    }
+
+
 def _with_page_facts(session: Session, rows: list[VideoRow]) -> list[VideoRow]:
     """Let the video's own page overrule what the screen showed.
 
@@ -585,29 +644,15 @@ def _with_page_facts(session: Session, rows: list[VideoRow]) -> list[VideoRow]:
     rather than the video: one visit answers it for everything that
     account posted.
     """
-    wanted = {row.video_id for row in rows if row.video_id}
-    if not wanted:
+    facts = page_facts(session, (row.video_id for row in rows))
+    if not facts:
         return rows
 
     pages = {
         page.video_id: page
         for page in session.scalars(
-            select(WebVideo).where(WebVideo.video_id.in_(wanted))
+            select(WebVideo).where(WebVideo.video_id.in_(facts))
         )
-    }
-    if not pages:
-        return rows
-
-    handles = {
-        author.sec_uid: author.author_handle
-        for author in session.scalars(
-            select(WebAuthor).where(
-                WebAuthor.sec_uid.in_(
-                    {page.sec_uid for page in pages.values() if page.sec_uid}
-                )
-            )
-        )
-        if author.author_handle
     }
 
     out: list[VideoRow] = []
@@ -628,9 +673,9 @@ def _with_page_facts(session: Session, rows: list[VideoRow]) -> list[VideoRow]:
                 ),
                 posted_source="page" if page.posted_on else row.posted_source,
                 author_name=page.author_name or row.author_name,
-                author_handle=handles.get(page.sec_uid or "")
-                or page.author_handle
-                or row.author_handle,
+                author_handle=(
+                    facts[row.video_id or ""].author_handle or row.author_handle
+                ),
                 caption=page.caption or row.caption,
                 like_count=_prefer(page.like_count, row.like_count),
                 comment_count=_prefer(page.comment_count, row.comment_count),

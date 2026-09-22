@@ -442,3 +442,55 @@ def test_a_video_with_no_publication_time_goes_last(client, api_key):
 
     assert rows[0].author_name == "有时间的"
     assert rows[-1].author_name == "没有时间的"
+
+
+def test_the_takedown_table_shows_what_the_page_said(client, api_key):
+    """The check history knows an id and some timestamps, nothing else.
+
+    So this table had a column of dashes where the author belongs and
+    no caption at all -- while `web_videos` already held both, and the
+    capture table was showing them. It also dated each row from the
+    id, a derivation still unverified on Douyin, when the page had
+    handed back the platform's own create_time for the same video.
+    """
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck, WebAuthor, WebVideo
+
+    video_id = "7687820515369510629"
+    with SessionLocal() as session:
+        session.add(
+            WebVideo(
+                video_id=video_id,
+                sec_uid="MS4wLjABAAAAQ3os",
+                author_name="35",
+                caption="再来一次 我不会再与你相恋#wlw",
+                posted_on=datetime(2026, 9, 20, 15, 9),
+            )
+        )
+        session.add(
+            WebAuthor(sec_uid="MS4wLjABAAAAQ3os", author_handle="70056222078")
+        )
+        session.add(
+            LinkCheck(
+                platform="douyin",
+                target_kind="video",
+                video_id=video_id,
+                url=f"https://www.douyin.com/video/{video_id}",
+                checked_at=datetime(2026, 9, 21, 23, 34),
+                http_status=200,
+                evidence="id confirmed",
+            )
+        )
+        session.commit()
+
+    body = client.get(
+        "/dashboard/takedowns?platform=douyin&key=test-admin-key"
+    ).text
+    assert "35" in body
+    assert "70056222078" in body
+    assert "再来一次" in body
+    # The page's own time, not the one decoded from the id.
+    assert "2026-09-20 11:09" in body  # 15:09 UTC in America/New_York
+    assert "from id?" not in body

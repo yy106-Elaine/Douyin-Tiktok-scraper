@@ -39,6 +39,7 @@ from .views import (
     NEEDS_RESOLVING,
     NO_LINK,
     VideoRow,
+    page_facts,
     video_rows,
 )
 
@@ -431,6 +432,7 @@ _SHARED_CSS = """  :root {
   .flag.warn { color: var(--warn); }
   .flag.crit { color: var(--crit); }
   .flag.approx, .flag.ad, .flag.ai, .flag.muted { color: var(--ink-3); }
+  .cap { max-width: 34ch; }
   .prov { font-size: 11px; color: var(--ink-3); }
   .prov.exact { color: var(--good); }
   td.vid { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -816,21 +818,52 @@ def _lifetime_cell(finding: Finding) -> str:
     )
 
 
-def _finding_rows(items: list[Finding]) -> str:
+def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
+    """One row per video, with the page's own account of it.
+
+    The check history knows an id and a set of timestamps; it does not
+    know who posted the video or what it said, so this table showed a
+    column of dashes where the author should be and nothing at all
+    where the caption should be. Worse, `published` was the time
+    decoded from the id -- a derivation still unverified on Douyin --
+    while the page had already handed back the platform's own
+    `create_time` for the same video. Two tables disagreeing about
+    when a video was posted is the kind of thing that gets noticed in
+    review rather than here.
+
+    So where a page has been read it supplies the author, the 抖音号,
+    the caption and the publication time, exactly as on the capture
+    table, and the row says which of the two it is showing.
+    """
     if not items:
         return (
-            '<tr><td colspan="9" class="empty">No links have been re-checked yet. '
+            '<tr><td colspan="11" class="empty">No links have been re-checked yet. '
             "Run <code>python -m app.recheck</code>.</td></tr>"
         )
 
+    facts = facts or {}
     out = []
     for finding in items:
+        fact = facts.get(finding.video_id)
         verdict = finding.outcome or finding.current
         state = (
             f'<span class="flag {_VERDICT_CLASS.get(verdict, "muted")}">'
             f'{escape(verdict or "not measured")}</span>'
         )
-        published = finding.published_at
+        # The page's create_time outranks the id-derived guess.
+        published = (fact.posted_on if fact and fact.posted_on else None) or (
+            finding.published_at
+        )
+        published_note = (
+            ""
+            if fact and fact.posted_on
+            else '<div class="prov">from id?</div>'
+            if published
+            else ""
+        )
+        handle = (fact.author_handle if fact else None) or finding.author_handle
+        author = fact.author_name if fact else None
+        caption = (fact.caption or "") if fact else ""
         link = (
             f'<a href="{escape(finding.url)}" rel="noreferrer noopener" '
             f'target="_blank">{escape(finding.video_id)}</a>'
@@ -846,8 +879,12 @@ def _finding_rows(items: list[Finding]) -> str:
             "<tr>"
             f'<td>{state}{doubtful}</td>'
             f'<td class="vid">{link}</td>'
-            f"{_cell(finding.author_handle)}"
-            f'<td class="when">{escape(local(published).strftime("%Y-%m-%d %H:%M")) if published else "—"}</td>'
+            f"{_cell(author)}"
+            f"{_cell(handle)}"
+            f'<td class="cap">{escape(caption[:90]) if caption else "—"}</td>'
+            f'<td class="when">'
+            f'{escape(local(published).strftime("%Y-%m-%d %H:%M")) if published else "—"}'
+            f"{published_note}</td>"
             f"{_lifetime_cell(finding)}"
             f'<td class="when">{escape(local(finding.last_alive_at).strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
             f'<td class="when">{escape(local(finding.first_gone_at).strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
@@ -896,6 +933,9 @@ def takedowns(
             has_fiction=bool(scripted),
             collected=len(collected),
             due=len(due),
+            # The same source the capture table reads, so the two
+            # cannot disagree about who posted a video or when.
+            facts=page_facts(session, (item.video_id for item in items)),
         )
     )
 
@@ -971,11 +1011,12 @@ disappeared somewhere between them, and nothing in the data says where.</p>
 <h2>Per video &mdash; {escape(platform)}</h2>
 <div class="panel"><table>
 <thead><tr>
-<th>Outcome</th><th>Video ID</th><th>@handle</th><th>Published</th>
+<th>Outcome</th><th>Video ID</th><th>Display name</th><th>@handle</th>
+<th>Caption</th><th>Published</th>
 <th>Lifetime</th><th>Last alive</th><th>First gone</th><th>Last checked</th>
 <th class="n">Checks</th>
 </tr></thead>
-<tbody>{_finding_rows(ctx["items"])}</tbody>
+<tbody>{_finding_rows(ctx["items"], ctx["facts"])}</tbody>
 </table></div>
 
 <div class="caveats">

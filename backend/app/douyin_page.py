@@ -374,6 +374,13 @@ def file_urls(payloads: Sequence[dict] = (), video_id: str | None = None) -> lis
     same reason `app.fetch_videos` verifies the id: a page asked for
     a removed video answers with a different video's record, and
     downloading that would file someone else's footage under this id.
+
+    The filter demands a matching id, not merely the absence of a
+    conflicting one. A Douyin page carries a recommendation feed as
+    well as its own video, and some of those records do not name an
+    id at their own level -- so "no id here, carry on" let a
+    neighbour's addresses through on exactly the pages where the
+    requested video was missing, which is the case this guards.
     """
     urls: list[str] = []
 
@@ -387,8 +394,7 @@ def file_urls(payloads: Sequence[dict] = (), video_id: str | None = None) -> lis
     for blob in payloads:
         for record in dicts_with(blob, ("video",)):
             if video_id is not None:
-                found = _text(_first(record, "aweme_id", "awemeId"))
-                if found and found != video_id:
+                if _text(_first(record, "aweme_id", "awemeId")) != video_id:
                     continue
             video = record.get("video")
             if not isinstance(video, dict):

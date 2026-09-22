@@ -152,3 +152,18 @@ def test_the_manifest_lists_what_is_held(db, tmp_path: Path):
         assert "7000000000000000000" not in text
         # The caption's newline must not break the row.
         assert len(text.strip().splitlines()) == 2
+
+
+def test_a_record_with_no_id_of_its_own_offers_no_address():
+    """"No id here" is not "this is the right video".
+
+    A Douyin page carries a recommendation feed beside its own video,
+    and some of those records do not name an id at their own level.
+    Treating that as "no conflict" let a neighbour's addresses through
+    on exactly the pages where the requested video was missing --
+    which is the case the id check exists for.
+    """
+    anonymous = {"aweme_detail": {"video": {"play_addr": {"url_list": ["https://cdn/x.mp4"]}}}}
+    assert file_urls([anonymous], video_id="7688128736507805041") == []
+    # Still offered when no particular video was asked for.
+    assert file_urls([anonymous]) == ["https://cdn/x.mp4"]
