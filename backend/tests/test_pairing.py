@@ -389,3 +389,35 @@ def test_a_capture_that_arrives_after_its_link_still_pairs(client, api_key):
         post = session.query(TikTokPost).one()
         assert post.video_id == "7301234567890123456"
         assert session.query(SharedLink).one().pairing_method == "fingerprint"
+
+
+def test_the_address_handle_is_restored_over_the_screen_reading(db):
+    """Rows stored before ingest preferred the address.
+
+    Corrected from the address the row already holds, so nothing is
+    re-collected and nothing is guessed at.
+    """
+    from datetime import datetime
+
+    from app import pairing
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    with SessionLocal() as session:
+        session.add(
+            SharedLink(
+                participant_id="P001",
+                platform="tiktok",
+                raw_text="https://www.tiktok.com/@atlanticcoastpearl/video/7687820515369510629",
+                canonical_url="https://www.tiktok.com/@atlanticcoastpearl/video/7687820515369510629",
+                video_id="7687820515369510629",
+                author_handle="wasabide",  # what the screen had said
+                shared_at=datetime(2026, 9, 21, 20, 16),
+            )
+        )
+        session.commit()
+
+        assert pairing.restore_url_handles(session) == 1
+        assert session.query(SharedLink).one().author_handle == "atlanticcoastpearl"
+        # Nothing left to correct, so a second pass is a no-op.
+        assert pairing.restore_url_handles(session) == 0

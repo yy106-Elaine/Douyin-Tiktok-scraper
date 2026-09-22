@@ -354,6 +354,36 @@ def drop_attached_handles(session: Session, platform: str = "douyin") -> int:
     return cleared
 
 
+def restore_url_handles(session: Session, platform: str = "tiktok") -> int:
+    """Put back the handle the link's own address carries.
+
+    The device also reads an `@handle` off the TikTok screen, and it
+    used to win over the one in `/@name/video/<id>`. It should never
+    have: the screen reading is stitched to this link by what the
+    device happened to have parsed last, while the handle in the
+    address is part of what resolves the video. A page fetch settled
+    it -- a link filed under `@wasabide` belonged to
+    `@atlanticcoastpearl`, which is what the video's own page says.
+
+    Ingest now prefers the address. This corrects the rows stored
+    before it did, reading the address they already hold, so nothing
+    is re-collected and nothing is guessed.
+    """
+    from .links import extract
+
+    fixed = 0
+    for link in session.scalars(
+        select(SharedLink).where(SharedLink.platform == platform)
+    ):
+        said = extract(link.canonical_url or link.raw_text or "").author_handle
+        if said and said != link.author_handle:
+            link.author_handle = said
+            fixed += 1
+    if fixed:
+        session.commit()
+    return fixed
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     """Undo pairings made on time alone. See [undo_window_pairings]."""
     import argparse
@@ -379,11 +409,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="forget Douyin handles attached from a profile visit, not observed",
     )
+    parser.add_argument(
+        "--restore-url-handles",
+        action="store_true",
+        help=(
+            "put back the @handle each TikTok link's own address carries, "
+            "over the one the device read off the screen"
+        ),
+    )
     args = parser.parse_args()
     if not (
         args.undo_time_pairings
         or args.undo_fingerprint_pairings
         or args.drop_attached_handles
+        or args.restore_url_handles
     ):
         parser.error("nothing to do; pass one of the --undo/--drop options")
 
@@ -398,6 +437,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             )
         if args.drop_attached_handles:
             print(f"cleared {drop_attached_handles(session)} attached handle(s)")
+        if args.restore_url_handles:
+            print(f"corrected {restore_url_handles(session)} handle(s) from the address")
 
 
 if __name__ == "__main__":  # pragma: no cover

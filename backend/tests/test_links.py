@@ -118,3 +118,57 @@ def test_share_text_that_says_nothing_yields_nothing():
     said = describe("https://v.douyin.com/SXLSe2Qgzl4/")
     assert said.author_name is None
     assert said.caption is None
+
+
+def test_the_handle_in_the_address_beats_the_one_off_the_screen(client, api_key):
+    """A TikTok URL names its author; a screen reading is a stitch.
+
+    The device sends an `@handle` it read off the feed, and that used
+    to win. A page fetch settled which is right: a link filed under
+    `@wasabide` belonged to `@atlanticcoastpearl`, which is what the
+    video's own page says -- and the address had said so all along.
+    """
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    response = client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                "https://www.tiktok.com/@atlanticcoastpearl/video/7687820515369510629"
+            ),
+            "author_handle": "wasabide",  # what the screen said
+            "shared_at": "2026-09-21T20:16:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    assert response.status_code == 200
+
+    with SessionLocal() as session:
+        link = session.scalars(select(SharedLink)).one()
+        assert link.author_handle == "atlanticcoastpearl"
+
+
+def test_a_douyin_link_still_takes_the_handle_the_device_read(client, api_key):
+    """Douyin addresses carry no handle, so nothing competes there.
+
+    The 抖音号 is read off the profile page and is the only source.
+    """
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.douyin.com/video/7688128736507805041",
+            "author_handle": "70056222078",
+            "shared_at": "2026-09-21T20:16:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    with SessionLocal() as session:
+        assert session.scalars(select(SharedLink)).one().author_handle == "70056222078"

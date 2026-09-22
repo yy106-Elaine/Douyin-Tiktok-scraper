@@ -226,11 +226,26 @@ def ingest_shared_link(
         platform=parsed.platform,
         raw_text=body.raw_text,
         video_id=parsed.video_id,
-        # The device's reading wins over the one extracted from the
-        # URL: a 抖音号 was read off the profile, while a TikTok URL
-        # yields an `@handle`. Only one platform supplies each, so they
-        # never compete for the same row.
-        author_handle=body.author_handle or parsed.author_handle,
+        # The address wins where the address has one.
+        #
+        # This used to be the other way round, on the reasoning that
+        # only one of the two ever supplies a handle: the 抖音号 is
+        # read off a Douyin profile, an `@handle` is parsed out of a
+        # TikTok URL, and they therefore never compete. They do. The
+        # phone reads an `@handle` off the TikTok screen as well, and
+        # it is a screen reading -- stitched to this link by what the
+        # device happened to have parsed last -- while the handle in
+        # `/@name/video/<id>` is part of the address that resolves the
+        # video.
+        #
+        # A page fetch settled it: a link filed under `@wasabide`
+        # belonged to `@atlanticcoastpearl`, which is what the video's
+        # own page says. Same class of error as pairing by time, in
+        # the one field that names a person to contact.
+        #
+        # Douyin URLs carry no handle, so `parsed.author_handle` is
+        # empty there and the device's 抖音号 still wins by default.
+        author_handle=parsed.author_handle or body.author_handle,
         canonical_url=parsed.canonical_url,
         shared_at=shared_at,
         fingerprint=body.fingerprint,
