@@ -54,8 +54,15 @@ def test_empty_state_is_shown_rather_than_a_blank_table(client):
 
 
 def test_captured_posts_appear_with_their_counts(client, api_key):
+    """Under the screen-only chip, which is where a linkless row lives.
+
+    The default listing is one row per link -- see
+    `views.SHOW_SCREEN_ONLY` for why -- and this post has none.
+    """
     _capture(client, api_key)
-    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    body = client.get(
+        "/dashboard?key=test-admin-key&platform=tiktok&show=screen only"
+    ).text
     assert "someuser" in body
     assert "74.9K" in body          # 74,900 rendered compactly
     assert "1,234" in body
@@ -303,7 +310,11 @@ def test_a_display_name_is_not_shown_as_a_handle(client, api_key):
             "payload": {"author_name": "珩舟", "caption": "#短发 #lwl"},
         },
     )
-    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    # No link on this row, so the screen-only listing is where it
+    # appears: the default is one row per link.
+    body = client.get(
+        "/dashboard?key=test-admin-key&platform=douyin&show=screen only"
+    ).text
     assert body.count("珩舟") == 1
 
 
@@ -494,3 +505,50 @@ def test_the_takedown_table_shows_what_the_page_said(client, api_key):
     # The page's own time, not the one decoded from the id.
     assert "2026-09-20 11:09" in body  # 15:09 UTC in America/New_York
     assert "from id?" not in body
+
+
+def test_the_default_listing_is_one_row_per_link(client, api_key):
+    """25 links and 60 screen readings is not 85 videos.
+
+    Listed together they were the same videos twice, with nothing
+    saying which half went with which -- and pairing them by time was
+    what put one video's handle beside another's caption. So links are
+    counted as links, the readings are one chip away with their count,
+    and tomorrow's fetch-by-id joins the two without a guess.
+    """
+    _capture(client, api_key)  # a screen reading, no link
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@elsewhere/video/7301111111111111111",
+            "shared_at": "2026-09-14T18:00:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    default = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "7301111111111111111" in default
+    assert "someuser" not in default
+    # The other half is offered, with its count, rather than dropped.
+    assert "screen only, no link" in default
+
+    screen = client.get(
+        "/dashboard?key=test-admin-key&platform=tiktok&show=screen only"
+    ).text
+    assert "someuser" in screen
+    assert "7301111111111111111" not in screen
+
+
+def test_an_unresolved_link_is_not_hidden_by_that_default(client, api_key):
+    """It has no id yet and is still a link.
+
+    Hiding it would hide work waiting to be done -- the whole point of
+    the "links to resolve" count above the table.
+    """
+    client.post(
+        "/api/links/shared",
+        json={"raw_text": "复制打开抖音 https://v.douyin.com/iRkQwBt/ 复制"},
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "iRkQwBt" in body or "needs resolving" in body

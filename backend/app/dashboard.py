@@ -21,7 +21,7 @@ from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
-from .platforms import filter_policy
+from .platforms import API_PLATFORMS, filter_policy
 from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
 from .relevance import FICTION_STRATUM, HIDDEN
 from .snowflake import derivation_is_verified
@@ -38,7 +38,9 @@ from .views import (
     LINKED_BY_TIME,
     NEEDS_RESOLVING,
     NO_LINK,
+    SHOW_SCREEN_ONLY,
     VideoRow,
+    id_counts,
     page_facts,
     video_rows,
 )
@@ -134,7 +136,38 @@ def dashboard(
     }
     filtered = sum(reasons.values())
 
-    rows = video_rows(session, platform, _ROW_LIMIT, show)
+    # One link is one row, by default.
+    #
+    # Listing the id-bearing rows and the id-less screen readings
+    # together made 85 TikTok rows out of 25 links and 60 readings --
+    # the same videos twice, with nothing saying which half went with
+    # which. The readings are one chip away, counted, and the page
+    # says what it is showing; tomorrow's fetch-by-id is what joins
+    # the two without a guess.
+    #
+    # Only where a link is how an id arrives: YouTube's rows all carry
+    # one from the API, so the split would hide nothing and mean
+    # nothing there.
+    split_by_id = platform not in API_PLATFORMS
+    screen_only = show == SHOW_SCREEN_ONLY
+    # Not `with_id`: that name is already the corpus count above, and
+    # taking it silently emptied every tile on the page.
+    listing = None
+    if split_by_id and not show:
+        listing = True
+    elif split_by_id and screen_only:
+        listing = False
+
+    rows = video_rows(
+        session,
+        platform,
+        _ROW_LIMIT,
+        "" if screen_only else show,
+        with_id=listing,
+    )
+    linked_rows, unlinked_rows = (
+        id_counts(session, platform) if split_by_id else (0, 0)
+    )
     dated = sum(1 for row in rows if row.posted_display)
 
     # Distinct videos in scope, not rows: the phone platforms store one
@@ -161,6 +194,9 @@ def dashboard(
             fiction=fiction,
             firsthand=firsthand,
             show=show,
+            split_by_id=split_by_id,
+            linked_rows=linked_rows,
+            unlinked_rows=unlinked_rows,
             unique=unique,
             day=day,
             three=three,
@@ -565,7 +601,7 @@ def _page(**ctx) -> str:
     policy = filter_policy(platform)
     if policy != "none":
         chips = [
-            review("in scope", ""),
+            review("one row per link", ""),
             # The corpus splits in two, and the split is the point:
             # scripted drama is in scope and is tracked, but it has no
             # author to interview and a channel posting episodes on a
@@ -575,6 +611,13 @@ def _page(**ctx) -> str:
             review("everything", "all"),
             review("excluded", "excluded", ctx["filtered"]),
         ]
+        if ctx["split_by_id"]:
+            # Second in the row, next to the default it is the other
+            # half of: what the phone saw and has no id for yet.
+            chips.insert(
+                1,
+                review("screen only, no link", SHOW_SCREEN_ONLY, ctx["unlinked_rows"]),
+            )
         chips += [
             review(reason, reason, count)
             for reason, count in sorted(ctx["reasons"].items(), key=lambda p: -p[1])
@@ -613,6 +656,19 @@ def _page(**ctx) -> str:
             "on a different search term entirely, so counts across the three "
             "are not comparable.</p>"
         )
+        # No topic filter here, but the id split still applies: this
+        # platform's rows are one-per-link by default too, and the
+        # screen readings have to be reachable from somewhere.
+        if ctx["split_by_id"]:
+            filter_note += (
+                '<div class="chips">'
+                + review("one row per link", "", ctx["linked_rows"])
+                + review(
+                    "screen only, no link", SHOW_SCREEN_ONLY, ctx["unlinked_rows"]
+                )
+                + review("everything", "all")
+                + "</div>"
+            )
 
     return f"""<!doctype html>
 <html lang="en"><head>

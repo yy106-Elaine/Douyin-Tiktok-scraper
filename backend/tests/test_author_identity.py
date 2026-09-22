@@ -66,7 +66,11 @@ def test_both_appear_in_the_dashboard(client, api_key):
             "caption": "我和女朋友的日常，我们是拉拉",
         },
     )
-    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    # Screen-only, so under that chip: the default listing is one row
+    # per link, and this row has none. See `views.SHOW_SCREEN_ONLY`.
+    body = client.get(
+        "/dashboard?key=test-admin-key&platform=tiktok&show=screen only"
+    ).text
     assert "leinliv" in body
     assert "lei n liv" in body
     assert "@handle" in body

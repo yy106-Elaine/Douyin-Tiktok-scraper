@@ -206,6 +206,20 @@ SHOW_EXCLUDED = "excluded"
 #: `app.relevance.FICTION_STRATUM`.
 SHOW_FICTION = "fiction only"
 SHOW_FIRSTHAND = "firsthand"
+#: The rows with no video id, which the default view leaves out.
+#:
+#: One link is one video, deliberately copied, with an id that can be
+#: re-checked. A screen reading with no link is an observation of
+#: something the phone saw; until a link or a page attaches an id to
+#: it, it is not a video the study can follow.
+#:
+#: They used to be listed together, and on TikTok that made 85 rows
+#: out of 25 links and 60 screen readings -- the same videos, twice,
+#: with nothing saying which half belonged to which. Pairing them by
+#: time was what put one video's handle beside another's caption, so
+#: the answer is not to guess again but to count links as links and
+#: fetch the content by id, which needs no guess at all.
+SHOW_SCREEN_ONLY = "screen only"
 
 
 def in_scope_filter(model, platform: str):
@@ -310,7 +324,11 @@ def daily_counts(
 
 
 def video_rows(
-    session: Session, platform: str, limit: int, show: str = ""
+    session: Session,
+    platform: str,
+    limit: int,
+    show: str = "",
+    with_id: bool | None = None,
 ) -> list[VideoRow]:
     """Merged rows for one platform, most recently seen first.
 
@@ -319,6 +337,16 @@ def video_rows(
     reason to review that category on its own. Reviewing by category is
     the point -- a filter is only worth trusting once someone has read
     what it removed, and reading 500 mixed rows is not reading.
+
+    `with_id` asks for one side of a different split: True for the
+    videos the study can follow, False for the screen readings that
+    have nothing to follow, None for both. See `SHOW_SCREEN_ONLY`.
+
+    "Can follow" is not "has an id". A link copied and not yet
+    resolved has no id and is still a link -- hiding it would hide
+    work waiting to be done -- and a row whose id was read off the
+    screen has no link and is still followable. So the test is: an id,
+    or a link, or both.
     """
     registered = PLATFORM_TABLES.get(platform)
     if registered is None:
@@ -379,7 +407,33 @@ def video_rows(
     # merge is the most recent reading of that video.
     rows.sort(key=lambda row: row.when, reverse=True)
     merged = _collapse_repeats(_one_row_per_video(rows))
+    if with_id is not None:
+        merged = [row for row in merged if _followable(row) is with_id]
     return _newest_first(_with_page_facts(session, merged))[:limit]
+
+
+def _followable(row: VideoRow) -> bool:
+    """Whether this row is a video the study can go back to.
+
+    An id, or a link that will give one. Everything else is a reading
+    of something the phone had on screen, which may well be a real
+    video -- it just cannot be re-checked, exported with a URL, or
+    fetched by id, so it is not one row of the corpus yet.
+    """
+    return bool(row.video_id) or row.state != NO_LINK
+
+
+def id_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, int]:
+    """In-scope rows (with an id, without one), after merging.
+
+    Counted through the same merge the table uses, because the answer
+    has to be the number of rows the other view would show -- two
+    separately-written counts is how the dashboard and the export
+    drifted apart before.
+    """
+    rows = video_rows(session, platform, limit=cap)
+    linked = sum(1 for row in rows if _followable(row))
+    return linked, len(rows) - linked
 
 
 def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
