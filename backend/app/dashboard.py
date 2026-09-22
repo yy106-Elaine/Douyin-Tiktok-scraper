@@ -930,7 +930,7 @@ def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
     """
     if not items:
         return (
-            '<tr><td colspan="11" class="empty">No links have been re-checked yet. '
+            '<tr><td colspan="12" class="empty">No links have been re-checked yet. '
             "Run <code>python -m app.recheck</code>.</td></tr>"
         )
 
@@ -979,6 +979,10 @@ def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
             f'{escape(local(published).strftime("%Y-%m-%d %H:%M")) if published else "—"}'
             f"{published_note}</td>"
             f"{_lifetime_cell(finding)}"
+            # When this video entered the watch. A lifetime is bounded
+            # below by it: a video first checked today cannot be shown
+            # to have survived a week, whatever its publication date.
+            f'<td class="when">{escape(local(finding.first_checked_at).strftime("%m-%d %H:%M")) if finding.first_checked_at else "—"}</td>'
             f'<td class="when">{escape(local(finding.last_alive_at).strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
             f'<td class="when">{escape(local(finding.first_gone_at).strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
             f'<td class="when">{escape(local(finding.last_checked_at).strftime("%m-%d %H:%M")) if finding.last_checked_at else "—"}</td>'
@@ -1106,7 +1110,8 @@ disappeared somewhere between them, and nothing in the data says where.</p>
 <thead><tr>
 <th>Outcome</th><th>Video ID</th><th>Display name</th><th>@handle</th>
 <th>Caption</th><th>Published</th>
-<th>Lifetime</th><th>Last alive</th><th>First gone</th><th>Last checked</th>
+<th>Lifetime</th><th>First checked</th><th>Last alive</th><th>First gone</th>
+<th>Last checked</th>
 <th class="n">Checks</th>
 </tr></thead>
 <tbody>{_finding_rows(ctx["items"], ctx["facts"])}</tbody>

@@ -41,9 +41,8 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .browser import VIDEO_URL as BROWSER_VIDEO_URL, DEFAULT_PROFILE, open_browser
+from .browser import HOMES, PROFILES, open_browser
 from .clock import now as utc_now
-from .douyin_page import file_urls
 from .models import WebVideo
 
 #: Seconds between videos. Same reasoning as everywhere else here: a
@@ -52,11 +51,16 @@ from .models import WebVideo
 #: multi-megabyte fetches.
 PAUSE_SECONDS = 3.0
 
-#: Where the copies go by default. Deliberately outside the
-#: repository: this is other people's video, it is not ours to
-#: publish, and a folder inside a git checkout is one `git add -A`
-#: away from being pushed.
-DEFAULT_DIR = Path.home() / "Documents" / "douyin-videos"
+#: Where the copies go by default, one folder per platform inside
+#: one parent. Deliberately outside the repository: this is other
+#: people's video, it is not ours to publish, and a folder inside a
+#: git checkout is one `git add -A` away from being pushed.
+DEFAULT_ROOT = Path.home() / "Documents" / "collected-videos"
+
+
+def default_dir(platform: str) -> Path:
+    return DEFAULT_ROOT / platform
+
 
 #: Below this, whatever came back is not a video. An error page, a
 #: redirect stub and a truncated response all land here.
@@ -86,7 +90,9 @@ def looks_like_video(blob: bytes) -> bool:
     return b"ftyp" in head or head.startswith(b"\x1aE\xdf\xa3")  # mp4 / webm
 
 
-def wanted(session: Session, redownload: bool = False) -> list[WebVideo]:
+def wanted(
+    session: Session, platform: str = "douyin", redownload: bool = False
+) -> list[WebVideo]:
     """Videos whose page we have read and whose file we do not hold.
 
     A row whose file is recorded but missing from disk comes back:
@@ -94,7 +100,9 @@ def wanted(session: Session, redownload: bool = False) -> list[WebVideo]:
     to run this again rather than to repair the database by hand.
     """
     rows = session.scalars(
-        select(WebVideo).where(WebVideo.error.is_(None)).order_by(WebVideo.video_id)
+        select(WebVideo)
+        .where(WebVideo.error.is_(None), WebVideo.platform == platform)
+        .order_by(WebVideo.video_id)
     ).all()
     if redownload:
         return list(rows)
@@ -136,7 +144,9 @@ def save(directory: Path, video_id: str, blob: bytes) -> Path:
     return final
 
 
-def fetch_one(browser, video_id: str) -> tuple[bytes | None, str | None]:
+def fetch_one(
+    browser, video_id: str, site=None, handle: str | None = None
+) -> tuple[bytes | None, str | None]:
     """The video's bytes, or why there are none.
 
     The id is checked before anything is downloaded. Douyin answers a
@@ -146,14 +156,17 @@ def fetch_one(browser, video_id: str) -> tuple[bytes | None, str | None]:
     videos filed under the ids of the removed ones, which is worse
     than a gap.
     """
-    page_url = BROWSER_VIDEO_URL.format(video_id=video_id)
+    from .fetch_videos import SITES
+
+    site = site or SITES["douyin"]
+    page_url = site.page_url(video_id, handle)
     read = browser.read(page_url)
     if read.wall:
         return None, "wall"
     if read.fetched.error:
         return None, read.fetched.error
 
-    urls = file_urls(read.fetched.payloads, video_id=video_id)
+    urls = site.file_urls(read.fetched.payloads, video_id=video_id)
     if not urls:
         return None, "no file address for this id"
 
@@ -177,14 +190,22 @@ def run(
     browser,
     pause_seconds: float = PAUSE_SECONDS,
     on_progress=None,
+    site=None,
+    handle_for: dict[str, str] | None = None,
 ) -> dict[str, int]:
+    handle_for = handle_for or {}
     report = {"saved": 0, "failed": 0, "bytes": 0}
     total = len(rows)
     for index, row in enumerate(rows, start=1):
         if index > 1 and pause_seconds:
             time.sleep(pause_seconds)
 
-        blob, error = fetch_one(browser, row.video_id)
+        blob, error = fetch_one(
+            browser,
+            row.video_id,
+            site,
+            handle_for.get(row.video_id) or row.author_handle,
+        )
         if blob is None:
             record(session, row, None, None, error)
             report["failed"] += 1
@@ -201,7 +222,9 @@ def run(
     return report
 
 
-def write_manifest(session: Session, directory: Path) -> Path:
+def write_manifest(
+    session: Session, directory: Path, platform: str = "douyin"
+) -> Path:
     """A CSV beside the files, so the folder is readable on its own.
 
     The database is the record; this is for looking at the folder in
@@ -214,7 +237,7 @@ def write_manifest(session: Session, directory: Path) -> Path:
     path = directory / "manifest.csv"
     rows = session.scalars(
         select(WebVideo)
-        .where(WebVideo.local_path.isnot(None))
+        .where(WebVideo.local_path.isnot(None), WebVideo.platform == platform)
         .order_by(WebVideo.posted_on)
     ).all()
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -233,24 +256,44 @@ def write_manifest(session: Session, directory: Path) -> Path:
                 row.author_name or "",
                 row.author_handle or "",
                 (row.caption or "").replace("\n", " "),
-                BROWSER_VIDEO_URL.format(video_id=row.video_id),
+                _watch_url(row),
             ])
     return path
+
+
+def _watch_url(row: WebVideo) -> str:
+    """Where a reader can go and look at this video, while it lasts."""
+    from .fetch_videos import SITES
+
+    site = SITES.get(row.platform or "douyin", SITES["douyin"])
+    return site.page_url(row.video_id, row.author_handle)
 
 
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
+    from .fetch_videos import SITES, handles
+
     parser = argparse.ArgumentParser(
-        description="Download a copy of each collected Douyin video."
+        description="Download a copy of each collected video."
     )
     parser.add_argument("--apply", action="store_true", help="actually download")
     parser.add_argument("--limit", type=int, default=None, help="stop after N videos")
     parser.add_argument(
-        "--dir", type=Path, default=DEFAULT_DIR, help=f"where to put them (default {DEFAULT_DIR})"
+        "--platform", default="douyin", choices=sorted(SITES),
+        help="which platform's videos to download",
+    )
+    parser.add_argument(
+        "--dir",
+        type=Path,
+        default=None,
+        help=f"where to put them (default {DEFAULT_ROOT}/<platform>)",
     )
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS)
-    parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
+    parser.add_argument(
+        "--profile", type=Path, default=None,
+        help="browser profile directory; defaults to one per platform",
+    )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
         "--redownload",
@@ -266,10 +309,13 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     args = parser.parse_args()
+    site = SITES[args.platform]
+    directory = args.dir or default_dir(args.platform)
+    profile = args.profile or PROFILES[args.platform]
 
     init_db()
     with SessionLocal() as session:
-        rows = wanted(session, redownload=args.redownload)
+        rows = wanted(session, args.platform, redownload=args.redownload)
 
         if args.skip_gone:
             from .recheck import disappeared
@@ -285,12 +331,13 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
         if not rows:
             print("nothing to download. Run app.fetch_videos first if this is zero.")
-            write_manifest(session, args.dir)
+            write_manifest(session, directory, args.platform)
             return
 
         if not args.apply:
             print(
-                f"{len(rows):,} video(s) to download into {args.dir}.\n"
+                f"{len(rows):,} {args.platform} video(s) to download "
+                f"into {directory}.\n"
                 "Add --apply to fetch them."
             )
             return
@@ -299,26 +346,40 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             print(f"[{done}/{total}] {outcome}", flush=True)
 
         with open_browser(
-            profile=args.profile, headless=args.headless, pause_seconds=0
+            profile=profile,
+            headless=args.headless,
+            pause_seconds=0,
+            platform=args.platform,
         ) as browser:
+            browser.read(HOMES[args.platform], settle_seconds=1.0)
             if not browser.is_signed_in():
-                raise SystemExit(
-                    "Not signed in. Run: ./.venv/bin/python -m app.login"
+                message = (
+                    "Not signed in. Run: ./.venv/bin/python -m app.login "
+                    f"--platform {args.platform}"
                 )
+                # Douyin serves a download wall to a request with no
+                # session, so there is nothing to fetch without one.
+                # TikTok mostly answers, so this is a warning there.
+                if site.needs_session:
+                    raise SystemExit(message)
+                print(f"{message}\n(carrying on signed out)\n")
+
             report = run(
                 session,
                 rows,
-                args.dir,
+                directory,
                 browser,
                 pause_seconds=args.pause,
                 on_progress=show,
+                site=site,
+                handle_for=handles(session, args.platform),
             )
 
-        manifest = write_manifest(session, args.dir)
+        manifest = write_manifest(session, directory, args.platform)
         print(
             f"\nsaved {report['saved']} "
             f"({report['bytes'] / 1_000_000_000:.2f} GB), {report['failed']} failed\n"
-            f"files in {args.dir}\nmanifest {manifest}"
+            f"files in {directory}\nmanifest {manifest}"
         )
 
 

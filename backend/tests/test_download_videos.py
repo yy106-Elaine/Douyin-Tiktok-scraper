@@ -167,3 +167,95 @@ def test_a_record_with_no_id_of_its_own_offers_no_address():
     assert file_urls([anonymous], video_id="7688128736507805041") == []
     # Still offered when no particular video was asked for.
     assert file_urls([anonymous]) == ["https://cdn/x.mp4"]
+
+
+def _tiktok_record(video_id: str, url: str) -> dict:
+    return {
+        "itemInfo": {
+            "itemStruct": {
+                "id": video_id,
+                "desc": "#Chineselesbian #wlw",
+                "author": {"uniqueId": "rulebreaker2424"},
+                "video": {"playAddr": url},
+            }
+        }
+    }
+
+
+def test_tiktok_videos_download_through_the_same_path(db, tmp_path):
+    """One downloader, two sites.
+
+    The guards are what took work -- the id check, the "is this
+    actually a video" check, the digest -- so TikTok gets them by
+    construction rather than by a second implementation.
+    """
+    from app import download_videos
+    from app.fetch_videos import SITES
+
+    url = "https://cdn.tiktok/play.mp4"
+    video_id = "7687820515369510629"
+    browser = _FakeBrowser([_tiktok_record(video_id, url)], {url: (_MP4, 200)})
+
+    with SessionLocal() as session:
+        session.add(
+            WebVideo(
+                video_id=video_id,
+                platform="tiktok",
+                author_handle="rulebreaker2424",
+                caption="#Chineselesbian #wlw",
+            )
+        )
+        session.add(WebVideo(video_id="7000000000000000000", platform="douyin"))
+        session.commit()
+
+        # Each platform's queue is its own.
+        rows = download_videos.wanted(session, "tiktok")
+        assert [row.video_id for row in rows] == [video_id]
+
+        report = download_videos.run(
+            session, rows, tmp_path, browser, pause_seconds=0,
+            site=SITES["tiktok"],
+        )
+        assert report["saved"] == 1
+        assert (tmp_path / f"{video_id}.mp4").read_bytes() == _MP4
+
+        # Asked for by the address its own handle gives.
+        assert browser.asked == [url]
+        row = session.query(WebVideo).filter_by(video_id=video_id).one()
+        assert len(row.file_sha256) == 64
+
+
+def test_each_platform_keeps_its_own_folder_and_manifest(db, tmp_path):
+    from app import download_videos
+
+    with SessionLocal() as session:
+        session.add(
+            WebVideo(
+                video_id="7687820515369510629",
+                platform="tiktok",
+                local_path=str(tmp_path / "tiktok" / "7687820515369510629.mp4"),
+                file_bytes=200_000,
+            )
+        )
+        session.add(
+            WebVideo(
+                video_id="7000000000000000000",
+                platform="douyin",
+                local_path=str(tmp_path / "douyin" / "7000000000000000000.mp4"),
+                file_bytes=200_000,
+            )
+        )
+        session.commit()
+
+        tiktok = download_videos.write_manifest(
+            session, tmp_path / "tiktok", "tiktok"
+        ).read_text()
+        assert "7687820515369510629" in tiktok
+        assert "7000000000000000000" not in tiktok
+        # And the watch URL is that platform's, not the other's.
+        assert "tiktok.com" in tiktok
+
+    assert download_videos.default_dir("tiktok").name == "tiktok"
+    assert download_videos.default_dir("douyin").parent == (
+        download_videos.default_dir("tiktok").parent
+    )

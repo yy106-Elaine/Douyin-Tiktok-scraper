@@ -65,6 +65,8 @@ class Site:
     page_url: Callable
     #: (video_id, handle) -> the URL to try with no session at all
     share_url: Callable
+    #: (payloads, video_id) -> the addresses of the video file itself
+    file_urls: Callable
     #: Douyin answers an anonymous request with a download wall, so a
     #: session is the only way in. TikTok mostly answers, so a missing
     #: session is worth saying and not worth refusing over.
@@ -81,6 +83,7 @@ SITES: dict[str, Site] = {
         share_url=lambda video_id, handle: douyin_page.VIDEO_URL.format(
             video_id=video_id
         ),
+        file_urls=douyin_page.file_urls,
         needs_session=True,
     ),
     "tiktok": Site(
@@ -88,6 +91,7 @@ SITES: dict[str, Site] = {
         facts=tiktok_page.video_facts,
         page_url=lambda video_id, handle: tiktok_page.video_url(video_id, handle),
         share_url=lambda video_id, handle: tiktok_page.video_url(video_id, handle),
+        file_urls=tiktok_page.file_urls,
         needs_session=False,
     ),
 }
