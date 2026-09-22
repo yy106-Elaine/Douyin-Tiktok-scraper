@@ -145,6 +145,17 @@ class TikTokParser : PostParser {
             "reply target" to Regex("""Reply to @""", RegexOption.IGNORE_CASE),
             "comments header" to Regex("""^\d+(?:[.,]\d+)?[KMB]? comments$""", RegexOption.IGNORE_CASE),
         )
+        /**
+         * Wording that only the share sheet has.
+         *
+         * Matched on entries that are unmistakably the sheet's --
+         * its title, its container, and the actions it alone offers.
+         * 复制链接 is deliberately not here: it is what the run is
+         * there to press.
+         */
+        val SHARE_SHEET_OPEN =
+            Regex("""^(?:[发發]送[给給]|底部工作表|[邀][请請]好友聊天|添加到限[时時][动動][态態]|[创創]建群[组組]|拼接)$""")
+
         val AD_MARKER = Regex("""(?:paid partnership|sponsored|promoted)""", RegexOption.IGNORE_CASE)
         val AI_MARKER = Regex("""AI[- ]generated""", RegexOption.IGNORE_CASE)
 
@@ -216,10 +227,17 @@ class TikTokParser : PostParser {
         return FEEDS.firstOrNull { description.equals(it, ignoreCase = true) }
     }
 
-    override fun skipReason(nodes: List<FlatNode>): String? =
-        COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
+    override fun skipReason(nodes: List<FlatNode>): String? {
+        // The share sheet covers the feed, and it is not a post. Read
+        // as one it stored seven rows whose author was 发送给 -- the
+        // sheet's own title, which arrives under a `tv_title` view id
+        // and so answered the lookup for the display name. Douyin's
+        // parser has had this guard since its own sheet did the same.
+        if (NodeTools.anyMatches(nodes, SHARE_SHEET_OPEN)) return "share sheet open"
+        return COMMENT_SHEET_MARKERS.firstOrNull { (_, pattern) ->
             NodeTools.anyMatches(nodes, pattern)
         }?.let { (name, _) -> "comment sheet open ($name)" }
+    }
 
     override fun parse(nodes: List<FlatNode>): ParsedPost? {
         val post = ParsedPost(

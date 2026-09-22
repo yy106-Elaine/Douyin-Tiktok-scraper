@@ -337,4 +337,24 @@ class TikTokInChineseTest {
         assertNull(ShareSheet.roleOf("合拍"))
         assertNull(ShareSheet.roleOf("举报"))
     }
+
+    @Test
+    fun `the share sheet is not a post`() {
+        // It stored seven rows whose author was 发送给 -- the sheet's
+        // own title, which arrives under a `tv_title` view id and so
+        // answered the lookup for a display name.
+        val sheet = listOf(
+            node(viewId = "com.zhiliaoapp.musically:id/g1i", description = "底部工作表"),
+            node(viewId = "com.zhiliaoapp.musically:id/tv_title", text = "发送给"),
+            node(viewId = "com.zhiliaoapp.musically:id/tv_title", text = "邀请好友聊天"),
+            node(viewId = "com.zhiliaoapp.musically:id/w2u", text = "复制链接"),
+            node(viewId = "com.zhiliaoapp.musically:id/w2a", text = "举报"),
+        )
+        assertEquals("share sheet open", parser.skipReason(sheet))
+    }
+
+    @Test
+    fun `a video with the sheet shut is still read`() {
+        assertNull(parser.skipReason(onePost()))
+    }
 }

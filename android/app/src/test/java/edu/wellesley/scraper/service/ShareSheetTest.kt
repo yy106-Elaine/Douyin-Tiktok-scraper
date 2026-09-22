@@ -2,6 +2,7 @@ package edu.wellesley.scraper.service
 
 import edu.wellesley.scraper.service.ShareSheet.Role
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -126,5 +127,35 @@ class ShareSheetTest {
         assertEquals(true, ProfilePage.isAuthorLink("@someone"))
         assertNull(ShareSheet.roleOf("返回"))
         assertNull(ShareSheet.roleOf("返回顶部"))
+    }
+
+    @Test
+    fun `TikTok's own sheet is recognised as a sheet`() {
+        // Read off a real one. Without these the sheet sitting open
+        // over the feed looked like "no share control", and the run
+        // skipped three videos and stopped having collected nothing.
+        assertEquals(Role.SHEET, ShareSheet.roleOf("发送给"))
+        assertEquals(Role.SHEET, ShareSheet.roleOf("底部工作表"))
+    }
+
+    @Test
+    fun `nothing in TikTok's sheet that acts on the account is pressable`() {
+        // Every other entry on that sheet, verbatim. Each one either
+        // posts as the participant, contacts someone, reports the
+        // author, or leaves the app -- and the run is reaching into
+        // this sheet by label, so the list is pinned here.
+        for (label in listOf(
+            "转发", "举报", "下载", "添加到限时动态",
+            "合拍", "拼接", "创建群组", "添加成员", "邀请好友聊天",
+            "SMS", "Facebook", "Instagram Direct", "Email",
+        )) {
+            assertNotEquals(label, Role.SHARE, ShareSheet.roleOf(label))
+            assertNotEquals(label, Role.COPY_LINK, ShareSheet.roleOf(label))
+        }
+    }
+
+    @Test
+    fun `the entry the run is there to press is still the copy link`() {
+        assertEquals(Role.COPY_LINK, ShareSheet.roleOf("复制链接"))
     }
 }

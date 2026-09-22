@@ -212,14 +212,36 @@ class AutoCapture(private val service: AccessibilityService) {
 
         CaptureStats.onAutoStep("share: ${found.label}")
         tap(found.node)
-        handler.postDelayed(::pressCopyLink, SHEET_OPEN_MILLIS)
+        handler.postDelayed({ pressCopyLink(0) }, SHEET_OPEN_MILLIS)
     }
 
-    private fun pressCopyLink() {
+    /**
+     * Press the entry that puts the link on the clipboard, once it is
+     * there to press.
+     *
+     * Polled rather than looked for once. The single shot was timed
+     * against Douyin, whose sheet is drawn and populated almost
+     * immediately. TikTok's is a friend list -- names, avatars, a
+     * search box -- and it is not finished 1.4 seconds after the tap.
+     * A run on TikTok therefore looked for 复制链接 before it existed,
+     * gave the video up, and left the half-drawn sheet covering the
+     * feed; the next video's share control was underneath it, so the
+     * next two videos failed too and the run stopped having collected
+     * nothing. The sheet was in the failure dump with 复制链接 plainly
+     * in it.
+     *
+     * Polling costs Douyin nothing: the entry is there on the first
+     * look, and the wait only elapses where the entry never appears.
+     */
+    private fun pressCopyLink(tries: Int) {
         if (!keepGoing()) return
 
         val found = ShareSheet.findCopyLink(roots())
         if (found == null) {
+            if (tries < COPY_LINK_TRIES) {
+                handler.postDelayed({ pressCopyLink(tries + 1) }, SHEET_POLL_MILLIS)
+                return
+            }
             CaptureStats.onAutoFailure(
                 "no copy-link entry",
                 ShareSheet.describe(roots()),
@@ -739,6 +761,17 @@ class AutoCapture(private val service: AccessibilityService) {
         // The rest are animation budgets, not throttling: each step
         // has to land after the previous one has finished drawing.
         const val SHEET_OPEN_MILLIS = 1_400L
+
+        /**
+         * How long to keep looking for the copy-link entry, as
+         * (tries x interval) after the first look above.
+         *
+         * ~6s in total. Generous because the cost of being early is
+         * not one lost video but three: the sheet stays open over the
+         * feed, and the failures that follow are the run's own.
+         */
+        const val SHEET_POLL_MILLIS = 400L
+        const val COPY_LINK_TRIES = 12
         const val COPY_MILLIS = 900L
         const val CLIPBOARD_MILLIS = 1_200L
         const val BACK_MILLIS = 700L

@@ -93,11 +93,20 @@ object ShareSheet {
         Regex("""[链連鏈]接已复制"""),
         Regex("""^send to$""", RegexOption.IGNORE_CASE),
         Regex("""^share to$""", RegexOption.IGNORE_CASE),
-        // No Chinese TikTok sheet wording here yet, on purpose. A
-        // guessed `^分享到` read 分享到日常 -- an action on the account,
-        // one of the entries this must never press -- as "a sheet is
-        // open", and the test below caught it. The wording goes in
-        // when a real sheet has been read, not before.
+        // TikTok's sheet, read off a real one at last. A guessed
+        // `^分享到` had to be taken out again because it matched
+        // 分享到日常, an action on the account; these two are the
+        // sheet's own title and its container's description, and
+        // neither is an entry that can be pressed:
+        //
+        //   id=g1i      desc=底部工作表
+        //   id=tv_title text=发送给
+        //
+        // Without them the sheet sitting open over the feed read as
+        // "no share control", the run skipped three videos in a row
+        // and stopped.
+        Regex("""^[发發]送[给給]$"""),
+        Regex("""^底部工作表$"""),
         // The comment panel belongs here for the same reason: it
         // covers the feed, so the share control underneath is not
         // reachable and a swipe scrolls comments. A run found itself
