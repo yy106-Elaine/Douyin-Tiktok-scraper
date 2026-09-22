@@ -283,6 +283,29 @@ def _identity(model):
     return func.coalesce(model.video_id, CaptureEvent.fingerprint)
 
 
+#: How many rows a whole-corpus count will look at. Larger than any
+#: real corpus here; a cap at all is so a runaway table cannot hang
+#: the page.
+CORPUS_CAP = 10_000
+
+
+def corpus(session: Session, platform: str, cap: int = CORPUS_CAP) -> list[VideoRow]:
+    """Every distinct in-scope video on this platform, once each.
+
+    The one population the page describes. It was two: the tiles
+    counted rows in the post tables while the table under them
+    listed merged rows, so a page could say `In the corpus 62` above
+    a table of 85 -- two answers to one question, side by side, and
+    neither of them the number of rows a reader could see.
+
+    Merged, so a video reached by a link and by a screen reading is
+    one video; filtered, so it is the corpus rather than everything
+    collected; and computed once per page, because a second
+    implementation is how the two drifted apart in the first place.
+    """
+    return video_rows(session, platform, limit=cap)
+
+
 def first_seen(session: Session, platform: str) -> dict[str, datetime]:
     """Earliest observation of each distinct video in scope.
 
@@ -314,17 +337,29 @@ def first_seen(session: Session, platform: str) -> dict[str, datetime]:
 
 
 def unique_in_scope(
-    session: Session, platform: str, since: datetime | None = None
+    session: Session,
+    platform: str,
+    since: datetime | None = None,
+    rows: list[VideoRow] | None = None,
 ) -> int:
-    """Distinct videos in scope, or those first seen since `since`."""
-    earliest = first_seen(session, platform)
+    """Distinct videos in scope, or those first seen since `since`.
+
+    Over the same merged population the table lists -- see [corpus].
+    `rows` lets a page compute that population once and ask several
+    questions of it.
+    """
+    held = corpus(session, platform) if rows is None else rows
     if since is None:
-        return len(earliest)
-    return sum(1 for moment in earliest.values() if moment >= since)
+        return len(held)
+    return sum(1 for row in held if row.when >= since)
 
 
 def daily_counts(
-    session: Session, platform: str, days: int = 7, now: datetime | None = None
+    session: Session,
+    platform: str,
+    days: int = 7,
+    now: datetime | None = None,
+    rows: list[VideoRow] | None = None,
 ) -> list[tuple[str, int]]:
     """Distinct in-scope videos first collected on each of the last `days`."""
     moment = now or datetime.utcnow()
@@ -336,8 +371,9 @@ def daily_counts(
     first = last - timedelta(days=days - 1)
     start = start_of_local_day(first)
 
+    held = corpus(session, platform) if rows is None else rows
     counts: dict[str, int] = {}
-    for captured_at in first_seen(session, platform).values():
+    for captured_at in (row.when for row in held):
         if captured_at >= start:
             key = local_date(captured_at).isoformat()
             counts[key] = counts.get(key, 0) + 1
@@ -495,7 +531,12 @@ def _followable(row: VideoRow) -> bool:
     return bool(row.video_id) or row.state != NO_LINK
 
 
-def id_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, int]:
+def id_counts(
+    session: Session,
+    platform: str,
+    cap: int = CORPUS_CAP,
+    rows: list[VideoRow] | None = None,
+) -> tuple[int, int]:
     """In-scope rows (with an id, without one), after merging.
 
     Counted through the same merge the table uses, because the answer
@@ -503,9 +544,9 @@ def id_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, 
     separately-written counts is how the dashboard and the export
     drifted apart before.
     """
-    rows = video_rows(session, platform, limit=cap)
-    linked = sum(1 for row in rows if _followable(row))
-    return linked, len(rows) - linked
+    held = corpus(session, platform, cap) if rows is None else rows
+    linked = sum(1 for row in held if _followable(row))
+    return linked, len(held) - linked
 
 
 @dataclass(frozen=True)
@@ -548,7 +589,12 @@ class Spread:
         return self.top_videos / self.videos
 
 
-def author_spread(session: Session, platform: str, cap: int = 10_000) -> Spread:
+def author_spread(
+    session: Session,
+    platform: str,
+    cap: int = CORPUS_CAP,
+    rows: list[VideoRow] | None = None,
+) -> Spread:
     """The corpus's spread across accounts, over the rows on the page.
 
     Counted through the same merge the table uses, so the number is
@@ -556,13 +602,13 @@ def author_spread(session: Session, platform: str, cap: int = 10_000) -> Spread:
     rather than pooled under one "unknown" account, which would read
     as a thirteenth poster.
     """
-    rows = video_rows(session, platform, limit=cap)
+    held = corpus(session, platform, cap) if rows is None else rows
     counts: dict[str, int] = {}
     # A display name identifies an account well enough to count it --
     # Douyin rows have no 抖音号 until a profile has been read, and
     # leaving them out would make the spread look wider than it is.
     named: set[str] = set()
-    for row in rows:
+    for row in held:
         handle = (row.author_handle or "").lstrip("@").strip()
         who = handle or (row.author_name or "").strip()
         if not who:
@@ -619,8 +665,9 @@ def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
 
 
 #: Filled from a second sighting when the first left them empty. Never
-#: `when` or `video_id`: the first sighting is the one first_seen means,
-#: and the id is what proved the two are the same row.
+#: `when` or `video_id`: `when` is handled separately, because it is
+#: the earliest of the sightings rather than either one's, and the id
+#: is what proved the two are the same row.
 _MERGEABLE = (
     "posted_at",
     "posted_display",
@@ -640,13 +687,22 @@ _MERGEABLE = (
 
 
 def _filled(held: VideoRow, other: VideoRow) -> VideoRow:
-    """`held` with its empty fields taken from `other`. Rows are frozen."""
+    """`held` with its empty fields taken from `other`. Rows are frozen.
+
+    `when` becomes the earlier of the two. Rows arrive newest first,
+    so keeping the held row's would have made every merged row report
+    its most recent sighting as the moment it was seen -- and the
+    counts of what is new in a day are built on this field. A video
+    seen again today is not new today.
+    """
     gaps = {}
     for field in _MERGEABLE:
         if getattr(held, field, None) in (None, ""):
             value = getattr(other, field, None)
             if value not in (None, ""):
                 gaps[field] = value
+    if other.when < held.when:
+        gaps["when"] = other.when
     return replace(held, **gaps) if gaps else held
 
 
@@ -740,7 +796,12 @@ def fiction_ids(session: Session, platform: str) -> set[str]:
     }
 
 
-def corpus_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, int]:
+def corpus_counts(
+    session: Session,
+    platform: str,
+    cap: int = CORPUS_CAP,
+    rows: list[VideoRow] | None = None,
+) -> tuple[int, int]:
     """Videos on the page, and how many of them have an id.
 
     Counted over the merged rows rather than the post table. Once
@@ -748,8 +809,8 @@ def corpus_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[i
     posts reported "8% with a video ID" for a page where every row
     showed one -- a tile disagreeing with the table under it.
     """
-    rows = video_rows(session, platform, cap)
-    return len(rows), sum(1 for row in rows if row.video_id)
+    held = corpus(session, platform, cap) if rows is None else rows
+    return len(held), sum(1 for row in held if row.video_id)
 
 
 def _newest_first(rows: list[VideoRow]) -> list[VideoRow]:

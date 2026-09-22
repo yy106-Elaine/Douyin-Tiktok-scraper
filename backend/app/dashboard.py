@@ -41,6 +41,7 @@ from .views import (
     SHOW_SCREEN_ONLY,
     VideoRow,
     author_spread,
+    corpus,
     id_counts,
     page_facts,
     video_rows,
@@ -80,9 +81,15 @@ def dashboard(
         )
     model, _ = PLATFORM_TABLES[platform]
 
+    # One population, computed once, for every count on this page.
+    # The tiles used to count rows in the post tables while the table
+    # under them listed merged rows: a page could say `In the corpus
+    # 62` above a table of 85. See `views.corpus`.
+    whole = corpus(session, platform)
+
     # Over the rows the page actually shows, not over the post table:
     # with exact-only pairing most ids sit on link rows.
-    posts, with_id = corpus_counts(session, platform)
+    posts, with_id = corpus_counts(session, platform, rows=whole)
     approximate = (
         session.scalar(
             select(func.count()).select_from(model).where(model.counts_approximate.is_(True))
@@ -167,17 +174,17 @@ def dashboard(
         with_id=listing,
     )
     linked_rows, unlinked_rows = (
-        id_counts(session, platform) if split_by_id else (0, 0)
+        id_counts(session, platform, rows=whole) if split_by_id else (0, 0)
     )
     dated = sum(1 for row in rows if row.posted_display)
 
     # Distinct videos in scope, not rows: the phone platforms store one
     # observation per post per day, so a row count there counts days.
     now = datetime.utcnow()
-    unique = unique_in_scope(session, platform)
-    day = unique_in_scope(session, platform, now - timedelta(hours=24))
-    three = unique_in_scope(session, platform, now - timedelta(days=3))
-    per_day = daily_counts(session, platform, days=7, now=now)
+    unique = unique_in_scope(session, platform, rows=whole)
+    day = unique_in_scope(session, platform, now - timedelta(hours=24), rows=whole)
+    three = unique_in_scope(session, platform, now - timedelta(days=3), rows=whole)
+    per_day = daily_counts(session, platform, days=7, now=now, rows=whole)
 
     return HTMLResponse(
         _page(
@@ -198,7 +205,7 @@ def dashboard(
             split_by_id=split_by_id,
             linked_rows=linked_rows,
             unlinked_rows=unlinked_rows,
-            spread=author_spread(session, platform),
+            spread=author_spread(session, platform, rows=whole),
             unique=unique,
             day=day,
             three=three,
@@ -638,7 +645,14 @@ def _page(**ctx) -> str:
     policy = filter_policy(platform)
     if policy != "none":
         chips = [
-            review("one row per link", ""),
+            # With its count, so the two halves visibly add up to the
+            # corpus tile above. Without it the page showed `62` over
+            # a table of 24 rows and nothing said where the rest were.
+            review(
+                "one row per link",
+                "",
+                ctx["linked_rows"] if ctx["split_by_id"] else None,
+            ),
             # The corpus splits in two, and the split is the point:
             # scripted drama is in scope and is tracked, but it has no
             # author to interview and a channel posting episodes on a
