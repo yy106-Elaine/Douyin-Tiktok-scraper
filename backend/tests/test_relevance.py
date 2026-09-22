@@ -846,18 +846,25 @@ class TestPlatformsWithoutATopicFilter:
 
 
 class TestTikTokTrustsTheSearchTerm:
-    """Searched by hand, and the search term names the population.
+    """Searched by hand, but the results do not obey the search.
 
-    This class used to assert the opposite -- that English was
-    excluded -- on the assumption that a TikTok search behaves like a
-    Douyin one. It does not. 女同性恋, 女同 and 拉拉 on the
-    international build return every language at once and almost
-    nothing from this study's population; the terms that work name it
-    directly (`Chinese lesbian`, 中国女同), and what they surface is
-    Chinese and diaspora creators captioning in English.
+    This class first asserted that English was excluded, on the
+    assumption that a TikTok search behaves like a Douyin one. It does
+    not: 女同性恋, 女同 and 拉拉 on the international build return every
+    language at once and almost nothing from this study's population.
+    The terms that work name it directly (`Chinese lesbian`, 中国女同),
+    and what they surface is Chinese and diaspora creators captioning
+    in English -- so the language test went.
 
-    So the language test goes. The collision rules do not: a delivery
-    ad, a divination channel and Japanese yuri are still out.
+    Then it asserted that the search term could be trusted on its own,
+    and a reading of 104 collected captions showed it could not: 19 of
+    them were `#butchfemme #femme4butch #lesbiansoftiktok`, `opposites
+    attract #wlw #wlwcouple`, `Plz laugh #rockclimb #lesbian #wlw` --
+    real lesbian content and a different population. So the caption
+    now has to name both halves, in any language.
+
+    The collision rules never went anywhere: a delivery ad, a
+    divination channel and Japanese yuri are still out.
     """
 
     def _tiktok(self, client, api_key, caption):
@@ -888,23 +895,37 @@ class TestTikTokTrustsTheSearchTerm:
             return [p.relevance for p in session.scalars(select(TikTokPost))]
 
     def test_chinese_with_no_topic_term_is_kept(self, client, api_key):
-        """The change: this used to be excluded as "no topic term"."""
-        self._tiktok(client, api_key, "许愿这次别再丢下我")
-        assert self._relevance() == [None]
+        """Chinese characters are the Chinese half; 别再丢下我 is the other.
 
-    def test_english_is_kept(self, client, api_key):
-        """The change: this used to be excluded as "not in chinese"."""
-        self._tiktok(client, api_key, "my girlfriend and i wlw couple")
-        assert self._relevance() == [None]
-
-    def test_english_with_no_topic_term_is_kept_too(self, client, api_key):
-        """A caption the search chose, saying nothing about itself.
-
-        Neither test the other platforms apply can be met by this
-        text, and on TikTok neither is asked of it.
+        Still not asked for a topic term the way YouTube is -- what
+        it needs is a WLW word, which 女朋友 is and 许愿 is not.
         """
-        self._tiktok(client, api_key, "three years together and counting")
+        self._tiktok(client, api_key, "许愿这次别再丢下我 #拉拉")
         assert self._relevance() == [None]
+
+    def test_english_is_kept_when_it_says_both_halves(self, client, api_key):
+        """The first change: this used to be excluded as "not in chinese"."""
+        self._tiktok(client, api_key, "my chinese girlfriend and i wlw couple")
+        assert self._relevance() == [None]
+
+    def test_english_wlw_with_nothing_chinese_is_a_different_population(
+        self, client, api_key
+    ):
+        """The second change: this used to be kept on the search's word.
+
+        Real lesbian content, and not what this study is of. A rate
+        computed over whatever else the recommender attached to
+        `Chinese lesbian` is a rate for that other thing.
+        """
+        self._tiktok(client, api_key, "opposites attract #wlw #wlwcouple")
+        assert self._relevance() == ["nothing chinese in the caption"]
+
+    def test_a_caption_that_says_nothing_about_itself_is_out(
+        self, client, api_key
+    ):
+        """It was kept while the search term was trusted on its own."""
+        self._tiktok(client, api_key, "three years together and counting")
+        assert self._relevance() == ["nothing chinese in the caption"]
 
     def test_japanese_is_still_excluded(self, client, api_key):
         self._tiktok(client, api_key, "百合カップルの日常です")

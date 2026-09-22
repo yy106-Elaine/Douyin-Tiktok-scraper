@@ -30,7 +30,7 @@ def test_an_id_on_screen_becomes_the_video_url_at_ingest(client, api_key):
         api_key,
         {
             "author_handle": "someuser",
-            "caption": "hello world",
+            "caption": "chinese wlw couple",
             "video_id_hint": "7301234567890123456",
         },
     )
@@ -44,7 +44,7 @@ def test_an_id_on_screen_becomes_the_video_url_at_ingest(client, api_key):
 
 
 def test_no_hint_leaves_the_link_empty(client, api_key):
-    _ingest(client, api_key, {"author_handle": "someuser", "caption": "hello world"})
+    _ingest(client, api_key, {"author_handle": "someuser", "caption": "chinese wlw couple"})
 
     with SessionLocal() as session:
         post = session.query(TikTokPost).one()
@@ -93,7 +93,7 @@ def test_the_dashboard_links_a_passively_found_id(client, api_key):
         api_key,
         {
             "author_handle": "someuser",
-            "caption": "hello world",
+            "caption": "chinese wlw couple",
             "video_id_hint": "7301234567890123456",
         },
     )

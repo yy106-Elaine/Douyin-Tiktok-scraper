@@ -189,7 +189,7 @@ def test_a_resolved_link_gives_its_post_the_handle(client, api_key):
                     "platform_package": "com.zhiliaoapp.musically",
                     "fingerprint": "tiktok::displayonly::hi",
                     "captured_at": "2026-09-14T12:00:00Z",
-                    "payload": {"author_name": "h <3", "caption": "hi"},
+                    "payload": {"author_name": "h <3", "caption": "chinese wlw couple"},
                 }
             ],
         },

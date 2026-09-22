@@ -29,9 +29,25 @@ API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
 #: 货拉拉 delivery ads, and about 6% of what comes back is in scope. The
 #: text has to earn its place, so a topic term is required.
 #:
-#: "search" -- TikTok. Searched by hand, and the search term is what
-#: defines the sample, so neither a topic term nor Chinese characters
-#: are required of the text.
+#: "chinese-wlw" -- TikTok. Searched by hand, so neither a topic term
+#: nor Chinese characters are required in the way the stricter
+#: policies require them. What is required is that the caption name
+#: both halves of the population: something Chinese and something
+#: WLW, in any language.
+#:
+#: Because the search term names the population and the results do
+#: not obey it. `Chinese lesbian` returns `#butchfemme #femme4butch
+#: #lesbiansoftiktok`, `opposites attract #wlw #wlwcouple`, `Plz
+#: laugh #rockclimb #lesbian #wlw` -- real lesbian content, a
+#: different population, and a rate computed over whatever else the
+#: recommender attached to the query is a rate for that other thing.
+#: Of 104 videos collected this way, 19 were of this kind.
+#:
+#: English is fine and always was: what this reaches is largely
+#: diaspora creators captioning in English, so the Chinese half may
+#: be Chinese characters or the words those creators write --
+#: including in Portuguese and Spanish, which the search also
+#: reaches.
 #:
 #: This started as "language", which required Chinese. What that
 #: assumed was a TikTok search behaving like Douyin's, and it does
@@ -63,8 +79,8 @@ API_PLATFORMS: frozenset[str] = frozenset({"youtube"})
 #: mainland-only app needs no language test either.
 FILTER_POLICY: dict[str, str] = {
     "youtube": "full",
-    "tiktok": "search",
-    "tiktok_lite": "search",
+    "tiktok": "chinese-wlw",
+    "tiktok_lite": "chinese-wlw",
     "douyin": "tags",
     "douyin_lite": "tags",
 }

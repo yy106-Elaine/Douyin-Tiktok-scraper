@@ -115,3 +115,72 @@ def test_the_word_for_chinese_in_another_language_counts():
     """
     assert out("pauta da semana: lésbicas chinesas") is None
     assert out("lesbianas chinas") is None
+
+
+def test_a_caption_the_app_cut_off_does_not_hide_a_hand_copied_row(client, api_key):
+    """"re uploadd ...more" is not evidence that a video is off topic.
+
+    A person chose this row one video at a time; the interface then
+    truncated the caption mid-sentence. The carve-out in SQL had
+    always covered it, and the Python pass over merged rows had not
+    -- invisible while every TikTok caption passed anyway.
+    """
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [{
+                "platform_package": "com.zhiliaoapp.musically",
+                "fingerprint": "tt::someuser::cut",
+                "captured_at": "2026-09-14T12:00:00Z",
+                "payload": {"author_handle": "someuser", "caption": "re uploadd ...more"},
+            }],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@someuser/video/7301234567890123456",
+            "shared_at": "2026-09-14T12:00:30Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "re uploadd" in body
+
+
+def test_a_complete_caption_that_fails_the_rule_is_still_excluded(client, api_key):
+    """The carve-out is for text that says nothing, not text that says no.
+
+    A complete caption is the evidence the rule was written to read.
+    Extending the carve-out to cover it would have quietly undone
+    both this rule and Douyin's tag rule, since those rows carry ids
+    too.
+    """
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": "https://www.tiktok.com/@elsewhere/video/7301111111111111111",
+            "shared_at": "2026-09-14T18:00:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/captures/batch",
+        json={
+            "device_id": "pixel-7a",
+            "captures": [{
+                "platform_package": "com.zhiliaoapp.musically",
+                "fingerprint": "tt::elsewhere::full",
+                "captured_at": "2026-09-14T18:00:00Z",
+                "payload": {
+                    "author_handle": "elsewhere",
+                    "caption": "opposites attract #wlw #wlwcouple",
+                },
+            }],
+        },
+        headers={"X-API-Key": api_key},
+    )
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "opposites attract" not in body

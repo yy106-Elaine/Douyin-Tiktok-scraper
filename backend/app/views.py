@@ -17,6 +17,8 @@ is reported alongside the value -- see `posted_source`.
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
@@ -524,15 +526,62 @@ def _in_or_out(rows: list[VideoRow], show: str, policy: str) -> list[VideoRow]:
     recomputed is a row whose caption arrived after that marking: the
     page's caption is the fuller one, and the whole point of fetching
     it was that it is the authority.
+
+    The hand-collected carve-out is applied here too -- see
+    `in_scope_filter`, which carries it in SQL. It had been left out,
+    which nothing showed while every TikTok caption passed anyway;
+    the moment the TikTok rule started asking something of the text,
+    a row a person had chosen by hand could be hidden on a caption
+    the interface had cut off mid-word.
     """
     out = []
     for row in rows:
         reason = row.relevance
         if row.caption and (reason is None or row.state == FROM_PAGE):
             reason = classify(row.caption, policy=policy)
+        if reason in HIDDEN and _chosen_by_hand(row) and _cut_off(row.caption):
+            reason = None
         if _listed(reason, show):
             out.append(replace(row, relevance=reason))
     return out
+
+
+#: What the interface leaves behind when it truncates a caption.
+_CUT_OFF = re.compile(r"(?:\.\.\.|\u2026)\s*(?:more|展开|展開)?\s*$", re.IGNORECASE)
+
+
+def _cut_off(caption: str | None) -> bool:
+    """Whether this caption is the interface's truncation of one.
+
+    The carve-out is for text that is *no evidence*, which is a
+    narrower thing than text that fails the rule. A caption ending in
+    "...more" was cut off mid-sentence by the app and says nothing
+    about what the rest of it contained. A complete caption that
+    simply does not mention the topic is evidence, and it is the
+    evidence the rule was written to read -- the Douyin captions that
+    came back from a #lwl search with no tag in them (上班容易吗,
+    出海打鱼) are complete, and excluding them was a decision, not an
+    accident.
+
+    A caption absent altogether is deliberately not covered. Those
+    rows carry `no text`, they are counted under their own reason,
+    and whether a video with nothing readable belongs in a corpus
+    defined by its text is a question for the study, not for this
+    function to answer quietly.
+    """
+    if not caption:
+        return False
+    return bool(_CUT_OFF.search(caption.strip()))
+
+
+def _chosen_by_hand(row: VideoRow) -> bool:
+    """A phone row someone copied the link of, one video at a time.
+
+    These cost the most to collect and the text is the least
+    trustworthy thing about them. YouTube gets no exemption: the API
+    chose those results, nobody did.
+    """
+    return bool(row.video_id) and row.platform not in API_PLATFORMS
 
 
 def _listed(reason: str | None, show: str) -> bool:
