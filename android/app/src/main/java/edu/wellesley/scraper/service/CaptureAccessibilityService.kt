@@ -266,11 +266,17 @@ class CaptureAccessibilityService : AccessibilityService() {
 
         var parsedAny = false
         for (segment in segments) {
-            val post = parser.parse(segment) ?: continue
+            // Reported and buffered as the same object. The self-check
+            // used to print the post before the feed was attached, so
+            // "Last parsed" said `feed=null` on every run while the
+            // stored row had the tab or the search term on it -- which
+            // reads as the one field failing, and on TikTok that field
+            // is the sampling frame.
+            val post = (parser.parse(segment) ?: continue).copy(feed = feed)
             parsedAny = true
             CaptureStats.onParsed(post)
             CaptureLog.parsed(post)
-            buffer.observe(post.copy(feed = feed))
+            buffer.observe(post)
         }
         if (!parsedAny) {
             CaptureStats.onNothingParsed(nodes)
