@@ -592,20 +592,15 @@ def test_an_account_with_only_a_display_name_is_not_given_an_at_sign(client, api
     still counted -- a Douyin row has no 抖音号 until a profile has
     been read, and dropping those would make the spread look wider
     than it is -- it is just not named.
+
+    Shared as a link, because that is what puts a row in the corpus
+    the spread is about; the share text names the author and quotes
+    the caption, and neither of them is a 抖音号.
     """
-    _capture(
-        client,
-        api_key,
-        {
-            "platform_package": "com.ss.android.ugc.aweme",
-            "fingerprint": "douyin::珩舟::#短发",
-            "captured_at": "2026-09-19T19:50:00Z",
-            "payload": {"author_name": "珩舟", "caption": "#短发 #lwl"},
-        },
+    _douyin_link(
+        client, api_key, "iRkQwBt", "珩舟", "#短发 #lwl", "2026-09-19T19:50:00Z"
     )
-    body = client.get(
-        "/dashboard?key=test-admin-key&platform=douyin&show=screen only"
-    ).text
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
     assert "Busiest account" in body
     assert "@珩舟" not in body
     assert "one account" in body
@@ -660,9 +655,10 @@ def test_the_corpus_tile_equals_the_rows_the_table_can_show(client, api_key):
 
     Two definitions of one word, side by side: the tile counted rows
     in the post table while the table under it listed merged rows and
-    applied the corpus filter to them. Whatever the split between the
-    two halves, the tile has to be the number of videos a reader can
-    reach by following the chips.
+    applied the corpus filter to them. Making the tile agree with the
+    merged rows then made it read 85 over the same table of 24 --
+    consistent and still wrong, because the 61 unjoined screen
+    readings are not 61 more videos. The tile is the table.
     """
     import re
 
@@ -687,7 +683,12 @@ def test_the_corpus_tile_equals_the_rows_the_table_can_show(client, api_key):
 
     linked = int(re.search(r"one row per link (\d+)", body).group(1))
     screen_only = int(re.search(r"screen only, no link (\d+)", body).group(1))
-    assert in_corpus == linked + screen_only == 2
+    # The corpus is the joined half. The screen reading is counted
+    # and reachable, and is not a second video until something joins
+    # it to one -- 1 link plus 1 reading is not 2 videos.
+    assert (linked, screen_only) == (1, 1)
+    assert in_corpus == linked
+    assert "1 screen reading(s) not yet joined" in body
 
 
 def test_the_two_strata_add_up_to_the_corpus(client, api_key):

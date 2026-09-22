@@ -302,6 +302,10 @@ def corpus(session: Session, platform: str, cap: int = CORPUS_CAP) -> list[Video
     one video; filtered, so it is the corpus rather than everything
     collected; and computed once per page, because a second
     implementation is how the two drifted apart in the first place.
+
+    This is both halves. The headline counts take `joined` of it --
+    a screen reading with no link is not a distinct video, and
+    adding those back was the second wrong answer to this question.
     """
     return video_rows(session, platform, limit=cap)
 
@@ -549,6 +553,30 @@ def _followable(row: VideoRow) -> bool:
     return bool(row.video_id) or row.state != NO_LINK
 
 
+def joined(rows: list[VideoRow]) -> list[VideoRow]:
+    """The rows that are known to be one distinct video each.
+
+    A row with an id -- or a link that will give one -- is a video
+    the study can go back to: re-checked, fetched, downloaded, and
+    its author written to. Two such rows carrying the same id are
+    merged before this, so counting them counts videos.
+
+    A screen reading with no link is not. Nothing joins it to
+    anything: it may be one of the linked videos seen again, or the
+    same video read twice under two slightly different captions, and
+    there is no way to tell. Adding those to the linked rows is how
+    25 links and 60 readings became "85 videos" -- the arithmetic
+    the table's one-row-per-link default was introduced to stop, and
+    which then reappeared in the tile above it.
+
+    So they are counted, reachable by their own chip, and reported
+    beside the corpus rather than inside it. Fetch-by-id is what
+    turns one into a corpus row, and until it has run the honest
+    number is the smaller one.
+    """
+    return [row for row in rows if _followable(row)]
+
+
 def id_counts(
     session: Session,
     platform: str,
@@ -563,7 +591,7 @@ def id_counts(
     drifted apart before.
     """
     held = corpus(session, platform, cap) if rows is None else rows
-    linked = sum(1 for row in held if _followable(row))
+    linked = len(joined(held))
     return linked, len(held) - linked
 
 

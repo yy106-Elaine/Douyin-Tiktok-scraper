@@ -42,6 +42,7 @@ from .views import (
     author_spread,
     corpus,
     id_counts,
+    joined,
     page_facts,
     strata,
     video_rows,
@@ -86,10 +87,16 @@ def dashboard(
     # under them listed merged rows: a page could say `In the corpus
     # 62` above a table of 85. See `views.corpus`.
     whole = corpus(session, platform)
+    # And the corpus proper is the joined half of it. Making the
+    # tiles agree with `whole` made them read 85 where the table
+    # showed 24 -- consistent, and the wrong number, because 24
+    # links plus 61 unjoined screen readings is not 85 videos. See
+    # `views.joined`.
+    countable = joined(whole)
 
     # Over the rows the page actually shows, not over the post table:
     # with exact-only pairing most ids sit on link rows.
-    posts, with_id = corpus_counts(session, platform, rows=whole)
+    posts, with_id = corpus_counts(session, platform, rows=countable)
     approximate = (
         session.scalar(
             select(func.count()).select_from(model).where(model.counts_approximate.is_(True))
@@ -114,7 +121,7 @@ def dashboard(
     # The corpus's two strata, over the same merged population as the
     # tiles: counted from the post table they read `firsthand 60` and
     # `scripted drama 2` under a corpus of 85.
-    firsthand, fiction = strata(whole)
+    firsthand, fiction = strata(countable)
 
     reasons = {
         reason: count
@@ -163,10 +170,10 @@ def dashboard(
     # Distinct videos in scope, not rows: the phone platforms store one
     # observation per post per day, so a row count there counts days.
     now = datetime.utcnow()
-    unique = unique_in_scope(session, platform, rows=whole)
-    day = unique_in_scope(session, platform, now - timedelta(hours=24), rows=whole)
-    three = unique_in_scope(session, platform, now - timedelta(days=3), rows=whole)
-    per_day = daily_counts(session, platform, days=7, now=now, rows=whole)
+    unique = unique_in_scope(session, platform, rows=countable)
+    day = unique_in_scope(session, platform, now - timedelta(hours=24), rows=countable)
+    three = unique_in_scope(session, platform, now - timedelta(days=3), rows=countable)
+    per_day = daily_counts(session, platform, days=7, now=now, rows=countable)
 
     return HTMLResponse(
         _page(
@@ -187,7 +194,7 @@ def dashboard(
             split_by_id=split_by_id,
             linked_rows=linked_rows,
             unlinked_rows=unlinked_rows,
-            spread=author_spread(session, platform, rows=whole),
+            spread=author_spread(session, platform, rows=countable),
             unique=unique,
             day=day,
             three=three,
@@ -557,7 +564,18 @@ def _page(**ctx) -> str:
 
     tiles = "".join(
         [
-            _tile("In the corpus", _compact(ctx["unique"]), "unique videos, on topic"),
+            _tile(
+                "In the corpus",
+                _compact(ctx["unique"]),
+                # What is left out is said here rather than left for
+                # a reader to discover by counting the table.
+                "unique videos, on topic"
+                + (
+                    f"; {ctx['unlinked_rows']:,} screen reading(s) not yet joined"
+                    if ctx["split_by_id"] and ctx["unlinked_rows"]
+                    else ""
+                ),
+            ),
             _tile("New in 24 hours", _compact(ctx["day"]), "first seen"),
             _tile("New in 3 days", _compact(ctx["three"]), "first seen"),
             _tile(
