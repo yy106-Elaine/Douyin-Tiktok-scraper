@@ -204,6 +204,31 @@ TAGGED = re.compile(
     re.IGNORECASE,
 )
 
+#: The same word, written as two tags. `#l #e` and `#l#e` are how
+#: this community spells `les` on Douyin -- confirmed by the
+#: researcher against the app, not inferred from the text -- and it
+#: turns up beside the ordinary tags (#瓜蛋摇 #l #e #wlw) as well as
+#: on its own. A caption carrying only this form was being read as
+#: having no community tag at all and excluded.
+#:
+#: Both halves are required. `#l` alone is a letter and `#e` alone is
+#: a letter; only the pair says anything, and asking for the pair is
+#: what keeps this from matching every caption with a stray one-
+#: character tag in it. Order is not fixed -- #wlw #l #e and #l #e
+#: #wlw both occur -- so the two are looked for separately.
+_SPLIT = (
+    re.compile(r"[#＃]\s*l(?![A-Za-z0-9])", re.IGNORECASE),
+    re.compile(r"[#＃]\s*e(?![A-Za-z0-9])", re.IGNORECASE),
+)
+
+
+def tagged(text: str) -> bool:
+    """Whether the caption carries a community tag in any spelling."""
+    if TAGGED.search(text):
+        return True
+    return all(pattern.search(text) for pattern in _SPLIT)
+
+
 #: Kept for `--test` and for reading old exclusions back. The rule
 #: below no longer asks whether a loose token is present, only
 #: whether a tag is: a caption reached by a hashtag search and
@@ -346,7 +371,7 @@ def classify(*parts: object, policy: str = "full") -> str | None:
         # the poster labelled the post.
         if not text.strip():
             return "no text"
-        return None if TAGGED.search(text) else UNTAGGED
+        return None if tagged(text) else UNTAGGED
 
     if policy == "none":
         return None

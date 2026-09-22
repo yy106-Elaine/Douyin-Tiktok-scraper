@@ -1040,3 +1040,43 @@ class TestDouyinWantsTheTagWritten:
         assert not re.search(r"\blwl\b", "LWL出游随拍记录", re.IGNORECASE)
         assert LOOSE_TAG.search("LWL出游随拍记录")
         assert not LOOSE_TAG.search("lesbian")
+
+
+class TestLesWrittenAsTwoTags:
+    """`#l #e` is how this community spells `les` on Douyin.
+
+    Confirmed against the app by the researcher, not inferred from
+    the text. It appears beside the ordinary tags (#瓜蛋摇 #l #e #wlw)
+    and on its own, and a caption carrying only this form was read as
+    having no community tag at all and excluded.
+    """
+
+    def out(self, text):
+        from app.relevance import classify
+
+        return classify(text, policy="tags")
+
+    def test_the_pair_is_a_community_tag(self):
+        assert self.out("你的眼睛比海辽阔#l #e") is None
+        assert self.out("小心了 泡面 #留子日常 #l #e") is None
+        assert self.out("#l#e 今天很开心") is None
+
+    def test_it_counts_beside_the_ordinary_tags_too(self):
+        assert self.out("#瓜蛋摇 #l #e #wlw") is None
+
+    def test_one_half_alone_says_nothing(self):
+        """`#l` is a letter. Only the pair is the word.
+
+        Asking for the pair is what keeps this from admitting every
+        caption with a stray one-character tag in it.
+        """
+        assert self.out("出海打鱼 #l") == "no community tag in the caption"
+        assert self.out("#e 随手拍") == "no community tag in the caption"
+
+    def test_a_longer_tag_starting_with_l_is_not_half_of_it(self):
+        assert self.out("#lol 好笑") == "no community tag in the caption"
+        assert self.out("#e5 #l2 测试") == "no community tag in the caption"
+
+    def test_the_untagged_rule_is_otherwise_unchanged(self):
+        assert self.out("上班容易吗") == "no community tag in the caption"
+        assert self.out("LWL出游随拍记录") == "no community tag in the caption"
