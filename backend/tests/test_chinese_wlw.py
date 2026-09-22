@@ -64,3 +64,54 @@ def test_japanese_is_still_excluded_before_either_mark():
 
 def test_an_empty_caption_is_reported_as_empty_not_as_unchinese():
     assert out("") == "no text"
+
+
+def test_a_kana_decorating_a_latin_hashtag_is_not_japanese():
+    """`#fypシ` is a worldwide TikTok flourish, not a language.
+
+    The kana rule was written for Japanese yuri, where 百合 matches the
+    topic term perfectly. One katakana glued to the end of `fyp`
+    excluded an English caption tagged `#rednote #chinesetimeofmylife`
+    as Japanese -- a Chinese-diaspora row, thrown out for a decoration.
+    """
+    assert out("lmk if it's just me #wlw #twitter #rednote #chinesetimeofmylife #fypシ") is None
+
+
+def test_real_japanese_is_still_japanese():
+    """Kana standing on its own, which is what the rule was for."""
+    assert classify(
+        "中国人レズビアンのツイートが最強すぎて #wlw #おすすめ #レズビアン",
+        policy=POLICY,
+    ) == "japanese"
+    assert classify("百合ヶ浜 かわいい", policy=POLICY) == "japanese"
+
+
+def test_gl_on_tiktok_is_a_wlw_tag_not_a_genre():
+    """A real couple's translated vlog is not scripted drama.
+
+    `#shaorehushuo #wlw #gl #couple #chinese` is posted by the couple
+    in it. The same account's posts were landing in the fiction
+    stratum or not depending on whether `#gl` happened to be in the
+    caption -- and that stratum is what separates "no author to
+    interview" from "an author to interview".
+    """
+    assert out("#shaorehushuo #wlw #gl #couple #chinese") is None
+    assert out("ignoring me 🙄 #wlw #china #gl #китай") is None
+    assert out("Solo quiero ser una de ellas #girlslove #wlw #chinese #parati") is None
+
+
+def test_gl_beside_a_genre_word_is_still_fiction_elsewhere():
+    """On Douyin and YouTube it sits beside 短剧 and means the genre."""
+    assert classify("百合短剧 #gl 双女主", policy="full") == "fiction"
+    assert classify("女同短剧 第3集 双女主", policy="full") == "fiction"
+
+
+def test_the_word_for_chinese_in_another_language_counts():
+    """`pauta da semana: lésbicas chinesas` is the study's subject.
+
+    The search reaches Portuguese, Spanish and French speakers talking
+    about exactly this population, and an English-only spelling list
+    threw them out as having nothing Chinese in them.
+    """
+    assert out("pauta da semana: lésbicas chinesas") is None
+    assert out("lesbianas chinas") is None

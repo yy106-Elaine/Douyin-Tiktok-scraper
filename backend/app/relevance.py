@@ -102,6 +102,17 @@ COMPANION = re.compile(
     re.IGNORECASE,
 )
 
+#: `gl` and `girls love` name the genre on Douyin and YouTube, where
+#: they sit beside 短剧, 双女主 and 百合姬. On TikTok they are simply
+#: how an English caption says "wlw": `#shaorehushuo #wlw #gl #couple
+#: #chinese` is a real couple's translated vlog, posted by the couple,
+#: and the same account's posts were landing in the fiction stratum or
+#: not depending on whether that one tag happened to be there. Since
+#: the stratum is what separates "no author to interview" from "an
+#: author to interview", that mislabel would have removed real people
+#: from the interview frame.
+GENRE_TAG = re.compile(r"\bgl\b|girls?\s*love", re.IGNORECASE)
+
 #: Scripted fiction: short dramas, novels, audio dramas, comics,
 #: edits. Kept in the corpus, not excluded from it -- WLW fiction is
 #: Chinese WLW content and its removal is the same event this study
@@ -113,7 +124,7 @@ COMPANION = re.compile(
 FICTION = re.compile(
     r"短[剧劇]|小[说說]|[广廣]播[剧劇]|有[声聲][书書]|[漫画畫]{2}|[条條]漫|"
     r"[动動]漫|番外|[连連][载載]|完[结結]|全集|合集|"
-    r"\bgl\b|girls?\s*love|bg[文向]|甜[宠寵]|[宠寵]文|"
+    r"bg[文向]|甜[宠寵]|[宠寵]文|"
     r"虐[恋戀]|追妻|重生|穿[书書越]|[总總]裁|替身|豪[门門]|"
     r"第\d+集|ep\s*\d+|[剧劇]情|演[绎繹]|混剪|解[说說]|"
     r"女主|男主|男二|女二|原著",
@@ -151,7 +162,7 @@ HARD: tuple[tuple[str, str], ...] = (
     # search for it returns Japanese yuri content matching the topic
     # term perfectly -- a hundred rows of Vtubers, anime and 百合ヶ浜
     # in one run. Kana is the reliable separator: Chinese uses none.
-    ("japanese", r"[\u3040-\u309f\u30a0-\u30ff]"),
+    ("japanese", r"(?<![0-9A-Za-z])[\u3040-\u309f\u30a0-\u30ff]"),
     ("divination", r"紫微|斗[数數]|命[盘盤]|八字|塔[罗羅]|占卜|六爻|奇[门門]|"
                    r"[风風]水|生肖|[面手][相]|星座運勢|星座运势|[算批]命|"
                    r"[开開]運|改運|改运"),
@@ -222,7 +233,8 @@ LOOSE_TAG = re.compile(r"(?<![A-Za-z])(?:lwl|wlw|les)(?![A-Za-z])", re.IGNORECAS
 #: drift this rule exists to stop.
 CHINESE_MARK = re.compile(
     r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|"
-    r"chinese|china|mandarin|cantonese|[cC]-?drama|"
+    r"chines[ae]?s?|chinoises?|china|mandarin|cantonese|"
+    r"[cC]-?drama|"
     r"[华華]人|中[国國]|中文|[国國][语語]",
     re.IGNORECASE,
 )
@@ -234,7 +246,7 @@ CHINESE_MARK = re.compile(
 #: populations and not this one. They still count when something
 #: else on this list is present, which is the ordinary case.
 WLW_MARK = re.compile(
-    r"lesbian|sapphic|wlw|lwl|girls?\s*love|\bgl\b|\bles\b|"
+    r"l[eé]sb|sapphic|wlw|lwl|girls?\s*love|\bgl\b|\bles\b|"
     r"[女]同|拉拉|百合|女女|蕾[丝絲][边邊]|同性[恋戀]|"
     r"wlwtiktok|femme4femme|butch|femme",
     re.IGNORECASE,
@@ -406,6 +418,8 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     # In the corpus, but labelled: fiction is not excluded, and an
     # analysis that needs real accounts can filter on this.
     if FICTION.search(text):
+        return "fiction"
+    if not marks_required and GENRE_TAG.search(text):
         return "fiction"
     return None
 
