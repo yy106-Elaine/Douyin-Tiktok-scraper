@@ -431,6 +431,15 @@ def video_rows(
     work waiting to be done -- and a row whose id was read off the
     screen has no link and is still followable. So the test is: an id,
     or a link, or both.
+
+    `limit` bounds the rows returned, not the rows read. Bounding the
+    query instead is what made a table headed `one row per link 93`
+    end at 79: the phone stores one observation per post per day, so
+    six days of collection is several times as many post rows as
+    videos, and taking the newest 200 of those before merging simply
+    dropped the videos whose most recent sighting fell outside them.
+    The cut has to come after the merge, or it cuts observations
+    while appearing to cut videos.
     """
     registered = PLATFORM_TABLES.get(platform)
     if registered is None:
@@ -470,7 +479,7 @@ def video_rows(
         statement = statement.where(in_scope)
     rows = [
         _row_from_post(post, platform, methods.get(post.capture_event_id))
-        for post in session.scalars(statement.limit(limit))
+        for post in session.scalars(statement.limit(CORPUS_CAP))
     ]
 
     # Only the links that no post row already accounts for: a paired
@@ -483,7 +492,7 @@ def video_rows(
             SharedLink.matched_capture_id.is_(None),
         )
         .order_by(SharedLink.shared_at.desc())
-        .limit(limit)
+        .limit(CORPUS_CAP)
     )
     rows.extend(_row_from_link(link) for link in unpaired)
 

@@ -721,3 +721,31 @@ def test_the_two_strata_add_up_to_the_corpus(client, api_key):
     firsthand = int(re.search(r"firsthand (\d+)", body).group(1))
     fiction = int(re.search(r"scripted drama (\d+)", body).group(1))
     assert firsthand + fiction == in_corpus
+
+
+def test_the_table_is_not_cut_short_by_the_day_it_was_seen(client, api_key):
+    """`one row per link 93` over a table ending at 79.
+
+    The row limit was applied to the query, before merging. The phone
+    stores one observation per post per day, so six days of
+    collection is several times as many post rows as videos, and
+    taking the newest N of those dropped whole videos -- the ones
+    whose most recent sighting fell outside the window -- while
+    looking like a limit on videos.
+    """
+    from app.db import SessionLocal
+    from app.views import video_rows
+
+    # One video seen on three days, and one seen only on the first.
+    # Read three rows deep, the second video is invisible; read as
+    # videos, there are two.
+    for day in ("19", "20", "21"):
+        _douyin_link(
+            client, api_key, "seenagain", "A", "#lwl a", f"2026-09-{day}T10:00:00Z"
+        )
+    _douyin_link(
+        client, api_key, "seenonce", "B", "#lwl b", "2026-09-19T09:00:00Z"
+    )
+
+    with SessionLocal() as session:
+        assert len(video_rows(session, "douyin", 3)) == 2
