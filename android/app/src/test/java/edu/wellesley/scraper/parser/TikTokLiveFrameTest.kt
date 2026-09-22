@@ -215,9 +215,16 @@ class TikTokLiveFrameTest {
     }
 
     @Test
-    fun `the search query on screen becomes the sampling frame`() {
+    fun `the strip on screen is TikTok's suggestion, not the query`() {
+        // This frame is a real capture, and "wlw relationship
+        // moments" was taken for the search that produced it until a
+        // run proved otherwise: `Chinese lesbian` was the only term
+        // typed and the rows came back under 14 different phrases,
+        // none of them that one. TikTok writes the phrase per video
+        // from the video's own content, so it is kept, prefixed, and
+        // never read as the sampling frame.
         assertEquals(
-            "search:wlw relationship moments",
+            "anchor:wlw relationship moments",
             parser.feed(twoVideoFrame),
         )
     }
