@@ -27,7 +27,12 @@ from .clock import local, local_date, start_of_local_day
 from .links import describe, extract
 from .models import SharedLink, WebAuthor, WebVideo
 from .platforms import API_PLATFORMS
-from .relevance import FICTION_STRATUM, HIDDEN
+from .platforms import filter_policy
+from .relevance import (
+    FICTION_STRATUM,
+    HIDDEN,
+    classify,
+)
 from .parsers import PLATFORM_TABLES
 from .snowflake import posted_at_from_video_id
 
@@ -194,6 +199,27 @@ def _row_from_link(link: SharedLink) -> VideoRow:
         author_name=said.author_name,
         caption=said.caption,
         feed=None,
+        # Marked here, because nothing else will.
+        #
+        # The corpus filter runs as a SQL condition over the post
+        # tables, and a link that never paired to a post has no row
+        # there -- so these bypassed it entirely. That was invisible
+        # while the default listing was post-shaped; once it became
+        # one row per link, the filter was reaching almost nothing on
+        # the phone platforms. A Douyin rule written to exclude
+        # captions like LWL出游随拍记录 re-marked none of them, because
+        # every one of them was on a link row.
+        #
+        # Only where there is text to read. A link whose share blob
+        # carried no caption says nothing about its topic, and
+        # `classify("")` answers "no text" -- which is an exclusion.
+        # Applied here that would have hidden every unresolved link,
+        # which is precisely the work the page exists to report.
+        relevance=(
+            classify(said.caption, policy=filter_policy(link.platform))
+            if said.caption
+            else None
+        ),
     )
 
 
@@ -406,10 +432,56 @@ def video_rows(
     # Merged newest-sighting-first, so the row kept as the base of a
     # merge is the most recent reading of that video.
     rows.sort(key=lambda row: row.when, reverse=True)
-    merged = _collapse_repeats(_one_row_per_video(rows))
+    merged = _with_page_facts(session, _collapse_repeats(_one_row_per_video(rows)))
+    merged = _in_or_out(merged, show, filter_policy(platform))
     if with_id is not None:
         merged = [row for row in merged if _followable(row) is with_id]
-    return _newest_first(_with_page_facts(session, merged))[:limit]
+    return _newest_first(merged)[:limit]
+
+
+def _in_or_out(rows: list[VideoRow], show: str, policy: str) -> list[VideoRow]:
+    """Apply the corpus filter to the rows SQL could not reach.
+
+    The filter is a condition over the post tables, so a link that
+    never paired to a post was never subject to it, and a caption the
+    video's own page supplied was never re-read against it. Both were
+    invisible while the listing was post-shaped. Once it became one
+    row per link, the filter was reaching almost nothing on the phone
+    platforms: a Douyin rule written to exclude captions like
+    LWL出游随拍记录 re-marked none of them, because every one of them
+    was on a link row.
+
+    Post rows keep the reason stored against them -- it was computed
+    from the caption and the description together, and recomputing
+    from the caption alone would lose half the evidence. What is
+    recomputed is a row whose caption arrived after that marking: the
+    page's caption is the fuller one, and the whole point of fetching
+    it was that it is the authority.
+    """
+    out = []
+    for row in rows:
+        reason = row.relevance
+        if row.caption and (reason is None or row.state == FROM_PAGE):
+            reason = classify(row.caption, policy=policy)
+        if _listed(reason, show):
+            out.append(replace(row, relevance=reason))
+    return out
+
+
+def _listed(reason: str | None, show: str) -> bool:
+    """Whether a row with this reason belongs in this listing."""
+    hidden = reason in HIDDEN
+    if show == SHOW_ALL:
+        return True
+    if show == SHOW_EXCLUDED:
+        return hidden
+    if show == SHOW_FICTION:
+        return not hidden and reason == FICTION_STRATUM
+    if show == SHOW_FIRSTHAND:
+        return not hidden and reason != FICTION_STRATUM
+    if show:
+        return reason == show
+    return not hidden
 
 
 def _followable(row: VideoRow) -> bool:

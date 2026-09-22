@@ -609,3 +609,47 @@ def test_an_account_with_only_a_display_name_is_not_given_an_at_sign(client, api
     assert "Busiest account" in body
     assert "@珩舟" not in body
     assert "one account" in body
+
+
+def test_the_filter_reaches_rows_that_never_became_posts(client, api_key):
+    """The corpus filter is a SQL condition over the post tables.
+
+    A link that never paired to a post has no row there, so it was
+    never subject to it -- invisible while the listing was
+    post-shaped, and almost total once the default became one row per
+    link. A Douyin rule written to exclude captions like
+    LWL出游随拍记录 re-marked none of them: every one was on a link row.
+    """
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                "【LWL出游随拍记录的作品】LWL出游随拍记录 "
+                "https://www.douyin.com/video/7688128736507805041"
+            ),
+            "shared_at": "2026-09-21T20:15:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+    client.post(
+        "/api/links/shared",
+        json={
+            "raw_text": (
+                "【35的作品】再来一次 我不会再与你相恋#wlw "
+                "https://www.douyin.com/video/7687820515369510629"
+            ),
+            "shared_at": "2026-09-21T20:16:00Z",
+        },
+        headers={"X-API-Key": api_key},
+    )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
+    assert "再来一次" in body
+    assert "LWL出游随拍记录" not in body
+
+    # Hidden, not deleted: it is one click away with its reason.
+    excluded = client.get(
+        "/dashboard?key=test-admin-key&platform=douyin"
+        "&show=community term, not written as a tag"
+    ).text
+    assert "LWL出游随拍记录" in excluded
