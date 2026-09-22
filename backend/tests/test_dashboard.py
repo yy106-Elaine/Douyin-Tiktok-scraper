@@ -650,6 +650,6 @@ def test_the_filter_reaches_rows_that_never_became_posts(client, api_key):
     # Hidden, not deleted: it is one click away with its reason.
     excluded = client.get(
         "/dashboard?key=test-admin-key&platform=douyin"
-        "&show=community term, not written as a tag"
+        "&show=no community tag in the caption"
     ).text
     assert "LWL出游随拍记录" in excluded

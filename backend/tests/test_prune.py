@@ -113,7 +113,13 @@ def test_the_rows_are_written_down_before_they_go(client, api_key, tmp_path):
 
 
 def test_a_platform_with_no_topic_filter_is_never_pruned(client, api_key):
-    """Douyin is sampled from community hashtags: the search is the filter."""
+    """Douyin's rows are hidden when excluded, never deleted.
+
+    It does have one rule now -- a caption must carry a community tag
+    -- but that rule is a day old and has been rewritten twice.
+    Marking is reversible and deleting is not, so prune leaves this
+    platform alone whatever the filter says.
+    """
     client.post(
         "/api/captures/batch",
         json={

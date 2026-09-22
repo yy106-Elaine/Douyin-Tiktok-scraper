@@ -926,13 +926,16 @@ def test_the_policy_for_an_unknown_platform_is_the_strictest_one():
 
 
 class TestDouyinWantsTheTagWritten:
-    """`#lwl` is a label the poster attached. `lwl` is a string.
+    """The tag in the caption is the evidence, and the only evidence.
 
-    Douyin ran no topic filter at all, on the argument that the
-    community hashtags are the filter. That argument survives; this
-    is it taken one step further. The bare token turns up as an
-    account name and inside unrelated titles, and every one of these
-    captions was in the corpus.
+    The sample is drawn by searching the community's own hashtags, so
+    a caption that came back from a #lwl search carrying no tag got
+    there by matching something else. On this corpus that something
+    else is the poster's display name: accounts called LWL, lwl6依然,
+    ▓ Lwl . ▓, whose captions are 上班容易吗, 出海打鱼, 为什么啊,
+    延吉海兰台.
+
+    Every caption below is a real one.
     """
 
     def _out(self, caption: str) -> str | None:
@@ -940,45 +943,74 @@ class TestDouyinWantsTheTagWritten:
 
         return classify(caption, policy="tags")
 
-    def test_the_token_alone_is_not_the_topic(self):
+    def test_a_caption_with_no_tag_is_out(self):
         from app.relevance import UNTAGGED
 
         for caption in (
+            "上班容易吗",
+            "出海打鱼",
+            "为什么啊",
+            "延吉海兰台",
+            "秋风一吹又老一岁，时间从等过谁",
             "LWL出游随拍记录",
-            "LWL回顾经典，百听不厌",
             "威龙LWL6666668888",
         ):
             assert self._out(caption) == UNTAGGED, caption
 
-    def test_written_as_a_tag_it_is(self):
+    def test_tags_that_are_not_the_community_s_do_not_count(self):
+        """A hashtag is not a community hashtag.
+
+        These captions are tagged, thoroughly, and about something
+        else entirely.
+        """
+        from app.relevance import UNTAGGED
+
         for caption in (
+            "#回顾经典百听不厌",
+            "#出游随拍记录",
+            "#我要上热门 #青岛啤酒出货 #桂花盛开的季节",
+        ):
+            assert self._out(caption) == UNTAGGED, caption
+
+    def test_the_community_tag_keeps_the_row(self):
+        for caption in (
+            "#短发 #lwl",
+            "不必看清我的脸 我能给你的只有感觉 #lwl #情侣",
+            "lwl 因为有你在身边#lwl #情侣日常",
+            "有劲儿！#蔡徐坤 #oldshool #hiphop #dancechallenge #lwl",
+            "一米六三小个子穿搭 #lwl#穿搭",
+            "你最忘不了哪一任 #lwl #手势舞 #少年感",
             "许愿这次别再丢下我#lwl#lwl",
-            "今夜的风悄悄月悄悄 吻你的眉梢#lwl",
-            "如果我想让你只属于我，你会不会觉得我太自私 #lwl #萌t",
             "再来一次 我不会再与你相恋#wlw",
-            "维持现状就很好呢 说清楚就不可爱了#lwl",
+            "如果我想让你只属于我，你会不会觉得我太自私 #lwl #萌t",
+            "依旧超越 #shyel摇 #wlw",
+            "出现#卡点#lwl",
         ):
             assert self._out(caption) is None, caption
 
-    def test_a_caption_about_the_topic_keeps_the_row(self):
-        """LWL第一次追女孩子到手了 is an account named LWL, writing
-        about pursuing a girl. The tag rule must not take it."""
-        assert self._out("LWL第一次追女孩子到手了") is None
-        assert self._out("LWL 和女朋友的日常") is None
+    def test_the_name_never_rescues_a_caption(self):
+        """An account called LWL posting about a girl is still out.
 
-    def test_a_caption_with_no_token_is_untouched(self):
-        """Nothing else runs on this platform: no language test, no
-        topic term required. The search is still the filter."""
-        assert self._out("早安各位小主，挤公交上班") is None
-        assert self._out("我和女朋友的日常") is None
+        This reverses an earlier reading of the rule, deliberately:
+        第一次追女孩子到手了 was kept on the grounds that its caption is
+        about the topic even though the tag is missing. Applied
+        strictly, the tag is what makes a post the community's, and a
+        caption that does not carry one is not in the sample -- which
+        is also the only version of the rule that can be stated
+        without reference to who posted it.
+        """
+        assert self._out("第一次追女孩子 到手了") is not None
+
+    def test_an_empty_caption_is_its_own_reason(self):
         assert self._out("") == "no text"
 
-    def test_the_boundary_is_not_a_word_boundary(self):
-        """`\\blwl\\b` matched none of these.
+    def test_the_boundary_problem_this_rule_had_first(self):
+        """`\blwl\b` matched none of the captions it was written for.
 
         Python counts CJK as word characters, so there is no boundary
-        between `LWL` and `出` -- and the rule silently did nothing to
-        every caption it was written for.
+        between `LWL` and `出`. Kept as a test because a filter that
+        silently excludes nothing reads exactly like a filter that
+        found nothing to exclude.
         """
         import re
 
@@ -986,6 +1018,4 @@ class TestDouyinWantsTheTagWritten:
 
         assert not re.search(r"\blwl\b", "LWL出游随拍记录", re.IGNORECASE)
         assert LOOSE_TAG.search("LWL出游随拍记录")
-        assert LOOSE_TAG.search("威龙LWL6666668888")
-        # Still not a substring of an ordinary word.
         assert not LOOSE_TAG.search("lesbian")

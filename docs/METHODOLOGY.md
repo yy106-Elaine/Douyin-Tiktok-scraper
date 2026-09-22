@@ -716,7 +716,7 @@ The three frames therefore get three policies, in `FILTER_POLICY`:
 | --- | --- | --- |
 | YouTube | `full` | hard exclusions, Chinese-language requirement, **and a topic term must be present** |
 | TikTok | `search` | hard exclusions and keyword-collision rules only — no language test, no topic term |
-| Douyin | `tags` | nothing, except that a community abbreviation must be written as a tag |
+| Douyin | `tags` | nothing, except that the caption must carry a community tag |
 
 TikTok was `language` first, on the assumption that a search there behaves
 like a Douyin one with a language problem attached: same community terms, so
@@ -747,23 +747,41 @@ definition. `TikTokSearchParser` records it on every row (`feed` reads
 `search:<query>:<sort>`), so the claim is checkable against the data rather
 than resting on someone's memory of what they typed.
 
-**Douyin's one rule is the same argument, one step further.** The reason
-Douyin runs no topic filter is that `#lwl`, `#wlw` and `#les` are labels the
-community attaches to its own posts, so the search already did the work. That
-is a claim about the *tag*, not about the letters. A bare `lwl` is just a
-string, and on Douyin it is an account name and a fragment of unrelated
-titles — LWL出游随拍记录, LWL回顾经典百听不厌, 威龙LWL6666668888 — all of which were
-in the corpus. So a caption whose only link to the topic is an untagged `lwl`,
-`wlw` or `les` is out, on the same footing as 货拉拉 matching 拉拉. A caption that
-says something else about the topic keeps its row: LWL第一次追女孩子到手了 is an
-account called LWL writing about pursuing a girl.
+**Douyin's one rule is the same argument, stated exactly.** The reason Douyin
+runs no topic filter is that `#lwl`, `#wlw` and `#les` are labels the community
+attaches to its own posts, so the search already did the work. That is a claim
+about the *tag*. A post reached by a hashtag search whose caption carries no
+hashtag got there by matching something else — and on this corpus that
+something else is the poster's display name. Accounts called LWL, lwl6依然,
+▓ Lwl . ▓, whose captions are 上班容易吗, 出海打鱼, 为什么啊, 延吉海兰台. So the
+caption must carry a community tag, and nothing else is asked of it: no
+language test, no topic term, no judgement about the text.
 
-The rule was written once and did nothing, which is worth recording. `\blwl\b`
-matches none of those three captions: Python counts CJK as word characters, so
-there is no word boundary between `LWL` and `出`. A filter that silently
-excludes nothing reads exactly like a filter that found nothing to exclude,
-and only running it against the captions it was written for showed the
-difference.
+That is stricter than it first looks, and deliberately so. It also excludes
+第一次追女孩子到手了 — an account called LWL writing about pursuing a girl, which
+an earlier version of this rule kept on the grounds that the caption is about
+the topic. The strict version is the only one that can be stated without
+reference to who posted it, and the only one whose output can be checked
+against the search that produced it.
+
+Two things went wrong on the way, both worth recording because both were
+invisible.
+
+The rule was written once and matched nothing: `\blwl\b` finds none of
+LWL出游随拍记录, LWL回顾经典百听不厌 or 威龙LWL6666668888, because Python counts CJK as
+word characters and there is no word boundary between `LWL` and `出`. A filter
+that silently excludes nothing reads exactly like a filter that found nothing
+to exclude.
+
+Then, corrected, it still marked nothing — because the corpus filter is a SQL
+condition over the post tables, and every one of those captions was on a *link*
+row, which has no post to be filtered. That gap had been there all along and
+became total when the default listing changed to one row per link. The filter
+now runs over the assembled rows as well.
+
+**These rows are hidden, never deleted.** `app/prune.py` exempts this platform:
+the rule is days old and has been rewritten twice, marking is reversible —
+`python -m app.relevance` re-reads every stored payload — and deleting is not.
 
 An unrecognised platform gets `full`. A new one that quietly collected
 everything would be a change to the corpus definition that nobody decided on.

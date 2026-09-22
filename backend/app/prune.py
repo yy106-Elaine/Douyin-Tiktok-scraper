@@ -51,9 +51,25 @@ _FIELDS = (
 )
 
 
+#: Policies whose exclusions are never deleted, only hidden.
+#:
+#: `none` because there is no filter to act on. `tags` because that
+#: rule is one day old and has already been rewritten twice -- once
+#: because it matched nothing at all, once because it was reading the
+#: caption when the evidence was in the tag. Marking is reversible:
+#: `python -m app.relevance` re-reads every stored payload and a
+#: corrected rule takes effect everywhere. Deleting is not, and a
+#: rule that young has no business being irreversible.
+#:
+#: What prune is for is the YouTube case: 1,072 of 1,126 rows off
+#: topic, under a filter that has been read against its own output
+#: many times.
+KEPT_WHATEVER_THE_FILTER_SAYS = frozenset({"none", "tags"})
+
+
 def excluded(session: Session, platform: str) -> list:
     """Rows the topic filter put out of scope, on a filtered platform."""
-    if filter_policy(platform) == "none":
+    if filter_policy(platform) in KEPT_WHATEVER_THE_FILTER_SAYS:
         return []
     registered = PLATFORM_TABLES.get(platform)
     if registered is None:

@@ -187,22 +187,26 @@ SOFT: tuple[tuple[str, str], ...] = (
 #: all, taken one step further: the hashtag is the community's own
 #: label, so it is evidence, and the loose token is a collision like
 #: 货拉拉 matching 拉拉.
-TAGGED = re.compile(r"[#＃]\s*(?:lwl|wlw|les|la|百合|拉拉|女同)", re.IGNORECASE)
+TAGGED = re.compile(
+    r"[#＃]\s*(?:lwl|wlw|les\b|la\b|百合|拉拉|女同|[萌]?t\b|[纯]?p\b|"
+    r"[拉蕾][拉丝]|同性|彩虹|girlslove|gl\b)",
+    re.IGNORECASE,
+)
 
-#: The tokens that need the tag. Only the Latin abbreviations: a
-#: caption containing 拉拉 or 女同 in running text is making a claim in
-#: a way `lwl` inside a username is not.
+#: Kept for `--test` and for reading old exclusions back. The rule
+#: below no longer asks whether a loose token is present, only
+#: whether a tag is: a caption reached by a hashtag search and
+#: carrying no hashtag got there by matching something else, and on
+#: this corpus that something else was the poster's display name.
 #:
 #: Bounded by ASCII letters rather than by `\b`, which does not
 #: exist between `LWL` and `出`: Python counts CJK as word
 #: characters, so `\blwl\b` matched none of LWL出游随拍记录,
-#: LWL回顾经典 or 威龙LWL6666668888 -- every caption this rule was
-#: written for. Digits are deliberately not a boundary either, so the
-#: token still shows through a username like LWL6666668888.
+#: LWL回顾经典 or 威龙LWL6666668888.
 LOOSE_TAG = re.compile(r"(?<![A-Za-z])(?:lwl|wlw|les)(?![A-Za-z])", re.IGNORECASE)
 
 #: Why such a row is out.
-UNTAGGED = "community term, not written as a tag"
+UNTAGGED = "no community tag in the caption"
 
 #: Every reason hides the row: the requirement is Chinese-language WLW
 #: content, so anything that fails it is out of scope by definition.
@@ -266,23 +270,21 @@ def classify(*parts: object, policy: str = "full") -> str | None:
     text = "\n".join(str(part) for part in parts if part)
 
     if policy == "tags":
-        # Douyin. Nothing about language or topic terms runs here --
-        # the search is the filter, as it always was -- but a
-        # community abbreviation counts only where the poster wrote
-        # it as a tag. See [TAGGED].
+        # Douyin, and strictly. The sample is drawn by searching the
+        # community's hashtags, so the tag in the caption is the
+        # evidence that this post is one of theirs. A row that came
+        # back from a #lwl search without a tag in its caption got
+        # there by matching something else -- and on this corpus that
+        # something else is the poster's display name: accounts
+        # called LWL, lwl6依然, ▓ Lwl . ▓, whose captions are
+        # 上班容易吗, 出海打鱼, 为什么啊, 延吉海兰台.
+        #
+        # Nothing about language or topic terms runs here; the search
+        # is still the whole filter. What this asks is only whether
+        # the poster labelled the post.
         if not text.strip():
             return "no text"
-        if TAGGED.search(text):
-            return None
-        # Kept if anything else in the caption is about the topic --
-        # LWL第一次追女孩子到手了 is an account called LWL writing about
-        # pursuing a girl, and the tag rule must not take it. What is
-        # excluded is a caption whose only connection is the token.
-        if LOOSE_TAG.search(text) and not (
-            ALONE.search(text) or COMPANION.search(text)
-        ):
-            return UNTAGGED
-        return None
+        return None if TAGGED.search(text) else UNTAGGED
 
     if policy == "none":
         return None
