@@ -552,3 +552,60 @@ def test_an_unresolved_link_is_not_hidden_by_that_default(client, api_key):
     )
     body = client.get("/dashboard?key=test-admin-key&platform=douyin").text
     assert "iRkQwBt" in body or "needs resolving" in body
+
+
+def test_the_page_says_how_much_of_the_corpus_is_one_account(client, api_key):
+    """A takedown rate is a rate for whoever is in the sample.
+
+    One TikTok search returned 26 videos from 12 accounts and 15 were
+    one account's, which makes the rate substantially that account's.
+    Nothing on the page said so, and nobody can work it out from a
+    table of 26 rows.
+    """
+    collected = (
+        ("busy", "7301234567890123451"),
+        ("busy", "7301234567890123452"),
+        ("someone", "7301234567890123453"),
+    )
+    for handle, video_id in collected:
+        client.post(
+            "/api/links/shared",
+            json={
+                "raw_text": f"https://www.tiktok.com/@{handle}/video/{video_id}",
+                "shared_at": "2026-09-21T20:15:00Z",
+            },
+            headers={"X-API-Key": api_key},
+        )
+
+    body = client.get("/dashboard?key=test-admin-key&platform=tiktok").text
+    assert "Busiest account" in body
+    assert "67%" in body        # two of three
+    assert "@busy" in body
+    assert "3 account(s) in all" not in body  # two accounts, not three rows
+    assert "2 account(s) in all" in body
+
+
+def test_an_account_with_only_a_display_name_is_not_given_an_at_sign(client, api_key):
+    """Printing a name as `@name` implies an identifier it has not got.
+
+    The same mistake the handle column was fixed for. The account is
+    still counted -- a Douyin row has no 抖音号 until a profile has
+    been read, and dropping those would make the spread look wider
+    than it is -- it is just not named.
+    """
+    _capture(
+        client,
+        api_key,
+        {
+            "platform_package": "com.ss.android.ugc.aweme",
+            "fingerprint": "douyin::珩舟::#短发",
+            "captured_at": "2026-09-19T19:50:00Z",
+            "payload": {"author_name": "珩舟", "caption": "#短发 #lwl"},
+        },
+    )
+    body = client.get(
+        "/dashboard?key=test-admin-key&platform=douyin&show=screen only"
+    ).text
+    assert "Busiest account" in body
+    assert "@珩舟" not in body
+    assert "one account" in body

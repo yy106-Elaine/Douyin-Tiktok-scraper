@@ -436,6 +436,80 @@ def id_counts(session: Session, platform: str, cap: int = 10_000) -> tuple[int, 
     return linked, len(rows) - linked
 
 
+@dataclass(frozen=True)
+class Spread:
+    """How many accounts the corpus is drawn from, and how evenly.
+
+    A takedown rate is a rate for whoever is in the sample. One
+    TikTok search for `Chinese lesbian` returned 26 videos from 12
+    accounts, and 15 of them -- 58% -- were one account's: a prolific
+    poster whose captions are numbered into the three hundreds and
+    whose hashtags are the search term. That rate is substantially
+    that account's rate, and a reader cannot tell unless the page
+    says so.
+
+    Counted, not acted on. Excluding the account was considered and
+    rejected: a prolific poster of precisely the targeted content is
+    more exposed to moderation, not less, so dropping it would bias
+    the rate downward and hide the very removals the study exists to
+    see. The honest handling is to report the concentration beside
+    the rate, and to quote a rate without the dominant account as a
+    sensitivity check -- both of which need this number and neither
+    of which needs the data changed.
+    """
+
+    videos: int = 0
+    accounts: int = 0
+    top_handle: str | None = None
+    top_videos: int = 0
+    #: Whether `top_handle` is an identifier or only a display name.
+    #: A display name printed as `@name` implies something the row
+    #: does not have -- the mistake `_row_from_link` was fixed for --
+    #: so the page checks this before naming the account at all.
+    top_named: bool = False
+
+    @property
+    def top_share(self) -> float | None:
+        """The largest account's share, or None when nothing is known."""
+        if not self.videos:
+            return None
+        return self.top_videos / self.videos
+
+
+def author_spread(session: Session, platform: str, cap: int = 10_000) -> Spread:
+    """The corpus's spread across accounts, over the rows on the page.
+
+    Counted through the same merge the table uses, so the number is
+    about the rows a reader can see. Rows with no author are left out
+    rather than pooled under one "unknown" account, which would read
+    as a thirteenth poster.
+    """
+    rows = video_rows(session, platform, limit=cap)
+    counts: dict[str, int] = {}
+    # A display name identifies an account well enough to count it --
+    # Douyin rows have no 抖音号 until a profile has been read, and
+    # leaving them out would make the spread look wider than it is.
+    named: set[str] = set()
+    for row in rows:
+        handle = (row.author_handle or "").lstrip("@").strip()
+        who = handle or (row.author_name or "").strip()
+        if not who:
+            continue
+        counts[who] = counts.get(who, 0) + 1
+        if handle:
+            named.add(who)
+    if not counts:
+        return Spread()
+    top_handle, top_videos = max(counts.items(), key=lambda pair: pair[1])
+    return Spread(
+        videos=sum(counts.values()),
+        accounts=len(counts),
+        top_handle=top_handle,
+        top_videos=top_videos,
+        top_named=top_handle in named,
+    )
+
+
 def _one_row_per_video(rows: list[VideoRow]) -> list[VideoRow]:
     """Collapse rows that a video id proves are the same video.
 

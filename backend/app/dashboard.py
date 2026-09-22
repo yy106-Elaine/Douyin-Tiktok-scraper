@@ -40,6 +40,7 @@ from .views import (
     NO_LINK,
     SHOW_SCREEN_ONLY,
     VideoRow,
+    author_spread,
     id_counts,
     page_facts,
     video_rows,
@@ -197,6 +198,7 @@ def dashboard(
             split_by_id=split_by_id,
             linked_rows=linked_rows,
             unlinked_rows=unlinked_rows,
+            spread=author_spread(session, platform),
             unique=unique,
             day=day,
             three=three,
@@ -215,6 +217,40 @@ def _compact(value: int) -> str:
     if value >= 10_000:
         return f"{value / 1_000:.1f}K".replace(".0K", "K")
     return f"{value:,}"
+
+
+def _spread_tile(spread) -> str:
+    """How much of the corpus is one account's.
+
+    A takedown rate is a rate for whoever is in the sample. One
+    TikTok search returned 26 videos from 12 accounts and 15 of them
+    -- 58% -- were one account's, which makes the rate substantially
+    that account's rate. Nothing on the page said so, and a reader
+    cannot work it out from a table of 26 rows.
+
+    Shown rather than acted on: excluding the account would bias the
+    rate downward, since a prolific poster of exactly the targeted
+    content is more exposed to moderation, not less. The number is
+    here so the concentration can be reported beside the rate, and so
+    a rate without the dominant account can be quoted as a
+    sensitivity check.
+    """
+    share = spread.top_share
+    if share is None:
+        return _tile("Spread across accounts", "—", "no authors known yet")
+    # Named only when the account really has a handle. A display name
+    # printed as `@name` implies an identifier the row does not have.
+    who = (
+        f"@{escape(spread.top_handle or '?')}"
+        if spread.top_named
+        else "one account"
+    )
+    return _tile(
+        "Busiest account",
+        f"{round(100 * share)}%",
+        f"of {spread.videos:,} from {who}; "
+        f"{spread.accounts:,} account(s) in all",
+    )
 
 
 def _tile(label: str, value: str, note: str = "", raw_note: bool = False) -> str:
@@ -555,6 +591,7 @@ def _page(**ctx) -> str:
                 _compact(ctx["filtered"]),
                 "hidden, not deleted",
             ),
+            _spread_tile(ctx["spread"]),
         ]
     )
 
