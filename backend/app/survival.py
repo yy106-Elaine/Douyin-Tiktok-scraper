@@ -79,6 +79,12 @@ class Finding:
     #: before it was never observable. See `age_at_collection`.
     collected_at: datetime | None = None
 
+    #: Requests that could not have seen anything -- see `_blind`.
+    #: Recorded, and excluded from `checks` and `uninformative`, so a
+    #: fetcher that cannot read a platform does not read as a platform
+    #: that cannot be measured.
+    blind: int = 0
+
     @property
     def is_gone(self) -> bool:
         return self.first_gone_at is not None
@@ -104,6 +110,36 @@ class Finding:
         lower = (self.last_alive_at or published) - published
         upper = self.first_gone_at - published
         return max(lower, timedelta(0)), max(upper, timedelta(0))
+
+
+def _blind(check: LinkCheck) -> bool:
+    """A check that could not have seen anything, however it went.
+
+    douyin.com answers a request with no session with a JavaScript
+    shell: HTTP 200, no error, nothing about the video. A round of
+    those is not a round of failed observations -- it is a round of
+    observations never attempted, by a fetcher that cannot read this
+    platform. One sweep wrote 202 of them.
+
+    They stay on file; every request made is on file. What they must
+    not do is count against the finding. `summarise` calls a video
+    doubtful once more than half its checks told us nothing, which is
+    the right warning about a flaky site and the wrong one here: it
+    marked all 177 Douyin videos doubtful on noise this study
+    generated itself, including the ones whose removal the browser
+    pass had confirmed.
+
+    Identified by construction rather than by platform alone, so a
+    Douyin check that did read something -- a 404, a removal notice,
+    a verified id -- still counts for everything.
+    """
+    from .recheck import BROWSER_ONLY
+
+    if check.platform not in BROWSER_ONLY:
+        return False
+    if check.evidence or check.error:
+        return False
+    return check.http_status == 200
 
 
 def _informative(checks: list[LinkCheck]) -> list[tuple[LinkCheck, str]]:
@@ -149,6 +185,7 @@ def finding_for(
             # than the video's own page does.
             outcome = AUTHOR_GONE if AUTHOR_GONE in author_verdicts else verdict
 
+    blind = sum(1 for check in video_checks if _blind(check))
     return Finding(
         video_id=first.video_id or "",
         platform=first.platform,
@@ -156,8 +193,9 @@ def finding_for(
             (check.author_handle for check in video_checks if check.author_handle), None
         ),
         url=first.url,
-        checks=len(video_checks),
-        uninformative=len(video_checks) - len(graded),
+        checks=len(video_checks) - blind,
+        uninformative=len(video_checks) - len(graded) - blind,
+        blind=blind,
         first_checked_at=first.checked_at,
         last_checked_at=video_checks[-1].checked_at,
         last_alive_at=last_alive,

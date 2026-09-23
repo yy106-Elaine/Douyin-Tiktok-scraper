@@ -313,6 +313,32 @@ CADENCE: tuple[tuple[timedelta, timedelta], ...] = (
 #: Anything older than the last tier.
 CADENCE_FLOOR = timedelta(days=27)
 
+#: Platforms an anonymous request cannot read at all.
+#:
+#: douyin.com answers a request with no session with a JavaScript
+#: shell: HTTP 200, no error, and nothing about the video in it. That
+#: is correctly graded UNKNOWN -- see EVIDENCE_REQUIRED, which exists
+#: because a download wall was being read as "alive" -- but a check
+#: that is certain to be UNKNOWN before it is made should not be
+#: made. Measured: a full sweep produced 202 Douyin checks, 202 of
+#: them UNKNOWN, every one HTTP 200 with no error, while TikTok came
+#: back 104/104 alive through the same code.
+#:
+#: Recording them is not merely useless, it degrades the record.
+#: `survival.summarise` flags a video as doubtful once more than half
+#: its checks are uninformative, so a daily sweep would within days
+#: mark every Douyin video doubtful and have the page report the rate
+#: as untrustworthy -- on noise this study generated itself.
+#:
+#: Douyin *is* re-checked, by `app.fetch_videos --refresh`, which
+#: drives the signed-in browser and verifies the id in the answer.
+#: That is where the removals in this corpus were found: Douyin
+#: serves a removed video's request with the next recommended video,
+#: so a mismatched id is the removal signal, and it is written here
+#: as evidence `served another video`. The two commands share this
+#: table; only the fetching differs.
+BROWSER_ONLY = frozenset({"douyin", "douyin_lite"})
+
 #: Platforms whose checks go through an API in batches, and therefore
 #: cost almost nothing: YouTube answers fifty ids per request for one
 #: quota unit, so a sweep of the whole corpus is two units.
@@ -466,16 +492,28 @@ def due_targets(
 class RecheckReport:
     checked: int = 0
     verdicts: dict[str, int] = field(default_factory=dict)
+    #: Videos left to the command that can read them. See BROWSER_ONLY.
+    #: Named in the report rather than silently dropped: "checked 169"
+    #: where 371 were due reads as a failure unless the page says
+    #: which ones went where and how they get checked.
+    needs_browser: int = 0
 
     def record(self, verdict: str) -> None:
         self.checked += 1
         self.verdicts[verdict] = self.verdicts.get(verdict, 0) + 1
 
     def __str__(self) -> str:
+        note = ""
+        if self.needs_browser:
+            note = (
+                f"\n{self.needs_browser} Douyin video(s) not checked here: "
+                "an anonymous request cannot read douyin.com.\n"
+                "Run  python -m app.fetch_videos --platform douyin --refresh"
+            )
         if not self.checked:
-            return "nothing due"
+            return ("nothing due" + note).strip()
         counts = ", ".join(f"{name} {count}" for name, count in sorted(self.verdicts.items()))
-        return f"checked {self.checked}: {counts}"
+        return f"checked {self.checked}: {counts}{note}"
 
 
 def _utcnow() -> datetime:
@@ -614,6 +652,13 @@ def run_round(
         due = list(targets) if targets is not None else collected_targets(session)
     else:
         due = due_targets(session, moment, targets, skip_gone=skip_gone)
+    # Left for the command that can actually read them. See
+    # BROWSER_ONLY: making these checks writes a certain UNKNOWN, and
+    # enough of those turn a real finding into a doubtful one.
+    unreadable_here = [t for t in due if t.platform in BROWSER_ONLY]
+    if unreadable_here:
+        report.needs_browser = len(unreadable_here)
+        due = [t for t in due if t.platform not in BROWSER_ONLY]
     if limit is not None:
         due = due[:limit]
 
