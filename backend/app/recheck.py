@@ -592,6 +592,7 @@ def run_round(
     ignore_cadence: bool = False,
     skip_gone: bool = False,
     youtube_checker: Callable[[list[Target]], dict[str, FetchResult]] | None = check_youtube,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> RecheckReport:
     """Check everything due once, recording each response.
 
@@ -599,6 +600,13 @@ def run_round(
     gets itself blocked partway through has lost observations it cannot
     go back for -- the videos it was measuring may be gone by the time
     access returns.
+
+    That makes a full sweep minutes long, so `on_progress` is called as
+    each video is settled. `app/resolve.py` says why in as many words
+    -- "a run with no output is indistinguishable from a hang" -- and
+    this module, which is slower, printed nothing at all until the end.
+    Someone watching a silent terminal for ten minutes reasonably
+    concludes it has died, and kills a round halfway through.
     """
     moment = now or _utcnow()
     report = RecheckReport()
@@ -629,6 +637,8 @@ def run_round(
         check = _record(session, target, "video", target.url, result, moment)
         verdict = classify(check)
         report.record(verdict)
+        if on_progress:
+            on_progress(index + 1, len(due), f"{target.video_id} {verdict}")
 
         # Only then, and only when it would distinguish something: if
         # the video is missing, whether the account is still there is
@@ -670,6 +680,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     )
     args = parser.parse_args()
 
+    def show(done: int, total: int, outcome: str) -> None:
+        print(f"[{done}/{total}] {outcome}", flush=True)
+
     init_db()
     with SessionLocal() as session:
         print(
@@ -679,6 +692,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 pause_seconds=args.pause,
                 ignore_cadence=args.all,
                 skip_gone=args.skip_gone,
+                on_progress=show,
             )
         )
 
