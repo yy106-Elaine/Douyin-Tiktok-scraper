@@ -26,9 +26,27 @@
 # volume -- three keywords over 72 hours cost 704 of 10,000 daily
 # units. Precision is cheap; a term dropped is recall that cannot be
 # recovered later, because the videos will be gone.
+#
+# 女同性恋 stays on that reasoning even at 1%. It is the plain
+# translation of "lesbian", and a study of Chinese lesbian content
+# that did not search for the word would have to explain itself.
+# Low precision is a cost; a missing obvious term is a hole.
+#
+# 百合 is the one exception, and for a different reason than
+# precision. Over 378 results it returned nothing in scope at all,
+# and 197 of them were Japanese: 百合 is the Japanese name for this
+# genre, so the search reaches a different community in a different
+# language. Those rows are already hard-excluded by the kana rule, so
+# the term is not trading recall for noise -- it recovers nothing to
+# trade. In Chinese it is a lily, an ingredient, a Go tournament
+# sponsor and a person's name, which is the rest of the 378.
+#
+# Left in the file, commented out, because the argument for dropping
+# it is a measurement and a measurement can be wrong. Uncomment to
+# put it back.
 
 女同性恋
 女同志
 女同
 拉拉
-百合
+# 百合
