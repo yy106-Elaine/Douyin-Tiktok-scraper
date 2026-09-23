@@ -48,7 +48,9 @@ from .fetch_videos import (
     wanted,
     wipe,
 )
+from .platforms import filter_policy
 from .recheck import ID_CONFIRMED, SERVED_ANOTHER
+from .relevance import HIDDEN, classify
 
 
 def one(
@@ -60,6 +62,7 @@ def one(
     handle: str | None,
     directory: Path,
     redownload: bool = False,
+    keep_all: bool = False,
 ) -> tuple[str, str, int]:
     """Settle one video. Returns (outcome, description, bytes kept).
 
@@ -103,6 +106,23 @@ def one(
     if facts.parsed_by == "surface":
         said += "  [surface only]"
 
+    # Whether to keep the file is decided here, after the page has
+    # been read and not before. The phone's caption is what the
+    # interface rendered and is often cut off mid-word; the page's is
+    # the authority, and it is the reason the page is fetched. Judging
+    # a never-read video on the screen text would drop videos that the
+    # full caption puts squarely in the corpus.
+    #
+    # The page visit itself is never skipped: that visit *is* the
+    # takedown check, and a video excluded today may be back in the
+    # corpus tomorrow when a rule changes -- which has happened
+    # repeatedly. What is skipped is the copy. `#butchfemme
+    # #femme4butch #lesbiansoftiktok` is somebody's video and not this
+    # study's subject; there is no call to hold it.
+    reason = classify(facts.caption or "", policy=filter_policy(site.platform))
+    if reason in HIDDEN and not keep_all:
+        return "read", f"{said}  [not kept: {reason}]", 0
+
     # The file, out of the answer already in hand.
     if not redownload and held(row):
         return "read", f"{said}  [file held]", 0
@@ -143,6 +163,7 @@ def run(
     handle_for: dict[str, str] | None = None,
     pause_seconds: float = 0.0,
     redownload: bool = False,
+    keep_all: bool = False,
     on_progress=None,
 ) -> dict[str, int]:
     handle_for = handle_for or {}
@@ -160,6 +181,7 @@ def run(
             handle_for.get(video_id),
             directory,
             redownload=redownload,
+            keep_all=keep_all,
         )
         report[outcome] = report.get(outcome, 0) + 1
         report["bytes"] += kept
@@ -197,6 +219,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "leave out videos already found gone. A removal reversed then "
             "goes unseen, which is the cost of not spending a visit on "
             "every video that has already disappeared"
+        ),
+    )
+    parser.add_argument(
+        "--everything",
+        action="store_true",
+        help=(
+            "keep a copy of videos the topic filter excluded too. Their "
+            "pages are read either way -- that visit is the takedown "
+            "check -- but by default only the corpus is downloaded"
         ),
     )
     parser.add_argument(
@@ -287,6 +318,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 handle_for=handles(session, args.platform),
                 pause_seconds=args.pause,
                 redownload=args.redownload,
+                keep_all=args.everything,
                 on_progress=show,
             )
 

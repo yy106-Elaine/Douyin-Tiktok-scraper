@@ -135,3 +135,62 @@ def test_the_run_counts_a_saved_video_as_read_too(session, tmp_path):
     )
     assert (report["saved"], report["read"]) == (2, 2)
     assert report["bytes"] == 2 * len(MP4)
+
+
+def test_an_off_topic_video_is_read_but_not_kept(session, tmp_path):
+    """`#butchfemme #femme4butch #lesbiansoftiktok` is somebody's video.
+
+    The page is still visited -- that visit is the takedown check, and
+    a rule change can put the video back in the corpus tomorrow, which
+    has happened repeatedly. What is skipped is the copy.
+    """
+    asked = []
+    outcome, said, kept = one(
+        session,
+        read=lambda url: _page("7686773732988082810", "#butchfemme #femme4butch"),
+        download=lambda address, referer: asked.append(address) or (MP4, 200),
+        video_id="7686773732988082810",
+        site=SITES["tiktok"],
+        handle=None,
+        directory=tmp_path,
+    )
+    assert outcome == "read"
+    assert asked == []
+    assert "not kept" in said
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_page_caption_decides_it_not_the_screen_one(session, tmp_path):
+    """The phone's caption is cut off mid-word; the page's is not.
+
+    Judging a never-read video on the screen text would drop videos
+    the full caption puts squarely in the corpus -- which is the whole
+    reason the page is fetched at all.
+    """
+    outcome, said, kept = one(
+        session,
+        read=lambda url: _page(
+            "7686773732988082810", "our anniversary #chinese #wlw #lesbiancouple"
+        ),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686773732988082810",
+        site=SITES["tiktok"],
+        handle=None,
+        directory=tmp_path,
+    )
+    assert outcome == "saved"
+    assert kept == len(MP4)
+
+
+def test_everything_keeps_the_excluded_ones_too(session, tmp_path):
+    outcome, said, kept = one(
+        session,
+        read=lambda url: _page("7686773732988082810", "#butchfemme #femme4butch"),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686773732988082810",
+        site=SITES["tiktok"],
+        handle=None,
+        directory=tmp_path,
+        keep_all=True,
+    )
+    assert outcome == "saved"
