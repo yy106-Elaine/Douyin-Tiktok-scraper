@@ -853,6 +853,54 @@ absent from the analysis while still being present in the takedown count. That
 asymmetry is a property of the archive, not of the platform.
 
 
+### 13. The sampling frame is itself governed
+
+Observed 2026-09-23, and recorded here because it bears on what the
+corpus can be said to represent.
+
+On that day a search of Douyin for `#lwl`, filtered to the past week,
+returned **nothing**; `#wlw` returned **four**. The same tags without
+a time filter still returned videos, so the tags had not been removed.
+The same day's re-check found **20 of 157** collected Douyin videos
+gone -- the previous two days had found 11 between them.
+
+Three further observations, in the order they were made:
+
+**It is not the network.** The researcher's personal phone and the
+research phone, on the same connection, returned *different* result
+sets for the same tag and filter (each around seven or eight videos,
+not the same seven or eight). An IP-level restriction would give both
+devices the same answer. Whatever varies, varies per account or per
+device, not per address. This also disposes of the first hypothesis
+anyone reaches for, which is that the collection had got itself
+blocked: 157 video pages were read successfully an hour earlier.
+
+**It is not only removal.** A video absent from a tag search may still
+be watchable at its own URL. Those are different acts -- removal and
+de-listing -- and this instrument can tell them apart, because every
+collected video has an id and the browser pass visits it directly. A
+video confirmed alive that no longer appears under the tag it was
+collected from is evidence of the second kind, and it is the harder
+kind to observe from outside.
+
+**The community's alternative spellings surfaced more, not less.** On
+the same day, tags other than the well-known ones returned more
+relevant material than `#lwl` and `#wlw` did. If that holds up, the
+governance is being applied *to tags* rather than to content, which is
+also what `#l #e` -- `les` written as two hashtags, confirmed against
+the app -- exists for.
+
+The consequence for sampling is direct and uncomfortable. A frame
+built from the well-known tags is a frame the platform can narrow, and
+it will narrow most at exactly the moments the study most wants to
+observe. Content posted under evasive spellings during a period of
+pressure is the content least likely to be collected by searching the
+obvious terms. Any statement about volume over time -- "fewer posts
+this week" -- has to be read as a statement about the frame as much as
+about the posting, and the tag list in `backend/keywords.txt` should
+be reported as a measurement decision with a date on it, not as a
+neutral instrument.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
