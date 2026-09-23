@@ -200,7 +200,21 @@ SOFT: tuple[tuple[str, str], ...] = (
 #: 货拉拉 matching 拉拉.
 TAGGED = re.compile(
     r"[#＃]\s*(?:lwl|wlw|les\b|la\b|百合|拉拉|女同|[萌]?t\b|[纯]?p\b|"
-    r"[拉蕾][拉丝]|同性|彩虹|girlslove|gl\b)",
+    r"[拉蕾][拉丝]|同性|彩虹|girlslove|gl\b|"
+    # An alternative spelling, confirmed against the app by the
+    # researcher on 2026-09-23 -- the day `#lwl` filtered to the past
+    # week returned nothing and `#wlw` returned four, while this one
+    # returned more relevant material than either. Which is the point:
+    # the community moves to a tag that is not being governed, and a
+    # filter that only knows the well-known tags would have thrown
+    # that day's collection away as untagged noise.
+    #
+    # It reads as an ordinary personal name, so it would be a poor
+    # keyword. As a *tag* requirement it is fine: this rule asks only
+    # whether the poster labelled the post, and the search is still
+    # the filter. A video about someone called 陈乐 that carries the
+    # hashtag would pass, and is a collision to watch for in review.
+    r"[陈陳][乐樂])",
     re.IGNORECASE,
 )
 

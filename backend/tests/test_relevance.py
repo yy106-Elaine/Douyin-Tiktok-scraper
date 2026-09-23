@@ -1080,3 +1080,37 @@ class TestLesWrittenAsTwoTags:
     def test_the_untagged_rule_is_otherwise_unchanged(self):
         assert self.out("上班容易吗") == "no community tag in the caption"
         assert self.out("LWL出游随拍记录") == "no community tag in the caption"
+
+
+class TestAnAlternativeTagTheCommunityMovedTo:
+    """`#陈乐`, confirmed against the app on 2026-09-23.
+
+    That was the day `#lwl` filtered to the past week returned nothing
+    and `#wlw` returned four, while this tag returned more relevant
+    material than either. A filter that knew only the well-known tags
+    would have thrown that day's collection away as untagged noise --
+    which is the failure mode worth guarding, because the day the
+    community moves to a new spelling is the day the old ones are
+    under pressure.
+    """
+
+    def out(self, text):
+        from app.relevance import classify
+
+        return classify(text, policy="tags")
+
+    def test_the_tag_counts(self):
+        assert self.out("今天和她 #陈乐") is None
+        assert self.out("和女朋友的日常#陳樂") is None
+
+    def test_the_name_without_the_hash_does_not(self):
+        """It reads as an ordinary personal name.
+
+        Which is why it is a tag requirement and not a keyword: this
+        rule asks only whether the poster labelled the post.
+        """
+        assert self.out("陈乐是我同事") == "no community tag in the caption"
+        assert self.out("采访陈乐医生") == "no community tag in the caption"
+
+    def test_it_sits_beside_the_others(self):
+        assert self.out("#陈乐 #lwl") is None
