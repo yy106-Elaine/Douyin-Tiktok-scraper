@@ -37,6 +37,7 @@ from .views import (
     corpus_counts,
     daily_counts,
     fiction_ids,
+    last_runs,
     unique_in_scope,
     ID_ON_SCREEN,
     LINK_ONLY,
@@ -1382,7 +1383,50 @@ def overview(
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     rows = _platform_rows(session)
-    return HTMLResponse(_overview_page(key=key, rows=rows))
+    return HTMLResponse(
+        _overview_page(key=key, rows=rows, runs=last_runs(session))
+    )
+
+
+def _freshness_rows(runs) -> str:
+    """When each platform last produced data.
+
+    A collection that quietly stops is the one failure this study
+    cannot recover from: by the time a tally looks small, the videos
+    it would have caught are gone. Part of this runs by hand and part
+    on a schedule -- a launchd job had been collecting YouTube every
+    morning for weeks without the operator knowing -- so both the
+    silence and the duplication have to be visible rather than
+    inferred.
+    """
+    out = []
+    for run in runs:
+        ago = run.hours_ago()
+        if ago is None:
+            when, note, tone = "never", "nothing collected yet", "crit"
+        else:
+            when = local(run.last_collected).strftime("%m-%d %H:%M")
+            if ago < 36:
+                note, tone = f"{round(ago)}h ago", "good"
+            else:
+                # Not an error -- a platform can be paused on purpose --
+                # but a day and a half of silence is worth seeing.
+                note, tone = f"{round(ago / 24, 1)} days ago", "crit"
+        batches = (
+            f"{run.batches_today}"
+            if run.batches_today != 1
+            else "1"
+        )
+        out.append(
+            "<tr>"
+            f"<td>{escape(run.platform)}</td>"
+            f"<td>{escape(when)}</td>"
+            f'<td><span class="dot {tone}"></span>{escape(note)}</td>'
+            f'<td class="n">{run.last_batch:,}</td>'
+            f'<td class="n">{escape(batches)}</td>'
+            "</tr>"
+        )
+    return "".join(out)
 
 
 def _overview_page(**ctx) -> str:
@@ -1464,6 +1508,20 @@ measured; anything unreachable is left out rather than assumed still up.</p>
 
 {_nav("Overview", None, ctx["key"])}
 <div class="tiles">{tiles}</div>
+
+<h2>Is it still collecting?</h2>
+<p class="sub">A collection that quietly stops is the failure this study cannot
+recover from: by the time the numbers look thin, the videos are gone.
+<strong>Batches</strong> counts the distinct arrival times in the past day &mdash;
+more than one means more than one thing is collecting, by hand or on a
+schedule.</p>
+<div class="panel"><table class="narrow">
+<thead><tr>
+<th>Platform</th><th>Last collected</th><th></th>
+<th class="n">In that batch</th><th class="n">Batches (24h)</th>
+</tr></thead>
+<tbody>{_freshness_rows(ctx["runs"])}</tbody>
+</table></div>
 
 <h2>Check outcomes by platform</h2>
 <div class="keys">{legend}</div>

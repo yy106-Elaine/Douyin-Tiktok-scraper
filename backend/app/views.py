@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .clock import local, local_date, start_of_local_day
@@ -329,6 +329,64 @@ def strata(rows: list[VideoRow]) -> tuple[int, int]:
     fiction = sum(1 for row in rows if _listed(row.relevance, SHOW_FICTION))
     return firsthand, fiction
 
+
+
+@dataclass(frozen=True)
+class Run:
+    """When a platform last produced data, and how much.
+
+    A collection that stops is the one failure this study cannot
+    recover from: the videos it would have caught are gone by the time
+    anyone notices. The instrument is run partly by hand and partly by
+    scheduled jobs -- one of which had been collecting YouTube daily at
+    13:00 for weeks without the operator being aware of it -- so
+    "nothing arrived yesterday" has to be visible somewhere rather
+    than inferred from a tally that looks a bit small.
+    """
+
+    platform: str
+    last_collected: datetime | None = None
+    #: Rows that arrived in that last batch.
+    last_batch: int = 0
+    #: Distinct arrival times in the past day. More than one means more
+    #: than one thing is collecting, which is worth seeing plainly.
+    batches_today: int = 0
+
+    def hours_ago(self, now: datetime | None = None) -> float | None:
+        if self.last_collected is None:
+            return None
+        moment = now or datetime.utcnow()
+        return max((moment - self.last_collected).total_seconds() / 3600, 0.0)
+
+
+def last_runs(session: Session, now: datetime | None = None) -> list[Run]:
+    """One `Run` per platform, in the order the tables are registered."""
+    moment = now or datetime.utcnow()
+    since = moment - timedelta(hours=24)
+    out: list[Run] = []
+    for platform, (model, _) in PLATFORM_TABLES.items():
+        latest = session.scalar(select(func.max(model.captured_at)))
+        if latest is None:
+            out.append(Run(platform=platform))
+            continue
+        out.append(
+            Run(
+                platform=platform,
+                last_collected=latest,
+                last_batch=session.scalar(
+                    select(func.count())
+                    .select_from(model)
+                    .where(model.captured_at == latest)
+                )
+                or 0,
+                batches_today=session.scalar(
+                    select(func.count(func.distinct(model.captured_at)))
+                    .where(model.captured_at >= since)
+                )
+                or 0,
+            )
+        )
+    return out
 
 def first_seen(session: Session, platform: str) -> dict[str, datetime]:
     """Earliest observation of each distinct video in scope.
