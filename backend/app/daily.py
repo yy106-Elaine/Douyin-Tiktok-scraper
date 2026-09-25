@@ -322,13 +322,19 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 on_progress=show,
             )
 
+        from .survival import findings, today_at_a_glance
+
+        new_gone, back = today_at_a_glance(findings(session, args.platform))
+
         manifest = write_manifest(session, directory, args.platform)
         print(
             f"\nread {report['read']}; saved {report['saved']} file(s) "
             f"({report['bytes'] / 1_000_000_000:.2f} GB); "
             f"{report['gone']} gone (the site served another video); "
             f"{report['unreadable']} unreadable\n"
-            f"files in {directory}\nmanifest {manifest}"
+            f"of those, {new_gone} first found gone today"
+            + (f"; {back} came back today" if back else "")
+            + f"\nfiles in {directory}\nmanifest {manifest}"
         )
 
 

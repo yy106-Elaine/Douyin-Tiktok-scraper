@@ -194,3 +194,71 @@ def test_everything_keeps_the_excluded_ones_too(session, tmp_path):
         keep_all=True,
     )
     assert outcome == "saved"
+
+
+def test_the_day_s_change_is_reported_not_left_to_subtraction(db):
+    """A pass prints how many are gone *now*, which is a running total.
+
+    Reading the day's news out of it means remembering yesterday's
+    number and subtracting, every day, by hand -- on the study's main
+    result. Yesterday's Douyin pass printed 20 and today's printed 18,
+    and the interesting thing in that pair is not the 18.
+    """
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, SERVED_ANOTHER
+    from app.survival import findings, today_at_a_glance
+
+    today = datetime(2026, 9, 25, 12, 0)
+    yesterday = datetime(2026, 9, 24, 12, 0)
+
+    def check(video_id, when, evidence):
+        return LinkCheck(
+            platform="douyin",
+            video_id=video_id,
+            target_kind="video",
+            url=f"https://www.douyin.com/video/{video_id}",
+            http_status=200,
+            evidence=evidence,
+            checked_at=when,
+        )
+
+    with SessionLocal() as session:
+        # Gone yesterday, still gone.
+        session.add(check("1", yesterday, SERVED_ANOTHER))
+        session.add(check("1", today, SERVED_ANOTHER))
+        # Gone for the first time today.
+        session.add(check("2", yesterday, ID_CONFIRMED))
+        session.add(check("2", today, SERVED_ANOTHER))
+        # Gone yesterday, back today.
+        session.add(check("3", yesterday, SERVED_ANOTHER))
+        session.add(check("3", today, ID_CONFIRMED))
+        # Never gone.
+        session.add(check("4", today, ID_CONFIRMED))
+        session.commit()
+
+        new_gone, back = today_at_a_glance(findings(session, "douyin"), day=today)
+
+    assert (new_gone, back) == (1, 1)
+
+
+def test_a_video_that_never_disappeared_is_not_a_comeback(db):
+    """Otherwise every alive video would count as one every day."""
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED
+    from app.survival import findings, today_at_a_glance
+
+    today = datetime(2026, 9, 25, 12, 0)
+    with SessionLocal() as session:
+        session.add(LinkCheck(
+            platform="douyin", video_id="9", target_kind="video",
+            url="https://www.douyin.com/video/9", http_status=200,
+            evidence=ID_CONFIRMED, checked_at=today,
+        ))
+        session.commit()
+        assert today_at_a_glance(findings(session, "douyin"), day=today) == (0, 0)

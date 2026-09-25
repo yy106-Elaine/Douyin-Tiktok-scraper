@@ -79,6 +79,11 @@ class Finding:
     #: before it was never observable. See `age_at_collection`.
     collected_at: datetime | None = None
 
+    #: How many times this video has been found gone, including
+    #: spells it came back from. Without it a reinstated video is
+    #: indistinguishable from one that was never touched.
+    disappearances: int = 0
+
     #: Requests that could not have seen anything -- see `_blind`.
     #: Recorded, and excluded from `checks` and `uninformative`, so a
     #: fetcher that cannot read a platform does not read as a platform
@@ -172,6 +177,7 @@ def finding_for(
     last_alive: datetime | None = None
     first_gone: datetime | None = None
     outcome: str | None = None
+    disappearances = 0
     for check, verdict in graded:
         if verdict == ALIVE:
             # A video that came back resets the span: reinstatement is
@@ -181,6 +187,7 @@ def finding_for(
             outcome = None
         elif verdict in DISAPPEARED and first_gone is None:
             first_gone = check.checked_at
+            disappearances += 1
             # An account that is itself gone explains the video better
             # than the video's own page does.
             outcome = AUTHOR_GONE if AUTHOR_GONE in author_verdicts else verdict
@@ -204,6 +211,7 @@ def finding_for(
         outcome=outcome,
         published_at=posted_at_from_video_id(first.video_id) or posted_on,
         collected_at=collected_at,
+        disappearances=disappearances,
     )
 
 
@@ -312,6 +320,44 @@ def findings(session: Session, platform: str | None = None) -> list[Finding]:
     result.sort(key=lambda finding: finding.last_checked_at or datetime.min, reverse=True)
     return result
 
+
+
+def today_at_a_glance(
+    items: list["Finding"], day: "datetime | None" = None
+) -> tuple[int, int]:
+    """(first found gone today, back today) over these findings.
+
+    Both numbers are the day's news, and neither is in the run
+    report: a pass prints how many videos are gone *now*, which is a
+    running total. Reading the day's change out of it means
+    remembering yesterday's number and subtracting -- and a number
+    that has to be copied by hand every day is a number that will
+    eventually be wrong, on the study's main result.
+
+    A video that came back is counted from the same history, because
+    `finding_for` already resets the span when a check finds it alive
+    again. That is not a correction to smooth over: an appeal that
+    succeeded and a block that was lifted are findings, and the day
+    a running total goes *down* is the day they happened.
+    """
+    when = (day or datetime.utcnow()).date()
+    gone = sum(
+        1
+        for f in items
+        if f.first_gone_at is not None and f.first_gone_at.date() == when
+    )
+    # Watchable now, and has a disappearance on record: the span was
+    # reset by an alive check, so the check that reset it is the
+    # reinstatement. Counted on the day that check was made.
+    back = sum(
+        1
+        for f in items
+        if not f.is_gone
+        and f.last_alive_at is not None
+        and f.last_alive_at.date() == when
+        and f.disappearances
+    )
+    return gone, back
 
 @dataclass
 class Summary:
