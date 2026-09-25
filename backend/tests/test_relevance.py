@@ -1114,3 +1114,61 @@ class TestAnAlternativeTagTheCommunityMovedTo:
 
     def test_it_sits_beside_the_others(self):
         assert self.out("#陈乐 #lwl") is None
+
+
+class TestTwoWomenAndARelationship:
+    """The day every community tag returned nothing.
+
+    2026-09-25: #lwl, #wlw, #le, #la and #陈乐 all came back empty on
+    Douyin, and the day's collection had to come from a descriptive
+    phrase -- 两个女生的幸福日常 -- instead. Rows found that way need not
+    carry a community tag, so the tag rule threw them out:
+    你俩嘴都亲懒了吧#两个女生的恋爱 was marked off topic.
+
+    What makes the two populations separable is that both label
+    themselves, in opposite words. A couple writes 情侣, 恋爱, 双女主;
+    friends and flatmates write 闺蜜, 姐妹, 室友. Every caption below
+    is a real one from that day.
+    """
+
+    def out(self, text):
+        from app.relevance import classify
+
+        return classify(text, policy="tags")
+
+    def test_two_women_and_a_relationship_is_the_community(self):
+        assert self.out("你俩嘴都亲懒了吧#两个女生的恋爱") is None
+        assert self.out(
+            "很高兴和你一起过日子 #真实生活分享计划 #情侣日常 #两个女生的幸福生活"
+        ) is None
+        assert self.out(
+            "拍到好看的照片就开心 #两个女生 #记录真实生活 #拍照 #情侣日常"
+        ) is None
+
+    def test_friends_and_flatmates_are_not(self):
+        for caption in [
+            "和闺蜜在一起的时间是我人生的乌托邦 #vlog#闺蜜日常#友宝女#欧诗漫",
+            "和闺蜜隐居海岛 今天我们吃蟹酿橙#二人食 #中秋节 #闺蜜日常",
+            "不管跳得好不好，开心最重 #真实生活分享计划 #姐妹日常 #姐妹双人舞",
+        ]:
+            assert self.out(caption) == "no community tag in the caption", caption
+
+    def test_both_halves_are_required(self):
+        """This is the pair doing the work, not either half.
+
+        `两个刚毕业一起努力生活的女生 #室友日常 #闺蜜日常` contains 两个女生
+        and has no relationship word, so it stays out -- which is the
+        row the researcher singled out as noise. And `#情侣日常` alone
+        is any couple at all.
+        """
+        assert self.out(
+            "两个女生一起生活的二三事 两个刚毕业一起努力生活的女生 #室友日常 #闺蜜日常"
+        ) == "no community tag in the caption"
+        assert self.out("#情侣日常 今天去哪玩") == "no community tag in the caption"
+        assert self.out("我和男朋友的情侣日常") == "no community tag in the caption"
+
+    def test_the_tag_rule_is_otherwise_unchanged(self):
+        assert self.out("上班容易吗") == "no community tag in the caption"
+        assert self.out("出海打鱼") == "no community tag in the caption"
+        assert self.out("LWL6666668888") == "no community tag in the caption"
+        assert self.out("#lwl 出游") is None

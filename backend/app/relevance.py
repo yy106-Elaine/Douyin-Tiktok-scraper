@@ -237,11 +237,48 @@ _SPLIT = (
 
 
 def tagged(text: str) -> bool:
-    """Whether the caption carries a community tag in any spelling."""
+    """Whether the caption says this post is one of the community's.
+
+    A community tag, in any of its spellings -- or, for the days the
+    tags themselves stop returning anything, two women plus a
+    relationship between them. See TWO_WOMEN.
+    """
     if TAGGED.search(text):
         return True
-    return all(pattern.search(text) for pattern in _SPLIT)
+    if all(pattern.search(text) for pattern in _SPLIT):
+        return True
+    return bool(TWO_WOMEN.search(text) and ROMANCE.search(text))
 
+
+#: Two women, and a relationship between them. Both are required.
+#:
+#: On 2026-09-25 every community tag on Douyin -- #lwl, #wlw, #le,
+#: #la, #陈乐 -- returned nothing at all, and the day's collection had
+#: to come from a descriptive phrase (两个女生的幸福日常) instead. Rows
+#: found that way need not carry a community tag, so the tag rule
+#: excluded them: 你俩嘴都亲懒了吧#两个女生的恋爱 was marked off topic.
+#:
+#: What makes them separable is that both populations label
+#: themselves, in opposite words. A couple writes 情侣, 恋爱, 双女主;
+#: friends and flatmates write 闺蜜, 姐妹, 室友. The pair is required
+#: rather than either half, and that is what does the work: 两个刚毕业
+#: 一起努力生活的女生 #室友日常 #闺蜜日常 contains 两个女生 and is
+#: correctly still out, having no relationship word; #情侣日常 on its
+#: own is any couple at all and stays out too.
+#:
+#: This needs no knowledge of which search produced a row, which is
+#: as well, since the phone does not record the typed query.
+TWO_WOMEN = re.compile(
+    r"[两兩][个個]女[生孩的]|[双雙]女主|[两兩]女|女女|"
+    r"[两兩][个個]女人|姐妹[恋戀]",
+    re.IGNORECASE,
+)
+ROMANCE = re.compile(
+    r"[恋戀]?[爱愛][情]?|[情][侣侶]|女朋友|老婆|媳[妇婦]|在一起|"
+    r"[结結]婚|婚[礼禮]|奔[现現]|暗[恋戀]|crush|表白|告白|接吻|亲亲|"
+    r"[纪紀]念日|周年",
+    re.IGNORECASE,
+)
 
 #: Kept for `--test` and for reading old exclusions back. The rule
 #: below no longer asks whether a loose token is present, only

@@ -911,6 +911,37 @@ unfiltered results still exist is consistent with the first and hard
 to explain by the second, but "consistent with" is as far as this
 instrument reaches.
 
+**2026-09-26, the third day.** Every community tag returned nothing:
+`#lwl`, `#wlw`, `#le`, `#la` and `#陈乐` together. The day's Douyin
+collection came from a descriptive phrase instead --
+两个女生的幸福日常 -- and still found the population: real couples'
+vlogs, mixed with genuine noise from women who are friends or
+flatmates.
+
+Three days, three states: one tag empty, then that tag empty and
+another full, then all of them empty while a phrase still works.
+Whatever is happening is being applied to the tags and not to the
+content, because the content is still there and still findable by
+describing it.
+
+This forced a change to the filter, and the change is worth stating
+because it is a change to what the corpus *is*. The Douyin rule was
+"the caption must carry a community tag", and its justification was
+that the sample came from tag searches, so a tag was the evidence
+that a post was one of the community's. A phrase search breaks that
+justification: those rows need not be tagged at all, and the first
+one was 你俩嘴都亲懒了吧#两个女生的恋爱 -- excluded as off topic.
+
+What replaced it works because both populations label themselves, in
+opposite words. A couple writes 情侣, 恋爱, 双女主; friends and
+flatmates write 闺蜜, 姐妹, 室友. So a caption also counts when it
+carries **two women and a relationship between them**, and the pair
+is what does the work: 两个刚毕业一起努力生活的女生 #室友日常 #闺蜜日常
+contains 两个女生 and stays out, having no relationship word, and
+`#情侣日常` alone is any couple at all. It needs no knowledge of which
+search produced a row, which is as well, because the phone does not
+record the typed query.
+
 The consequence for sampling is direct and uncomfortable. A frame
 built from the well-known tags is a frame the platform can narrow, and
 it will narrow most at exactly the moments the study most wants to
