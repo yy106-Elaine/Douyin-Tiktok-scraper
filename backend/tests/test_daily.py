@@ -301,3 +301,50 @@ def test_a_reinstated_video_still_shows_when_it_was_gone(client, api_key):
     assert "then back" in body
     # The date it disappeared, not a dash.
     assert "09-23" in body
+
+
+def test_a_comeback_is_news_on_one_day_only(db):
+    """It was reported as today's news on every later day.
+
+    "Came back today" was computed from `last_alive_at`, which moves
+    forward on every check a video survives. So one comeback -- a
+    single real event, 7688128619269629350 on 25 September -- would
+    have been reported as having happened today, every day, for the
+    rest of the study. A state dressed up as an event.
+    """
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, SERVED_ANOTHER
+    from app.survival import findings, today_at_a_glance
+
+    gone_on = datetime(2026, 9, 23, 17, 37)
+    back_on = datetime(2026, 9, 25, 16, 29)
+    later = datetime(2026, 9, 26, 16, 0)
+
+    with SessionLocal() as session:
+        for when, evidence in [
+            (datetime(2026, 9, 22, 10, 0), ID_CONFIRMED),
+            (gone_on, SERVED_ANOTHER),
+            (back_on, ID_CONFIRMED),
+            (later, ID_CONFIRMED),
+        ]:
+            session.add(LinkCheck(
+                platform="douyin",
+                video_id="7688128619269629350",
+                target_kind="video",
+                url="https://www.douyin.com/video/7688128619269629350",
+                http_status=200,
+                evidence=evidence,
+                checked_at=when,
+            ))
+        session.commit()
+
+        found = findings(session, "douyin")
+        assert found[0].came_back_at == back_on
+
+        # News on the day it happened.
+        assert today_at_a_glance(found, day=back_on) == (0, 1)
+        # And not on the days after, however long it stays up.
+        assert today_at_a_glance(found, day=later) == (0, 0)

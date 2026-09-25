@@ -84,6 +84,13 @@ class Finding:
     #: indistinguishable from one that was never touched.
     disappearances: int = 0
 
+    #: When the video became watchable again, for the most recent
+    #: comeback: the check that found it alive after a disappearance.
+    #: Not `last_alive_at`, which moves forward on every later check
+    #: and so would report the same comeback as today's news every
+    #: day for the rest of the study.
+    came_back_at: datetime | None = None
+
     #: The earliest disappearance ever recorded, kept whatever
     #: happened afterwards. `first_gone_at` is reset by a later alive
     #: check, which is right for "is it gone now" and wrong for the
@@ -192,8 +199,12 @@ def finding_for(
     outcome: str | None = None
     disappearances = 0
     first_gone_ever: datetime | None = None
+    came_back_at: datetime | None = None
     for check, verdict in graded:
         if verdict == ALIVE:
+            # Alive after a disappearance: this check is the comeback.
+            if first_gone is not None:
+                came_back_at = check.checked_at
             # A video that came back resets the span: reinstatement is
             # a finding of its own, not a data error to smooth over.
             last_alive = check.checked_at
@@ -229,6 +240,7 @@ def finding_for(
         collected_at=collected_at,
         disappearances=disappearances,
         first_gone_ever=first_gone_ever,
+        came_back_at=came_back_at,
     )
 
 
@@ -356,6 +368,12 @@ def today_at_a_glance(
     again. That is not a correction to smooth over: an appeal that
     succeeded and a block that was lifted are findings, and the day
     a running total goes *down* is the day they happened.
+
+    "Came back today" means the check that found it alive again was
+    made today -- not that it is alive today and was once gone. The
+    first version asked the second question and so reported the same
+    single comeback as news on every subsequent day, which is a state
+    dressed up as an event.
     """
     when = (day or datetime.utcnow()).date()
     gone = sum(
@@ -369,9 +387,7 @@ def today_at_a_glance(
     back = sum(
         1
         for f in items
-        if f.came_back
-        and f.last_alive_at is not None
-        and f.last_alive_at.date() == when
+        if f.came_back_at is not None and f.came_back_at.date() == when
     )
     return gone, back
 
