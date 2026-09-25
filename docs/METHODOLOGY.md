@@ -890,6 +890,27 @@ governance is being applied *to tags* rather than to content, which is
 also what `#l #e` -- `les` written as two hashtags, confirmed against
 the app -- exists for.
 
+**2026-09-24, the following day.** `#lwl` returned nothing again --
+this time under both the past-day and the past-week filters -- while
+`#wlw`, searched on the same device in the same sitting minutes
+apart, returned enough to collect 45 videos. The whole of that day's
+Douyin sample came from `#wlw` and `#陈乐`; `#lwl` contributed none.
+
+The two days control different things and both are needed. On the
+23rd, two phones on one connection gave different results for one
+tag, which rules out the network and points at the account. On the
+24th, one phone in one sitting gave nothing for one tag and a full
+page for another, which rules out the account and the session and
+points at the tag. Neither observation alone would do it.
+
+What this does not establish is why. A tag can go quiet because it
+is being suppressed, or because the people who used it moved to
+another one, and from outside the platform those look identical.
+That `#lwl` went to exactly zero under a time filter while its
+unfiltered results still exist is consistent with the first and hard
+to explain by the second, but "consistent with" is as far as this
+instrument reaches.
+
 The consequence for sampling is direct and uncomfortable. A frame
 built from the well-known tags is a frame the platform can narrow, and
 it will narrow most at exactly the moments the study most wants to
@@ -900,6 +921,14 @@ this week" -- has to be read as a statement about the frame as much as
 about the posting, and the tag list in `backend/keywords.txt` should
 be reported as a measurement decision with a date on it, not as a
 neutral instrument.
+
+It also means **which tag produced a day's rows is part of the
+record**, not an operational detail. 2 videos on the 23rd and 45 on
+the 24th is not a fact about how much was posted; on those two days
+the frame was not the same shape. The `feed` column carries the
+search term for every row, so this is recoverable -- but it has to
+be read, and a volume series computed without it would be a series
+about the search.
 
 ## Ethics and consent
 
