@@ -200,3 +200,39 @@ def test_a_douyin_check_that_did_read_something_still_counts(db):
         found = findings(session, "douyin")
         assert found[0].blind == 0
         assert found[0].checks == 1
+
+
+def test_the_page_names_the_command_that_can_read_the_platform(client, api_key):
+    """Douyin's panel offered `app.recheck`, which skips Douyin.
+
+    It counted 47 links due and then told the operator to run the one
+    command guaranteed not to check any of them -- an anonymous
+    request gets a JavaScript shell from douyin.com. The browser pass
+    is the Douyin re-check.
+    """
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import SharedLink
+
+    with SessionLocal() as session:
+        for platform, host in [
+            ("douyin", "https://v.douyin.com/aaa/"),
+            ("tiktok", "https://vm.tiktok.com/bbb/"),
+        ]:
+            session.add(SharedLink(
+                participant_id="p1",
+                platform=platform,
+                raw_text=f"#lwl #chinese #wlw {host}",
+                video_id=f"76867737329880828{platform[0]}",
+                canonical_url=host,
+                shared_at=datetime(2026, 9, 20, 10, 0),
+            ))
+        session.commit()
+
+    douyin = client.get("/dashboard/takedowns?key=test-admin-key&platform=douyin").text
+    assert "app.daily --platform douyin --apply" in douyin
+    assert "app.recheck" not in douyin
+
+    tiktok = client.get("/dashboard/takedowns?key=test-admin-key&platform=tiktok").text
+    assert "app.recheck" in tiktok

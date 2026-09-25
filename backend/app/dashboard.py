@@ -22,7 +22,15 @@ from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
 from .platforms import API_PLATFORMS, filter_policy
-from .recheck import ALIVE, AUTHOR_GONE, GONE, WITHHELD, collected_targets, due_targets
+from .recheck import (
+    ALIVE,
+    AUTHOR_GONE,
+    BROWSER_ONLY,
+    GONE,
+    WITHHELD,
+    collected_targets,
+    due_targets,
+)
 from .relevance import HIDDEN
 from .snowflake import derivation_is_verified
 from .survival import (
@@ -965,7 +973,9 @@ def _first_gone_cell(finding: Finding) -> str:
     )
 
 
-def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
+def _finding_rows(
+    items: list[Finding], facts: dict | None = None, platform: str = ""
+) -> str:
     """One row per video, with the page's own account of it.
 
     The check history knows an id and a set of timestamps; it does not
@@ -983,9 +993,17 @@ def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
     table, and the row says which of the two it is showing.
     """
     if not items:
+        # Same reason as the panel above: on a platform an anonymous
+        # request cannot read, naming `app.recheck` here sends the
+        # reader to a command that will skip the whole platform.
+        how = (
+            f"python -m app.daily --platform {escape(platform)} --apply"
+            if platform in BROWSER_ONLY
+            else "python -m app.recheck"
+        )
         return (
             '<tr><td colspan="12" class="empty">No links have been re-checked yet. '
-            "Run <code>python -m app.recheck</code>.</td></tr>"
+            f"Run <code>{how}</code>.</td></tr>"
         )
 
     facts = facts or {}
@@ -1206,10 +1224,28 @@ def _findings_page(**ctx) -> str:
         ]
     )
 
+    # The command has to be the one that can actually read this
+    # platform. `app.recheck` fetches anonymously, and douyin.com
+    # answers that with a JavaScript shell -- so on Douyin this panel
+    # was telling the operator to run something that would skip every
+    # one of the links it had just counted, and say so in a line
+    # nobody reads twice. The browser pass is the Douyin re-check.
+    if platform in BROWSER_ONLY:
+        how = (
+            f"cd backend &amp;&amp; ./.venv/bin/python -m app.daily "
+            f"--platform {escape(platform)} --apply"
+        )
+        note = (
+            "A signed-in browser, because an anonymous request cannot read "
+            "this site. It re-reads every page, so it is also the download "
+            "pass."
+        )
+    else:
+        how = "cd backend &amp;&amp; ./.venv/bin/python -m app.recheck"
+        note = "Run it once a day; the schedule thins out as a video ages."
     todo = (
         f'<p class="todo"><strong>{ctx["due"]:,} link(s)</strong> are due for a check.'
-        "<code>cd backend &amp;&amp; ./.venv/bin/python -m app.recheck</code>"
-        "Run it once a day; the schedule thins out as a video ages.</p>"
+        f"<code>{how}</code>{note}</p>"
         if ctx["due"]
         else ""
     )
@@ -1240,7 +1276,7 @@ disappeared somewhere between them, and nothing in the data says where.</p>
 <th>Last checked</th>
 <th class="n">Checks</th>
 </tr></thead>
-<tbody>{_finding_rows(ctx["items"], ctx["facts"])}</tbody>
+<tbody>{_finding_rows(ctx["items"], ctx["facts"], platform)}</tbody>
 </table></div>
 
 <h2>How fresh was it when we first saw it?</h2>
