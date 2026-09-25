@@ -942,6 +942,29 @@ def _lifetime_cell(finding: Finding) -> str:
     )
 
 
+def _first_gone_cell(finding: Finding) -> str:
+    """When it was first found gone -- including a spell it survived.
+
+    `first_gone_at` is the current disappearance and is cleared when a
+    later check finds the video watchable again. That is right for
+    deciding whether it is gone now; here it left a reinstated video
+    showing an empty column, so the one event this table exists to
+    record had vanished from it. `first_gone_ever` is kept whatever
+    happened afterwards, and the row says which of the two it is.
+    """
+    moment = finding.first_gone_at or finding.first_gone_ever
+    if moment is None:
+        return '<td class="when">&mdash;</td>'
+    note = (
+        '<div class="prov">then back</div>'
+        if finding.first_gone_at is None
+        else ""
+    )
+    return (
+        f'<td class="when">{escape(local(moment).strftime("%m-%d %H:%M"))}{note}</td>'
+    )
+
+
 def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
     """One row per video, with the page's own account of it.
 
@@ -999,9 +1022,19 @@ def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
             if finding.checks and finding.uninformative * 2 > finding.checks
             else ""
         )
+        # A video that was gone and is watchable again. `first_gone_at`
+        # is reset by the alive check, which is right for the rate and
+        # wrong for this table: without this the row read plainly
+        # "alive", First gone empty, and the removal it had survived
+        # was invisible on the page whose subject is removals.
+        comeback = (
+            '<div class="prov">came back</div>'
+            if finding.came_back
+            else ""
+        )
         out.append(
             "<tr>"
-            f'<td>{state}{doubtful}</td>'
+            f'<td>{state}{comeback}{doubtful}</td>'
             f'<td class="vid">{link}</td>'
             f"{_cell(author)}"
             f"{_cell(handle)}"
@@ -1015,7 +1048,7 @@ def _finding_rows(items: list[Finding], facts: dict | None = None) -> str:
             # to have survived a week, whatever its publication date.
             f'<td class="when">{escape(local(finding.first_checked_at).strftime("%m-%d %H:%M")) if finding.first_checked_at else "—"}</td>'
             f'<td class="when">{escape(local(finding.last_alive_at).strftime("%m-%d %H:%M")) if finding.last_alive_at else "—"}</td>'
-            f'<td class="when">{escape(local(finding.first_gone_at).strftime("%m-%d %H:%M")) if finding.first_gone_at else "—"}</td>'
+            f"{_first_gone_cell(finding)}"
             f'<td class="when">{escape(local(finding.last_checked_at).strftime("%m-%d %H:%M")) if finding.last_checked_at else "—"}</td>'
             f'<td class="n">{finding.checks}</td>'
             "</tr>"

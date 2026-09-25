@@ -84,6 +84,19 @@ class Finding:
     #: indistinguishable from one that was never touched.
     disappearances: int = 0
 
+    #: The earliest disappearance ever recorded, kept whatever
+    #: happened afterwards. `first_gone_at` is reset by a later alive
+    #: check, which is right for "is it gone now" and wrong for the
+    #: table: a video that came back showed an empty First gone
+    #: column, so the removal it had survived was invisible on the
+    #: page that exists to show removals.
+    first_gone_ever: datetime | None = None
+
+    @property
+    def came_back(self) -> bool:
+        """Found gone at some point, and watchable at the last check."""
+        return bool(self.disappearances) and not self.is_gone
+
     #: Requests that could not have seen anything -- see `_blind`.
     #: Recorded, and excluded from `checks` and `uninformative`, so a
     #: fetcher that cannot read a platform does not read as a platform
@@ -178,6 +191,7 @@ def finding_for(
     first_gone: datetime | None = None
     outcome: str | None = None
     disappearances = 0
+    first_gone_ever: datetime | None = None
     for check, verdict in graded:
         if verdict == ALIVE:
             # A video that came back resets the span: reinstatement is
@@ -188,6 +202,8 @@ def finding_for(
         elif verdict in DISAPPEARED and first_gone is None:
             first_gone = check.checked_at
             disappearances += 1
+            if first_gone_ever is None:
+                first_gone_ever = check.checked_at
             # An account that is itself gone explains the video better
             # than the video's own page does.
             outcome = AUTHOR_GONE if AUTHOR_GONE in author_verdicts else verdict
@@ -212,6 +228,7 @@ def finding_for(
         published_at=posted_at_from_video_id(first.video_id) or posted_on,
         collected_at=collected_at,
         disappearances=disappearances,
+        first_gone_ever=first_gone_ever,
     )
 
 
@@ -352,10 +369,9 @@ def today_at_a_glance(
     back = sum(
         1
         for f in items
-        if not f.is_gone
+        if f.came_back
         and f.last_alive_at is not None
         and f.last_alive_at.date() == when
-        and f.disappearances
     )
     return gone, back
 

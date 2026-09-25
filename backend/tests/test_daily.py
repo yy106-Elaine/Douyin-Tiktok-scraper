@@ -262,3 +262,42 @@ def test_a_video_that_never_disappeared_is_not_a_comeback(db):
         ))
         session.commit()
         assert today_at_a_glance(findings(session, "douyin"), day=today) == (0, 0)
+
+
+def test_a_reinstated_video_still_shows_when_it_was_gone(client, api_key):
+    """The row read "alive", First gone empty, as if nothing happened.
+
+    `first_gone_at` is cleared by the check that finds a video
+    watchable again -- right for deciding whether it is gone now, and
+    wrong for the table whose subject is removals. A real video,
+    7688128619269629350, was found gone and came back, and the page
+    showed no trace of it.
+    """
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, SERVED_ANOTHER
+
+    with SessionLocal() as session:
+        for when, evidence in [
+            (datetime(2026, 9, 23, 13, 38), SERVED_ANOTHER),
+            (datetime(2026, 9, 24, 22, 45), ID_CONFIRMED),
+        ]:
+            session.add(LinkCheck(
+                platform="douyin",
+                video_id="7688128619269629350",
+                target_kind="video",
+                url="https://www.douyin.com/video/7688128619269629350",
+                http_status=200,
+                evidence=evidence,
+                checked_at=when,
+            ))
+        session.commit()
+
+    body = client.get("/dashboard/takedowns?key=test-admin-key&platform=douyin").text
+    assert "7688128619269629350" in body
+    assert "came back" in body
+    assert "then back" in body
+    # The date it disappeared, not a dash.
+    assert "09-23" in body
