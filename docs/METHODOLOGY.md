@@ -894,7 +894,7 @@ the app -- exists for.
 this time under both the past-day and the past-week filters -- while
 `#wlw`, searched on the same device in the same sitting minutes
 apart, returned enough to collect 45 videos. The whole of that day's
-Douyin sample came from `#wlw` and `#陈乐`; `#lwl` contributed none.
+Douyin sample -- all 45 -- came from `#wlw`; `#lwl` contributed none.
 
 The two days control different things and both are needed. On the
 23rd, two phones on one connection gave different results for one
