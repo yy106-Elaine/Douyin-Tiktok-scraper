@@ -291,3 +291,40 @@ def test_addresses_are_found_in_the_page_as_well_as_the_responses():
     ]
     # And the id check still applies to what the page holds.
     assert tiktok_urls(html, video_id="7000000000000000000") == []
+
+
+def test_only_the_corpus_is_copied_to_disk(db, tmp_path: Path):
+    """`#闺蜜日常 #室友日常` is somebody's video of their flatmate.
+
+    It is not this study's subject -- the topic filter said so -- and
+    there is no call to hold a copy of it. `app.daily` draws the same
+    line; this pass did not, so a preview-then-download sequence
+    archived everything the filter had just excluded.
+    """
+    with SessionLocal() as session:
+        session.add(WebVideo(
+            platform="douyin", video_id="1", caption="#lwl 和你在一起"))
+        session.add(WebVideo(
+            platform="douyin", video_id="2",
+            caption="两个刚毕业一起努力生活的女生 #室友日常 #闺蜜日常"))
+        session.commit()
+        assert [r.video_id for r in download_videos.wanted(session)] == ["1"]
+        assert {r.video_id for r in download_videos.wanted(session, keep_all=True)} == {
+            "1", "2",
+        }
+
+
+def test_a_video_with_no_caption_is_still_kept(db, tmp_path: Path):
+    """Absent text is evidence about the reading, not about the video.
+
+    And the two mistakes cost differently: a row wrongly excluded can
+    be re-marked from the stored payload at any time, while a file not
+    kept is gone the moment the video is -- after which nothing can
+    judge it either way. So the rule is "hold a copy unless the text
+    rules it out".
+    """
+    with SessionLocal() as session:
+        session.add(WebVideo(platform="douyin", video_id="3", caption=None))
+        session.add(WebVideo(platform="douyin", video_id="4", caption="   "))
+        session.commit()
+        assert {r.video_id for r in download_videos.wanted(session)} == {"3", "4"}

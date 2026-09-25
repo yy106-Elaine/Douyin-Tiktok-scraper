@@ -91,19 +91,47 @@ def looks_like_video(blob: bytes) -> bool:
 
 
 def wanted(
-    session: Session, platform: str = "douyin", redownload: bool = False
+    session: Session,
+    platform: str = "douyin",
+    redownload: bool = False,
+    keep_all: bool = False,
 ) -> list[WebVideo]:
-    """Videos whose page we have read and whose file we do not hold.
+    """Videos in the corpus whose page we read and whose file we lack.
 
     A row whose file is recorded but missing from disk comes back:
     the folder is allowed to move or be cleaned out, and the fix is
     to run this again rather than to repair the database by hand.
+
+    In the corpus, not merely collected. `#闺蜜日常 #室友日常` is
+    somebody's video of their flatmate and it is not this study's
+    subject, so there is no call to hold a copy of it. `app.daily`
+    draws the same line at the same point, from the caption the
+    page gave; this pass has that caption already, since it only
+    ever runs after the page was read.
     """
     rows = session.scalars(
         select(WebVideo)
         .where(WebVideo.error.is_(None), WebVideo.platform == platform)
         .order_by(WebVideo.video_id)
     ).all()
+    if not keep_all:
+        from .platforms import filter_policy
+        from .relevance import HIDDEN, classify
+
+        # Only text that *says* the video is not ours excludes it. A
+        # missing caption does not: it is evidence about the reading,
+        # not about the video, and the two mistakes cost differently.
+        # A row wrongly excluded can be re-marked from the stored
+        # payload any time; a file not kept is gone the moment the
+        # video is, and then nothing can judge it either way. So the
+        # rule is "hold a copy unless the text rules it out".
+        policy = filter_policy(platform)
+        rows = [
+            row
+            for row in rows
+            if not (row.caption or "").strip()
+            or classify(row.caption, policy=policy) not in HIDDEN
+        ]
     if redownload:
         return list(rows)
     return [row for row in rows if not held(row)]
@@ -303,6 +331,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         help="fetch again even where a file is already held",
     )
     parser.add_argument(
+        "--everything",
+        action="store_true",
+        help=(
+            "keep a copy of videos the topic filter excluded too; by "
+            "default only the corpus is downloaded"
+        ),
+    )
+    parser.add_argument(
         "--skip-gone",
         action="store_true",
         help=(
@@ -317,7 +353,12 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
-        rows = wanted(session, args.platform, redownload=args.redownload)
+        rows = wanted(
+            session,
+            args.platform,
+            redownload=args.redownload,
+            keep_all=args.everything,
+        )
 
         if args.skip_gone:
             from .recheck import disappeared
