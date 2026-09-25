@@ -205,6 +205,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--apply", action="store_true", help="actually do it")
     parser.add_argument("--limit", type=int, default=None, help="stop after N videos")
     parser.add_argument(
+        "--only",
+        metavar="VIDEO_ID",
+        action="append",
+        help=(
+            "this video and no other. Repeatable. For going back to one "
+            "video on purpose -- a reinstatement to re-download and "
+            "compare against the archived copy before it goes again"
+        ),
+    )
+    parser.add_argument(
         "--new-only",
         action="store_true",
         help=(
@@ -251,6 +261,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     init_db()
     with SessionLocal() as session:
         targets = wanted(session, args.platform, refresh=not args.new_only)
+
+        if args.only:
+            asked = set(args.only)
+            targets = [v for v in targets if v in asked]
+            missing = asked - set(targets)
+            if missing:
+                # Named and not held: say so rather than printing
+                # "nothing to do", which reads as "already done".
+                print(f"not in this platform's corpus: {', '.join(sorted(missing))}")
 
         if args.skip_gone:
             from .recheck import disappeared
