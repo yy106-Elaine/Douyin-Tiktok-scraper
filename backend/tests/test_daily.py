@@ -373,3 +373,47 @@ def test_a_comeback_is_news_on_one_day_only(db):
         assert today_at_a_glance(found, day=back_on) == (0, 1)
         # And not on the days after, however long it stays up.
         assert today_at_a_glance(found, day=later) == (0, 0)
+
+
+def test_the_day_s_news_is_the_researcher_s_day_not_utc_s():
+    """A pass run at 22:00 in Boston is 02:00 tomorrow in UTC.
+
+    Everything stored is UTC, which is right. Bucketing by UTC is not:
+    a Douyin pass run last night reported its removals under today,
+    and the evening's work vanished from the day it was done. Worse
+    for a daily series, one local day's removals split across two UTC
+    buckets depending on whether the pass ran in the morning or after
+    dinner -- a difference in when the researcher sat down, showing up
+    as a difference in the data.
+    """
+    from datetime import datetime
+
+    from app.survival import Finding, today_at_a_glance
+
+    # 2026-09-27 02:00 UTC is 2026-09-26 22:00 in New York.
+    last_night = datetime(2026, 9, 27, 2, 0)
+    # 2026-09-27 13:00 UTC is 2026-09-27 09:00 in New York: a different
+    # local day, and in UTC the same one.
+    this_morning = datetime(2026, 9, 27, 13, 0)
+
+    def gone_at(video_id, moment):
+        return Finding(
+            video_id=video_id,
+            platform="douyin",
+            author_handle=None,
+            url=f"https://www.douyin.com/video/{video_id}",
+            checks=2,
+            uninformative=0,
+            first_checked_at=moment,
+            last_checked_at=moment,
+            last_alive_at=None,
+            current="gone",
+            outcome="gone",
+            first_gone_at=moment,
+        )
+
+    evening = gone_at("1", last_night)
+    morning = gone_at("2", this_morning)
+
+    assert today_at_a_glance([evening, morning], day=last_night) == (1, 0)
+    assert today_at_a_glance([evening, morning], day=this_morning) == (1, 0)

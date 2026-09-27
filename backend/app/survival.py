@@ -25,6 +25,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .clock import local_date
+from .clock import today as clock_today
 from .models import LinkCheck
 from .recheck import (
     ALIVE,
@@ -375,11 +377,17 @@ def today_at_a_glance(
     single comeback as news on every subsequent day, which is a state
     dressed up as an event.
     """
-    when = (day or datetime.utcnow()).date()
+    # The researcher's day, not UTC's. Everything stored here is UTC,
+    # which is right, but a Douyin pass run at 22:00 in Boston is
+    # 02:00 the next day in UTC, so a UTC bucket filed last night's
+    # removals under tomorrow and reported them twice-adjacent to a
+    # day that had none. `clock` exists for exactly this boundary and
+    # `views` already crosses it here; this function did not.
+    when = local_date(day) if day is not None else clock_today()
     gone = sum(
         1
         for f in items
-        if f.first_gone_at is not None and f.first_gone_at.date() == when
+        if f.first_gone_at is not None and local_date(f.first_gone_at) == when
     )
     # Watchable now, and has a disappearance on record: the span was
     # reset by an alive check, so the check that reset it is the
@@ -387,7 +395,7 @@ def today_at_a_glance(
     back = sum(
         1
         for f in items
-        if f.came_back_at is not None and f.came_back_at.date() == when
+        if f.came_back_at is not None and local_date(f.came_back_at) == when
     )
     return gone, back
 
