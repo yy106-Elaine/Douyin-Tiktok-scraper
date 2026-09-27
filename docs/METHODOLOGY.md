@@ -966,10 +966,34 @@ community tags are still empty -- `#lwl`, `#wlw` and the alternative
 `#陈乐` all return essentially nothing, and have for several days now.
 Three further details, because each one narrows what can be concluded:
 
-The split form is still *findable*. People do post as `#l` `#e`, and
-searching that directly returns their videos. So the posts exist and
-are reachable; what has gone quiet is the well-known spelling, not the
-practice.
+**Carrying a tag and being retrievable by it are two different
+things**, and this is the day that separated them. `#l #e` -- `les`
+written as two hashtags with a space between -- is *in the captions*.
+Search `#wlw`, look at what comes back, and many of those captions
+carry `#l #e` as well. But search `#l #e` by itself and it returns
+nothing, including nothing from the last few days, when those same
+videos were posted.
+
+So the posts exist, they are recent, they contain the string, and the
+string does not retrieve them. That rules out the explanation the
+earlier days could not rule out: this is not the community having
+moved off a tag, because the tag is right there in the captions of
+videos collected the same week. It also rules out a plain index -- a
+caption containing a token would be returned by a search for that
+token. What is left is that search is a *decision about what to
+surface*, made per query, and not a lookup. Retrieval eligibility is
+its own variable, independent of both posting and removal, and this
+instrument can now show that with a case rather than infer it.
+
+One untested alternative, worth recording because it would change the
+reading: the tag as rendered may not be the tag as typed. Small
+decorative images or emoji sit in and around these hashtags on screen,
+so the token the app indexed may differ from the token a person types
+into the search box. If that is what is happening, the invisibility is
+a tokenisation artefact rather than a governance decision. Comparing
+the caption *as stored* against the caption *as rendered* for these
+rows would tell them apart, and the stored text is available for every
+collected row -- so this is answerable, and has not been answered yet.
 
 The phrase alternatives are small. 两个女生的恋爱日常 and
 两个女生甜蜜日常 -- the tags that rescued the 26th -- are used by very
@@ -989,7 +1013,17 @@ or two, or none, and that number is a fact about the frame. It must
 not be reported as a fact about how much was posted. A day with no
 collectable rows is a day on which the instrument could not see, and
 the log should say so rather than contributing a zero to a volume
-series.
+series. `#l #e` is the proof rather than the suspicion: an empty tag
+search sitting next to that same tag in this week's captions is a
+count of what the search served, and nothing more.
+
+That also makes one number worth computing, because the instrument can
+produce it and no outside observer could: among collected rows, how
+many captions carry a tag whose own search returns nothing, and when
+were they posted. Those are videos that were published, are alive, are
+in the corpus, and cannot be found by the words their authors chose to
+be found by. The tags come from `feed`, the captions and dates are
+stored, so the figure is a query rather than a study.
 
 ## Ethics and consent
 
