@@ -53,6 +53,8 @@ USER_AGENT = (
 #: How much of the response to keep. Enough to re-read the wording a
 #: later marker list cares about; not the whole page.
 EXCERPT_LIMIT = 1_200
+#: Room for an exception message with its reason, and no more.
+ERROR_LIMIT = 300
 
 # --------------------------------------------------------------------
 # Verdicts
@@ -175,7 +177,21 @@ def fetch(url: str, timeout: float = 20.0) -> FetchResult:
         # counted as a survival, and a large count of them is
         # reported as the rate being untrustworthy. So the broad
         # catch loses nothing and the narrow one lost a day.
-        return FetchResult(error=type(error).__name__)
+        #
+        # The message is kept, not just the class. 117 checks recorded
+        # as bare "URLError" in one round said nothing about why, and
+        # the why turned out to matter: a travel network was answering
+        # for tiktok.com with a certificate issued to somebody else,
+        # which a stored "[SSL: CERTIFICATE_VERIFY_FAILED]" would have
+        # said outright instead of costing a round of guessing.
+        detail = str(error).strip()
+        return FetchResult(
+            error=(
+                f"{type(error).__name__}: {detail}"[:ERROR_LIMIT]
+                if detail
+                else type(error).__name__
+            )
+        )
 
 
 # --------------------------------------------------------------------

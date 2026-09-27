@@ -34,9 +34,28 @@ def test_an_invalid_url_is_an_unreadable_check_not_a_crash():
     every remaining check that day simply did not happen.
     """
     result = fetch("https://www.douyin.com/user/  Lwl . ")
-    assert result.error == "InvalidURL"
+    assert result.error.startswith("InvalidURL")
     assert result.status is None
     assert issubclass(http.client.InvalidURL, Exception)
+
+
+def test_a_failed_check_records_why_it_failed():
+    """A round of bare "URLError" says nothing worth reading.
+
+    117 checks recorded that and no more. The reason mattered: the
+    network was answering for tiktok.com with a certificate issued to
+    somebody else, and the class name alone cannot distinguish that
+    from a timeout, a DNS failure or a refused connection -- three
+    problems with three different answers.
+    """
+    from app.models import LinkCheck
+    from app.recheck import UNREACHABLE, classify
+
+    result = fetch("https://www.douyin.com/user/nonesuch:99999999")
+    assert result.error and ":" in result.error, result.error
+    assert len(result.error) <= 300
+    # However detailed, it is still no information about the video.
+    assert classify(LinkCheck(error=result.error, http_status=None)) == UNREACHABLE
 
 
 def test_a_round_says_what_it_is_doing(db):
