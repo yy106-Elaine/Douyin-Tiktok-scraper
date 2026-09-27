@@ -78,12 +78,30 @@ def test_a_kana_decorating_a_latin_hashtag_is_not_japanese():
 
 
 def test_real_japanese_is_still_japanese():
-    """Kana standing on its own, which is what the rule was for."""
+    """Kana standing on its own, which is what the rule was for.
+
+    Japanese yuri fandom: no mention of China anywhere, the topic term
+    is the Japanese word for the genre, and the population is a
+    different one.
+    """
+    assert classify("百合ヶ浜 かわいい", policy=POLICY) == "japanese"
+    assert classify("レズビアンのVtuber #百合 #アニメ", policy=POLICY) == "japanese"
+
+
+def test_japanese_that_names_china_is_judged_like_any_other_language():
+    """Reversed on 2026-09-27, deliberately.
+
+    This row -- 中国人レズビアンのツイートが最強すぎて #wlw -- used to be
+    excluded as Japanese. It is a post about Chinese lesbians, and the
+    same post in English, Portuguese and Italian was in the corpus, so
+    the rule was deciding by the language of the commentary rather than
+    by what it was about. Kana alone still excludes; kana beside an
+    explicit mention of China does not.
+    """
     assert classify(
         "中国人レズビアンのツイートが最強すぎて #wlw #おすすめ #レズビアン",
         policy=POLICY,
-    ) == "japanese"
-    assert classify("百合ヶ浜 かわいい", policy=POLICY) == "japanese"
+    ) is None
 
 
 def test_gl_on_tiktok_is_a_wlw_tag_not_a_genre():

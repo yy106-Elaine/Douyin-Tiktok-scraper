@@ -119,8 +119,16 @@ def one(
     # repeatedly. What is skipped is the copy. `#butchfemme
     # #femme4butch #lesbiansoftiktok` is somebody's video and not this
     # study's subject; there is no call to hold it.
-    reason = classify(facts.caption or "", policy=filter_policy(site.platform))
-    if reason in HIDDEN and not keep_all:
+    # One asymmetry, shared with `download_videos.wanted`: a video with
+    # no caption at all is kept. "no text" is not a finding that the
+    # video is off topic, it is the filter saying it cannot tell, and
+    # the cost of the two mistakes is not the same. A file wrongly kept
+    # can be deleted at any time; a file wrongly skipped cannot be
+    # fetched again once the video is gone, and a fifth of the Douyin
+    # rows have no caption.
+    caption = (facts.caption or "").strip()
+    reason = classify(caption, policy=filter_policy(site.platform))
+    if caption and reason in HIDDEN and not keep_all:
         return "read", f"{said}  [not kept: {reason}]", 0
 
     # The file, out of the answer already in hand.

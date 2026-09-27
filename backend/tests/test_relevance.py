@@ -141,6 +141,37 @@ def test_japanese_yuri_content_is_excluded(text):
     assert classify(text) == "japanese"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "中国人レズビアンのツイートが最強すぎて、負けてられない。#wlw #レズビアン",
+        "中国人みたいなワンホンになりたい #wlw #lesbian #同性愛",
+        "中国のガールズラブドラマが好き #chinesedrama #wlw",
+    ],
+)
+def test_japanese_about_china_is_not_excluded_for_being_japanese(text):
+    """Kana says which language, not which subject.
+
+    The rule exists to keep Japanese yuri fandom out -- a different
+    population wearing the same ideographs. A Japanese post *about
+    Chinese lesbians* is the study's subject, and the identical post in
+    English, Portuguese and Italian is in the corpus. Letting the
+    language of the commentary decide would make the corpus a fact
+    about who writes in what.
+    """
+    assert classify(text, policy="chinese-wlw") is None
+
+
+def test_the_china_pointer_is_not_merely_a_cjk_character():
+    """Japanese is written with those characters, so they cannot be it.
+
+    醜い and レズビアン between them contain a CJK ideograph and a topic
+    term, which is exactly the shape the kana rule was written for. The
+    exemption has to require China named in so many words.
+    """
+    assert classify("醜いレズビアンになりたくない", policy="chinese-wlw") == "japanese"
+
+
 def test_the_search_term_does_not_override_its_own_collision():
     """The bug this guards: 拉拉 inside 拉拉裤 counted as a topic term.
 

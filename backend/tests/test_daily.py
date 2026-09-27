@@ -160,6 +160,31 @@ def test_an_off_topic_video_is_read_but_not_kept(session, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_video_with_no_caption_at_all_is_still_kept(session, tmp_path):
+    """"no text" is the filter saying it cannot tell, not that it is out.
+
+    A fifth of the Douyin rows have no caption. They were collected by
+    searching a community tag, so the evidence that they belong is the
+    search, which lives in `feed` and not in the caption -- and the two
+    mistakes do not cost the same. A file wrongly kept can be deleted
+    whenever the question is settled; a file wrongly skipped cannot be
+    fetched once the video is gone. `download_videos.wanted` has always
+    made this exception; this pass used to contradict it, and nine
+    Douyin videos were sitting unarchived because of that.
+    """
+    outcome, said, kept = one(
+        session,
+        read=lambda url: _page("7686427432119291057", ""),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686427432119291057",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+    )
+    assert outcome == "saved"
+    assert kept == len(MP4)
+
+
 def test_the_page_caption_decides_it_not_the_screen_one(session, tmp_path):
     """The phone's caption is cut off mid-word; the page's is not.
 

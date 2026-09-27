@@ -307,11 +307,21 @@ LOOSE_TAG = re.compile(r"(?<![A-Za-z])(?:lwl|wlw|les)(?![A-Za-z])", re.IGNORECAS
 #: actually writes. Deliberately *not* `asian`: it names a population
 #: several times larger, and admitting it would quietly restore the
 #: drift this rule exists to stop.
-CHINESE_MARK = re.compile(
-    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|"
+#: An explicit pointer at China: the half of `CHINESE_MARK` that is
+#: not simply "contains a CJK character". It exists because Japanese
+#: is written with those same characters, so the ideograph class
+#: cannot distinguish a caption about China from a caption that merely
+#: happens to be East Asian. Anything here names China, its people or
+#: its language in so many words.
+CHINA_POINTER = (
     r"chines[ae]?s?|chinoises?|china|mandarin|cantonese|"
     r"[cC]-?drama|"
-    r"[华華]人|中[国國]|中文|[国國][语語]",
+    r"[华華]人|中[国國]|中文|[国國][语語]"
+)
+_CHINA_POINTER = re.compile(CHINA_POINTER, re.IGNORECASE)
+
+CHINESE_MARK = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|" + CHINA_POINTER,
     re.IGNORECASE,
 )
 
@@ -430,8 +440,28 @@ def classify(*parts: object, policy: str = "full") -> str | None:
         return "no text"
 
     for reason, pattern in _HARD:
-        if pattern.search(text):
-            return reason
+        if not pattern.search(text):
+            continue
+        if reason == "japanese" and _CHINA_POINTER.search(text):
+            # Kana says the caption is written in Japanese. It does not
+            # say the caption is about Japan, and the rule exists for
+            # the second thing: 百合 returns Vtubers and 百合ヶ浜, a
+            # different population wearing the same characters.
+            #
+            # 中国人レズビアンのツイートが最強すぎて #wlw #レズビアン is
+            # not that. It is a post about Chinese lesbians, which is
+            # what this study is of, and the same sentence in English
+            # (`Chinese lesbians on twitter are OVERLY freaked out`),
+            # Portuguese (`pauta da semana: lésbicas chinesas`) and
+            # Italian (`#cinesesbiche`) is in the corpus. Excluding
+            # only the Japanese one would make the language of the
+            # commentary decide, rather than what it is about.
+            #
+            # So kana alone still goes; kana beside an explicit
+            # mention of China stays, and the topic rules below then
+            # judge it on the same terms as every other language.
+            continue
+        return reason
 
     # Chinese, and not Japanese wearing the same characters.
     #
