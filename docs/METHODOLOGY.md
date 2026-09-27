@@ -961,6 +961,36 @@ search term for every row, so this is recoverable -- but it has to
 be read, and a volume series computed without it would be a series
 about the search.
 
+**2026-09-27, the fourth day, and what a quiet frame costs.** The
+community tags are still empty -- `#lwl`, `#wlw` and the alternative
+`#陈乐` all return essentially nothing, and have for several days now.
+Three further details, because each one narrows what can be concluded:
+
+The split form is still *findable*. People do post as `#l` `#e`, and
+searching that directly returns their videos. So the posts exist and
+are reachable; what has gone quiet is the well-known spelling, not the
+practice.
+
+The phrase alternatives are small. 两个女生的恋爱日常 and
+两个女生甜蜜日常 -- the tags that rescued the 26th -- are used by very
+few accounts, so they accumulate few new posts. A frame that works on
+one day is not therefore a frame that yields on the next; these two
+returned almost no new material.
+
+The broader phrases return a different population. Some posters use
+双女主 or 闺蜜, but searching those tags returns mostly general-public
+content: novels, 双女主小说, television and film. 闺蜜 returns actual
+best friends. These are not narrower doors into the same population;
+they are doors into other populations, and the two-women-and-a-
+relationship rule above exists because of exactly this.
+
+The honest consequence is that some days' Douyin sample is one video,
+or two, or none, and that number is a fact about the frame. It must
+not be reported as a fact about how much was posted. A day with no
+collectable rows is a day on which the instrument could not see, and
+the log should say so rather than contributing a zero to a volume
+series.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
