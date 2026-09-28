@@ -1090,6 +1090,38 @@ tags and no data yields the caption but no addresses, which leaves a
 post read, unarchived, and -- until this was noticed -- never retried,
 since the row exists and the "new" pass skips it.
 
+**2026-09-27 is a hole in the series, and 09-28 carries its weight.**
+The database was restored from a backup taken at 14:17 on the 27th
+after a corruption, so the checks made that evening -- a full Douyin
+pass and a YouTube round -- no longer exist. Nothing collected was
+lost: the videos, the archive and the links are all there, because
+those are files and links, not observations. What was lost is the
+record of *having looked*.
+
+The consequence is specific and has to be read off every figure that
+uses first-gone dates. A video that disappeared during the 27th was
+not seen to be gone until the 28th, so its removal is dated the 28th.
+The day reads:
+
+    09-21  10    09-24   4    09-27  no observation
+    09-22   1    09-25   3    09-28   9  (covers two days)
+    09-23   9    09-26   7
+
+and YouTube, which had run at about one removal a week, shows five on
+the 28th. Some of those five are the 27th's.
+
+So 09-27 must be reported as missing, never as zero, and 09-28 as a
+two-day interval rather than a daily count. A survival curve computed
+over these dates without that adjustment puts removals a day late and
+makes one day look like a spike.
+
+This is also the clearest argument for the daily pass there is. The
+instrument does not record when a video was removed; it records when
+it was first *seen* to be removed, and the two are the same thing only
+to the precision of how often it looks. A day missed does not lose a
+removal -- it moves it, and widens the interval it could have happened
+in from one day to two.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
