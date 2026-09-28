@@ -472,3 +472,60 @@ class TestWhenItWasCollected:
             shared_at=datetime(2026, 9, 27, 16, 0),
         )
         assert row.shared_at == datetime(2026, 9, 27, 16, 0)
+
+
+class TestGoingBackForTheThinReads:
+    """A page that gave up only its meta tags leaves a row and no file."""
+
+    def test_the_selector_finds_exactly_those(self, session):
+        from sqlalchemy import select
+
+        from app.models import WebVideo
+
+        for video_id, how in (
+            ("1", "api"), ("2", "surface"), ("3", "embedded"), ("4", "surface"),
+        ):
+            session.add(
+                WebVideo(platform="douyin_note", video_id=video_id, parsed_by=how)
+            )
+        session.commit()
+
+        thin = {
+            found
+            for (found,) in session.execute(
+                select(WebVideo.video_id).where(
+                    WebVideo.platform == "douyin_note",
+                    WebVideo.parsed_by == "surface",
+                )
+            )
+        }
+        assert thin == {"2", "4"}
+
+    def test_new_only_would_never_come_back_for_them(self, session):
+        """Which is why the flag exists.
+
+        The row is there and carries no fetch error, so `wanted` counts
+        the post as read. Without a way to name them, a post read from
+        the surface is archived never -- and its images go when it does.
+        """
+        from app.fetch_videos import wanted
+        from app.models import SharedLink, WebVideo
+        from app.clock import now as utc_now
+
+        session.add(
+            SharedLink(
+                participant_id="P001",
+                platform="douyin_note",
+                raw_text="x",
+                video_id="7689",
+                canonical_url="https://www.douyin.com/note/7689",
+                shared_at=utc_now(),
+            )
+        )
+        session.add(
+            WebVideo(platform="douyin_note", video_id="7689", parsed_by="surface")
+        )
+        session.commit()
+
+        assert wanted(session, "douyin_note", refresh=False) == []
+        assert wanted(session, "douyin_note", refresh=True) == ["7689"]

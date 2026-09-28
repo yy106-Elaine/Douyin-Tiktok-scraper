@@ -305,6 +305,18 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--surface-only",
+        action="store_true",
+        help=(
+            "only the posts whose last read got no data out of the page. "
+            "Douyin sometimes answers with a page that carries the "
+            "caption in its meta tags and nothing else, and a post read "
+            "that way has no file addresses -- so it has a row, which "
+            "makes --new-only skip it for ever, and no copy. This is how "
+            "to go back for exactly those"
+        ),
+    )
+    parser.add_argument(
         "--redownload",
         action="store_true",
         help="fetch the file again even where one is already held",
@@ -334,6 +346,23 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 # Named and not held: say so rather than printing
                 # "nothing to do", which reads as "already done".
                 print(f"not in this platform's corpus: {', '.join(sorted(missing))}")
+
+        if args.surface_only:
+            from sqlalchemy import select
+
+            from .models import WebVideo
+
+            thin = {
+                video_id
+                for (video_id,) in session.execute(
+                    select(WebVideo.video_id).where(
+                        WebVideo.platform == args.platform,
+                        WebVideo.parsed_by == "surface",
+                    )
+                )
+            }
+            targets = [v for v in targets if v in thin]
+            print(f"{len(targets)} read from the surface last time")
 
         if args.skip_gone:
             from .recheck import disappeared
