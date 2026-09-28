@@ -3,6 +3,15 @@ __pycache__/
 *.py[cod]
 .venv/
 *.db
+# SQLite's sidecars. They are part of the running database, not of the
+# project, and committing one is worse than committing the database:
+# a pull drops another machine's write-ahead log next to a live file,
+# and SQLite reads the pair as one corrupt database. That happened --
+# a collection pass died mid-run with "database disk image is
+# malformed" because these two were in a commit.
+*.db-wal
+*.db-shm
+*.db-journal
 .env
 
 # A signed-in browser session. Local state, like the database, and it
