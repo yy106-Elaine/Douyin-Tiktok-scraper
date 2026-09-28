@@ -118,3 +118,28 @@ def platform_for_package(package: str) -> str | None:
 
 def family_for_platform(platform: str) -> str | None:
     return PLATFORM_FAMILY.get(platform)
+
+
+#: Platforms that are a format of another, not a place of their own.
+#: 图文 posts are Douyin: the same account posts both, the same tag
+#: search returns both, and the interesting question is how the two
+#: compare -- so they belong in one table with a column saying which,
+#: not behind a second tab nobody thinks to open.
+#:
+#: They keep a separate platform key all the same, because that is
+#: what makes the comparison computable. Merging happens at the point
+#: of display, never in the data.
+MERGED_INTO: dict[str, str] = {"douyin_note": "douyin"}
+
+
+def family_members(platform: str) -> tuple[str, ...]:
+    """This platform and any format shown under it."""
+    merged = tuple(
+        name for name, into in MERGED_INTO.items() if into == platform
+    )
+    return (platform,) + merged
+
+
+def shown_separately(platform: str) -> bool:
+    """Whether this platform gets a tab of its own."""
+    return platform not in MERGED_INTO

@@ -634,12 +634,20 @@ class TestOnePlatformAtATime:
 class TestTheDashboardCanSeeNotes:
     """A platform with no capture table still has takedowns to show."""
 
-    def test_measured_platforms_includes_a_pasted_only_platform(self, session):
+    def test_a_format_gets_no_tab_of_its_own(self, session):
+        """Decided on 2026-09-28, and it is a judgement about reading.
+
+        图文 and video are the same accounts, found by the same tag
+        searches, and the question worth asking is how the two compare.
+        Behind a second tab that comparison is two page loads and an
+        act of memory; in one table with a column it is a glance. So
+        the platform keeps its own key -- that is what makes the
+        comparison computable at all -- and the merge happens at the
+        point of display.
+        """
         from app.clock import now as utc_now
         from app.dashboard import measured_platforms
         from app.models import SharedLink
-
-        assert "douyin_note" not in measured_platforms(session)
 
         session.add(
             SharedLink(
@@ -655,9 +663,42 @@ class TestTheDashboardCanSeeNotes:
         session.commit()
 
         known = measured_platforms(session)
-        assert "douyin_note" in known
-        # And the platforms that always existed are still there.
+        assert "douyin_note" not in known
         assert {"douyin", "tiktok", "youtube"} <= set(known)
+
+    def test_the_notes_are_counted_under_douyin(self, session):
+        from app.clock import now as utc_now
+        from app.models import LinkCheck, SharedLink
+        from app.survival import findings
+
+        session.add(
+            SharedLink(
+                participant_id="P001",
+                platform="douyin_note",
+                raw_text="x",
+                video_id="7689",
+                canonical_url="https://www.douyin.com/note/7689",
+                shared_at=utc_now(),
+                source="pasted",
+            )
+        )
+        session.add(
+            LinkCheck(
+                platform="douyin_note",
+                video_id="7689",
+                target_kind="video",
+                url="https://www.douyin.com/note/7689",
+                http_status=200,
+                evidence="id confirmed",
+                checked_at=utc_now(),
+            )
+        )
+        session.commit()
+
+        assert any(f.video_id == "7689" for f in findings(session, "douyin"))
+        # And still findable on its own, for a comparison between them.
+        assert any(f.video_id == "7689" for f in findings(session, "douyin_note"))
+        assert not any(f.video_id == "7689" for f in findings(session, "tiktok"))
 
     def test_the_takedowns_view_serves_it(self, client):
         from app.clock import now as utc_now
@@ -691,3 +732,42 @@ class TestTheDashboardCanSeeNotes:
             params={"platform": "weibo", "key": "test-admin-key"},
         )
         assert answer.status_code == 404
+
+
+class TestTheKindColumn:
+    """One table, a column saying which -- not two tabs."""
+
+    def test_a_note_row_is_marked_and_a_video_row_is_not(self):
+        from app.dashboard import _kind_cell
+
+        class Row:
+            def __init__(self, platform):
+                self.platform = platform
+
+        assert "图文" in _kind_cell(Row("douyin_note"))
+        assert "图文" not in _kind_cell(Row("douyin"))
+        assert "图文" not in _kind_cell(Row("tiktok"))
+
+    def test_the_douyin_listing_includes_pasted_notes(self, session):
+        """They have no capture row, so this listing is their only one."""
+        from app.clock import now as utc_now
+        from app.models import SharedLink
+        from app.views import video_rows
+
+        for video_id, platform in (("111", "douyin"), ("222", "douyin_note")):
+            session.add(
+                SharedLink(
+                    participant_id="P001",
+                    platform=platform,
+                    raw_text="拉拉们都是怎么谈上的啊 #lwl #le",
+                    video_id=video_id,
+                    canonical_url=f"https://www.douyin.com/note/{video_id}",
+                    shared_at=utc_now(),
+                    source="pasted",
+                )
+            )
+        session.commit()
+
+        found = {row.video_id: row.platform for row in video_rows(session, "douyin", 50)}
+        assert found.get("111") == "douyin"
+        assert found.get("222") == "douyin_note"

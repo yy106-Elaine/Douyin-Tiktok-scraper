@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .clock import local_date
+from .platforms import family_members
 from .clock import today as clock_today
 from .models import LinkCheck
 from .recheck import (
@@ -318,7 +319,10 @@ def findings(session: Session, platform: str | None = None) -> list[Finding]:
     """One finding per checked video, most recently checked first."""
     statement = select(LinkCheck).order_by(LinkCheck.checked_at)
     if platform:
-        statement = statement.where(LinkCheck.platform == platform)
+        # A format shown under this platform is counted with it: see
+        # platforms.MERGED_INTO. The rows keep their own platform, so
+        # the two can still be told apart and compared.
+        statement = statement.where(LinkCheck.platform.in_(family_members(platform)))
 
     by_video: dict[str, list[LinkCheck]] = {}
     orphan_authors: list[LinkCheck] = []

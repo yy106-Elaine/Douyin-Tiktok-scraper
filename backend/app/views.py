@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from .clock import local, local_date, start_of_local_day
 from .links import describe, extract
 from .models import SharedLink, WebAuthor, WebVideo
-from .platforms import API_PLATFORMS
+from .platforms import API_PLATFORMS, family_members
 from .platforms import filter_policy
 from .relevance import (
     FICTION_STRATUM,
@@ -545,10 +545,14 @@ def video_rows(
     # Only the links that no post row already accounts for: a paired
     # link's id is on its post's row, and showing it twice is the
     # duplication this module exists to remove.
+    # A format shown under this platform comes in here: 图文 posts have
+    # no capture table, so every one of them is an unpaired link, and
+    # filtering on the exact platform left them out of the only listing
+    # they could have appeared in.
     unpaired = session.scalars(
         select(SharedLink)
         .where(
-            SharedLink.platform == platform,
+            SharedLink.platform.in_(family_members(platform)),
             SharedLink.matched_capture_id.is_(None),
         )
         .order_by(SharedLink.shared_at.desc())

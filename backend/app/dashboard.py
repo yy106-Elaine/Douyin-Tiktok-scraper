@@ -21,7 +21,12 @@ from .config import settings
 from .db import get_session
 from .models import CaptureEvent, SharedLink
 from .parsers import PLATFORM_TABLES
-from .platforms import API_PLATFORMS, filter_policy
+from .platforms import (
+    API_PLATFORMS,
+    family_members,
+    filter_policy,
+    shown_separately,
+)
 from .recheck import (
     ALIVE,
     AUTHOR_GONE,
@@ -298,7 +303,7 @@ _STATE_CLASS = {
     ID_ON_SCREEN: "good",
 }
 
-_COLUMNS = 12
+_COLUMNS = 13
 
 
 def _posted_cell(row: VideoRow) -> str:
@@ -388,6 +393,18 @@ def _notes_cell(row: VideoRow) -> str:
     return f'<td>{"".join(notes)}</td>'
 
 
+#: What a row is made of, when a platform has more than one kind.
+#: Left blank rather than repeating "video" down a column of videos --
+#: the eye should find the 图文 rows, not read the word that is true of
+#: everything.
+def _kind_cell(row) -> str:
+    return (
+        '<td class="kind">图文</td>'
+        if (row.platform or "").endswith("_note")
+        else "<td></td>"
+    )
+
+
 def _video_rows(rows) -> str:
     if not rows:
         return (
@@ -400,6 +417,7 @@ def _video_rows(rows) -> str:
         out.append(
             "<tr>"
             f'<td class="rank">{number}</td>'
+            f"{_kind_cell(row)}"
             f"{_posted_cell(row)}"
             f"{_id_cell(row)}"
             f"{_handle_cell(row)}"
@@ -443,7 +461,7 @@ def measured_platforms(session: Session) -> list[str]:
         known.update(
             name for (name,) in session.execute(select(column).distinct()) if name
         )
-    return sorted(known)
+    return sorted(name for name in known if shown_separately(name))
 
 
 def _nav(
@@ -502,6 +520,9 @@ _SHARED_CSS = """  :root {
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color: var(--ink-2); margin: 0 0 20px; }
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  /* Only the rows that are not the usual kind carry a word here, so
+     it reads as a mark in the margin rather than a column to scan. */
+  .kind { font-size: 11px; color: #6b5b95; white-space: nowrap; }
   .tab {
     padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
     color: var(--ink-2); text-decoration: none; background: var(--panel);
@@ -799,7 +820,7 @@ first collected. A video already held is not new data.</p>
 {filter_note}
 <div class="panel"><table>
 <thead><tr>
-<th>#</th><th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
+<th>#</th><th></th><th>Published</th><th>Video ID</th><th>@handle</th><th>Display name</th>
 <th>Caption</th><th>Seen</th>
 <th class="n">Likes</th><th class="n">Comments</th><th class="n">Shares</th>
 <th>Notes</th><th>Seen on</th>
@@ -1079,6 +1100,7 @@ def _finding_rows(
         out.append(
             "<tr>"
             f'<td>{state}{comeback}{doubtful}</td>'
+            f"{_kind_cell(finding)}"
             f'<td class="vid">{link}</td>'
             f"{_cell(author)}"
             f"{_cell(handle)}"
@@ -1107,6 +1129,10 @@ def takedowns(
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
     known = measured_platforms(session)
+    if platform not in known and not shown_separately(platform):
+        # Reachable by hand for anyone who wants one format on its own,
+        # even though it has no tab.
+        known = sorted(set(known) | {platform})
     if platform not in known:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"unknown platform {platform}"
@@ -1114,7 +1140,8 @@ def takedowns(
 
     items = findings(session, platform)
     summary = summarise(items)
-    collected = [t for t in collected_targets(session) if t.platform == platform]
+    members = set(family_members(platform))
+    collected = [t for t in collected_targets(session) if t.platform in members]
     due = due_targets(session, targets=collected)
 
     # The corpus is two populations and they are not pooled. See
@@ -1298,7 +1325,7 @@ disappeared somewhere between them, and nothing in the data says where.</p>
 <h2>Per video &mdash; {escape(platform)}</h2>
 <div class="panel"><table>
 <thead><tr>
-<th>Outcome</th><th>Video ID</th><th>Display name</th><th>@handle</th>
+<th>Outcome</th><th></th><th>Video ID</th><th>Display name</th><th>@handle</th>
 <th>Caption</th><th>Published</th>
 <th>Lifetime</th><th>First checked</th><th>Last alive</th><th>First gone</th>
 <th>Last checked</th>
