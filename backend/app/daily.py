@@ -305,6 +305,21 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--skip-recent",
+        type=float,
+        metavar="HOURS",
+        default=None,
+        help=(
+            "leave out videos already checked within this many hours. "
+            "This is how an interrupted pass is resumed: a run over two "
+            "hundred pages takes an hour, a network that drops takes it "
+            "with it, and starting again from the top costs the hour "
+            "over again -- the page visit is the expensive part, and a "
+            "video already visited today has already been measured. "
+            "Use 12 to carry on with what a morning's run did not reach"
+        ),
+    )
+    parser.add_argument(
         "--unarchived", "--surface-only",
         dest="unarchived",
         action="store_true",
@@ -348,6 +363,32 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 # Named and not held: say so rather than printing
                 # "nothing to do", which reads as "already done".
                 print(f"not in this platform's corpus: {', '.join(sorted(missing))}")
+
+        if args.skip_recent:
+            from datetime import timedelta
+
+            from sqlalchemy import func, select
+
+            from .clock import now as utc_now
+            from .models import LinkCheck
+
+            cutoff = utc_now() - timedelta(hours=args.skip_recent)
+            done = {
+                video_id
+                for (video_id,) in session.execute(
+                    select(LinkCheck.video_id)
+                    .where(LinkCheck.platform == args.platform)
+                    .group_by(LinkCheck.video_id)
+                    .having(func.max(LinkCheck.checked_at) >= cutoff)
+                )
+                if video_id
+            }
+            before = len(targets)
+            targets = [v for v in targets if v not in done]
+            print(
+                f"skipping {before - len(targets)} checked in the last "
+                f"{args.skip_recent:g}h"
+            )
 
         if args.unarchived:
             from sqlalchemy import or_, select

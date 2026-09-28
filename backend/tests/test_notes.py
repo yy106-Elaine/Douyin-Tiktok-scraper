@@ -771,3 +771,84 @@ class TestTheKindColumn:
         found = {row.video_id: row.platform for row in video_rows(session, "douyin", 50)}
         assert found.get("111") == "douyin"
         assert found.get("222") == "douyin_note"
+
+
+class TestResumingAnInterruptedPass:
+    """An hour-long pass and a network that drops are a bad pair."""
+
+    def test_a_video_checked_recently_is_left_out(self, session):
+        from datetime import timedelta
+
+        from sqlalchemy import func, select
+
+        from app.clock import now as utc_now
+        from app.models import LinkCheck
+
+        now = utc_now()
+        for video_id, when in (
+            ("done", now - timedelta(hours=2)),
+            ("stale", now - timedelta(hours=30)),
+        ):
+            session.add(
+                LinkCheck(
+                    platform="douyin",
+                    video_id=video_id,
+                    target_kind="video",
+                    url=f"https://www.douyin.com/video/{video_id}",
+                    http_status=200,
+                    checked_at=when,
+                )
+            )
+        session.commit()
+
+        cutoff = now - timedelta(hours=12)
+        recent = {
+            found
+            for (found,) in session.execute(
+                select(LinkCheck.video_id)
+                .where(LinkCheck.platform == "douyin")
+                .group_by(LinkCheck.video_id)
+                .having(func.max(LinkCheck.checked_at) >= cutoff)
+            )
+        }
+        assert recent == {"done"}
+
+    def test_the_latest_check_decides_not_the_earliest(self, session):
+        """A video checked days ago and again this morning is done.
+
+        Grouping without the max would have kept it in the queue on the
+        strength of its oldest check, which is the whole hour back
+        again for videos already measured today.
+        """
+        from datetime import timedelta
+
+        from sqlalchemy import func, select
+
+        from app.clock import now as utc_now
+        from app.models import LinkCheck
+
+        now = utc_now()
+        for when in (now - timedelta(days=3), now - timedelta(hours=1)):
+            session.add(
+                LinkCheck(
+                    platform="douyin",
+                    video_id="7689",
+                    target_kind="video",
+                    url="https://www.douyin.com/video/7689",
+                    http_status=200,
+                    checked_at=when,
+                )
+            )
+        session.commit()
+
+        cutoff = now - timedelta(hours=12)
+        recent = {
+            found
+            for (found,) in session.execute(
+                select(LinkCheck.video_id)
+                .where(LinkCheck.platform == "douyin")
+                .group_by(LinkCheck.video_id)
+                .having(func.max(LinkCheck.checked_at) >= cutoff)
+            )
+        }
+        assert recent == {"7689"}
