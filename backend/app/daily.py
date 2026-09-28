@@ -359,6 +359,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             )
             return
 
+        # Before an hour of writing: there is one copy of this
+        # database and no other. `daily.sh` has always taken one and a
+        # hand-run pass did not, which is backwards -- this is the long
+        # pass.
+        from .db import snapshot
+
+        kept = snapshot()
+        if kept:
+            print(f"database copied to {kept}\n")
+
         def show(done: int, total: int, said: str) -> None:
             print(f"[{done}/{total}] {said}", flush=True)
 

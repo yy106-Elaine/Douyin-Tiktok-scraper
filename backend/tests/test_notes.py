@@ -202,3 +202,55 @@ class TestAPass:
         assert outcome == "read"
         assert asked == []
         assert "not kept" in said
+
+
+class TestSnapshot:
+    """A copy before the long pass, taken the way a live file must be."""
+
+    def test_the_copy_opens(self, tmp_path, db):
+        import sqlite3
+
+        from app.db import snapshot
+
+        kept = snapshot(tmp_path)
+        assert kept is not None and kept.is_file()
+        answer = sqlite3.connect(kept).execute("PRAGMA integrity_check").fetchone()
+        assert answer[0] == "ok"
+
+    def test_it_uses_sqlite_s_own_backup_not_a_file_copy(self, tmp_path, db):
+        """A file copied mid-write is a copy that is mid-write.
+
+        Which is the worst kind of backup: it exists, it is the right
+        size, and it is unopenable in the one moment it is needed.
+        """
+        import sqlite3
+
+        from app.db import SessionLocal, snapshot
+        from app.models import LinkCheck
+
+        with SessionLocal() as open_session:
+            open_session.add(
+                LinkCheck(
+                    platform="douyin_note",
+                    video_id="7689",
+                    target_kind="video",
+                    url="https://www.douyin.com/note/7689",
+                    http_status=200,
+                    checked_at=__import__("datetime").datetime(2026, 9, 28, 2, 0),
+                )
+            )
+            open_session.commit()
+            # Copy taken with a session still open on the source.
+            kept = snapshot(tmp_path)
+
+        rows = sqlite3.connect(kept).execute(
+            "select count(*) from link_checks"
+        ).fetchone()[0]
+        assert rows >= 1
+
+    def test_old_copies_are_dropped_and_recent_ones_are_not(self, tmp_path, db):
+        from app.db import snapshot
+
+        for _ in range(4):
+            snapshot(tmp_path, keep=2)
+        assert len(list(tmp_path.glob("scraper-*.db"))) <= 2

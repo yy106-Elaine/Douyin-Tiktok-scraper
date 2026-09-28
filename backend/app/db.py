@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import sqlite3
 
@@ -99,3 +100,51 @@ def _add_missing_columns() -> None:
                 connection.execute(
                     text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {column_type}')
                 )
+
+
+#: Where `daily.sh` keeps its copies, and now where a hand-run pass
+#: keeps one too.
+BACKUP_DIR = Path("backups")
+KEEP_BACKUPS = 30
+
+
+def snapshot(directory: Path | None = None, keep: int = KEEP_BACKUPS) -> Path | None:
+    """Copy the database before a long pass writes to it.
+
+    `daily.sh` has always done this and a pass run by hand did not --
+    which is the wrong way round, because the hand-run pass is the
+    hour-long one, and the day it mattered the newest copy was from
+    the afternoon before.
+
+    Uses SQLite's own backup API rather than copying the file: a file
+    copy taken while something is mid-write gives a copy that is
+    mid-write, and a backup nobody can open is worse than none,
+    because it is only discovered in the moment it is needed.
+
+    Returns the path written, or None when there is no file database
+    to copy.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+
+    url = settings.database_url
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return None
+    source = Path(url[len(prefix):])
+    if not source.is_file():
+        return None
+
+    folder = directory or BACKUP_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
+    destination = folder / f"scraper-{stamp}.db"
+
+    with sqlite3.connect(source) as live, sqlite3.connect(destination) as copy:
+        live.backup(copy)
+
+    # Keep a month of them. Old copies are what make a bad day undoable.
+    copies = sorted(folder.glob("scraper-*.db"), key=lambda f: f.stat().st_mtime)
+    for old in copies[:-keep]:
+        old.unlink(missing_ok=True)
+    return destination
