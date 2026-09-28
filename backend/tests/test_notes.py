@@ -629,3 +629,65 @@ class TestOnePlatformAtATime:
                 youtube_checker=None,
             )
         assert len(asked) == 3
+
+
+class TestTheDashboardCanSeeNotes:
+    """A platform with no capture table still has takedowns to show."""
+
+    def test_measured_platforms_includes_a_pasted_only_platform(self, session):
+        from app.clock import now as utc_now
+        from app.dashboard import measured_platforms
+        from app.models import SharedLink
+
+        assert "douyin_note" not in measured_platforms(session)
+
+        session.add(
+            SharedLink(
+                participant_id="P001",
+                platform="douyin_note",
+                raw_text="x",
+                video_id="7689",
+                canonical_url="https://www.douyin.com/note/7689",
+                shared_at=utc_now(),
+                source="pasted",
+            )
+        )
+        session.commit()
+
+        known = measured_platforms(session)
+        assert "douyin_note" in known
+        # And the platforms that always existed are still there.
+        assert {"douyin", "tiktok", "youtube"} <= set(known)
+
+    def test_the_takedowns_view_serves_it(self, client):
+        from app.clock import now as utc_now
+        from app.db import SessionLocal
+        from app.models import SharedLink
+
+        with SessionLocal() as session:
+            session.add(
+                SharedLink(
+                    participant_id="P001",
+                    platform="douyin_note",
+                    raw_text="x",
+                    video_id="7689",
+                    canonical_url="https://www.douyin.com/note/7689",
+                    shared_at=utc_now(),
+                    source="pasted",
+                )
+            )
+            session.commit()
+
+        answer = client.get(
+            "/dashboard/takedowns",
+            params={"platform": "douyin_note", "key": "test-admin-key"},
+        )
+        assert answer.status_code == 200
+        assert "douyin_note" in answer.text
+
+    def test_a_platform_nobody_has_data_for_is_still_refused(self, client):
+        answer = client.get(
+            "/dashboard/takedowns",
+            params={"platform": "weibo", "key": "test-admin-key"},
+        )
+        assert answer.status_code == 404

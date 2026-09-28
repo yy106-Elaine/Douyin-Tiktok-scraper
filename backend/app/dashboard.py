@@ -422,7 +422,33 @@ _VIEWS = (
 )
 
 
-def _nav(view: str, platform: str | None, key: str) -> str:
+def measured_platforms(session: Session) -> list[str]:
+    """Every platform there is takedown data for, in a stable order.
+
+    Not the same set as the capture tables. `PLATFORM_TABLES` maps a
+    platform to the table the phone's screen readings land in, and
+    `douyin_note` has none: 图文 posts arrive as pasted share links,
+    not as captures. They still have ids, checks and findings, which
+    is everything the Takedowns view needs -- so keying that view on
+    the capture tables hid a whole platform from the page that exists
+    to show what happened to it.
+
+    Capture keeps the narrower list, because that view really does
+    read the capture table.
+    """
+    from .models import SharedLink, WebVideo
+
+    known = set(PLATFORM_TABLES)
+    for column in (SharedLink.platform, WebVideo.platform):
+        known.update(
+            name for (name,) in session.execute(select(column).distinct()) if name
+        )
+    return sorted(known)
+
+
+def _nav(
+    view: str, platform: str | None, key: str, platforms: list[str] | None = None
+) -> str:
     """The view, then the platform, as one strip of links.
 
     One row, in the same order, on every page. It was two rows, and
@@ -442,7 +468,7 @@ def _nav(view: str, platform: str | None, key: str) -> str:
     platforms = "".join(
         f'<a class="tab{" on" if name == platform else ""}" '
         f'href="{target}?platform={name}&key={escape(key)}">{escape(name)}</a>'
-        for name in sorted(PLATFORM_TABLES)
+        for name in (platforms if platforms is not None else sorted(PLATFORM_TABLES))
     )
     return (
         f'<div class="tabs">{views}'
@@ -1080,7 +1106,8 @@ def takedowns(
     platform: str = Query(default="tiktok"),
     session: Session = Depends(get_session),
 ) -> HTMLResponse:
-    if platform not in PLATFORM_TABLES:
+    known = measured_platforms(session)
+    if platform not in known:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"unknown platform {platform}"
         )
@@ -1102,6 +1129,7 @@ def takedowns(
         _findings_page(
             key=key,
             platform=platform,
+            platforms=known,
             items=items,
             summary=summary,
             fiction=fiction,
@@ -1195,7 +1223,7 @@ def _findings_page(**ctx) -> str:
     platform = ctx["platform"]
     summary = ctx["summary"]
 
-    tabs = _nav("Takedowns", platform, ctx["key"])
+    tabs = _nav("Takedowns", platform, ctx["key"], ctx.get("platforms"))
 
     tiles = "".join(
         [
