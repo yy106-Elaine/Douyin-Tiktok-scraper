@@ -1025,6 +1025,46 @@ in the corpus, and cannot be found by the words their authors chose to
 be found by. The tags come from `feed`, the captions and dates are
 stored, so the figure is a query rather than a study.
 
+**2026-09-28: the tag was never empty. The video results were.**
+
+Searching `lwl` on the phone returns a full page of recent material --
+posted four hours ago, eleven hours ago, twelve hours ago, with
+1,401 and 1,206 and 145 likes. None of it is video. They are 图文
+posts: image-and-text cards, captioned
+拉拉们都是怎么谈上的啊#拉子们 #lwl #le, screenshots of a couple's chat
+log, an outfit photo tagged #wlw #lwl #ootd街拍.
+
+Everything written above about these tags going quiet has to be read
+with one word inserted. The tag did not go quiet; the tag went quiet
+**of videos**. The community is still posting under it, in volume, at
+a rate of several a day, and by the researcher's own reading there is
+now far more image-and-text material under these tags than video.
+
+This matters in three ways, in increasing order.
+
+It corrects the record. The 09-24 through 09-27 entries describe
+searches that returned nothing and infer things from that nothing.
+Those searches were reading the video results. What they establish is
+narrower than what they claimed: not that posting under `#lwl` stopped
+or was suppressed, but that *video* under `#lwl` is not being
+returned, while image-and-text under the same tag is.
+
+It explains the instrument's blind spot. This study collects videos.
+Its id, its page address, its archive copy and its takedown check are
+all built for a video, so a population that moves to another format
+becomes invisible to it -- and the instrument reports that
+invisibility as an empty tag, which reads like an empty community.
+A measurement that cannot see a format will always mistake a move
+between formats for a disappearance.
+
+And it raises the question worth asking the authors. If video under
+these tags is being removed and image-and-text is not, then a move to
+图文 is not a change of taste, it is an adaptation to enforcement --
+the same kind of adaptation as `#l #e` written as two hashtags, one
+format up. This instrument cannot establish that from outside; the
+people posting can say it in an interview, and it is now a question to
+put to them.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
