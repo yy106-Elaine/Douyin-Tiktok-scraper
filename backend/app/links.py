@@ -48,8 +48,25 @@ _DOUYIN_SHORT = re.compile(r"v\.douyin\.com/(?P<slug>[\w\-]+)", re.IGNORECASE)
 #: The author and the caption are in there. A link that never paired
 #: to a captured post had been showing an empty row, while the text it
 #: was extracted from held both -- see `describe`.
+#: 图文作品 is a 图文 post, 作品 a video, and the share sheet says
+#: which in so many words -- before any redirect is followed, which
+#: matters because almost every link copied on a phone is a short one.
 _DOUYIN_SHARE = re.compile(
-    r"【(?P<author>.+?)的作品】(?P<caption>.*?)(?=https?://|$)", re.DOTALL
+    r"【(?P<author>.+?)的(?P<kind>图文)?作品】(?P<caption>.*?)(?=https?://|$)",
+    re.DOTALL,
+)
+
+#: Not every blob names an author. The other form the share sheet
+#: produces puts the caption first and ends with an instruction:
+#:
+#:   9.94 淡淡的稳稳的幸福的两个人 # lwl # 同居日常 https://v.douyin.com/...
+#:   复制此链接，打开抖音搜索，直接观看视频！
+#:
+#: The leading number is the sheet's own decoration. What follows it,
+#: up to the link, is the caption -- and the caption is what the
+#: filter runs on, so losing it loses the row.
+_DOUYIN_BARE = re.compile(
+    r"^\s*\d+\.\d+\s*(?P<caption>.*?)(?=https?://)", re.DOTALL
 )
 
 
@@ -125,8 +142,15 @@ def extract(text: str) -> ExtractedLink:
         )
 
     if m := _DOUYIN_SHORT.search(haystack):
+        # The share sheet already said which kind this is -- 图文作品
+        # or 作品 -- and that is worth keeping now rather than after
+        # the redirect, because almost every link copied on a phone is
+        # a short one and the resolve pass may be days away. If the
+        # landing page disagrees, `resolve` corrects it there.
+        told = _DOUYIN_SHARE.search(haystack)
+        kind = "douyin_note" if (told and told.group("kind")) else "douyin"
         return ExtractedLink(
-            platform="douyin",
+            platform=kind,
             video_id=None,
             author_handle=None,
             canonical_url=None,
@@ -162,7 +186,10 @@ def describe(text: str) -> SharedText:
     """
     match = _DOUYIN_SHARE.search(text or "")
     if not match:
-        return SharedText(None, None)
+        bare = _DOUYIN_BARE.search(text or "")
+        if not bare:
+            return SharedText(None, None)
+        return SharedText(None, bare.group("caption").strip() or None)
     author = match.group("author").strip() or None
     caption = match.group("caption").strip() or None
     return SharedText(author, caption)

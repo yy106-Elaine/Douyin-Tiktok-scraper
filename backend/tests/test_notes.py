@@ -358,3 +358,71 @@ class TestPasted:
         assert row is not None
         assert row.video_id is None
         assert row.raw_text
+
+
+class TestShareSheetSaysWhich:
+    """抖音's own share text names the kind, before any redirect.
+
+    Which matters because nearly every link copied on a phone is a
+    short one: without this the kind is unknown until `app.resolve`
+    runs, and on a travel week that can be days.
+    """
+
+    def test_图文作品_is_a_note_even_as_a_short_link(self):
+        from app.links import extract
+
+        link = extract(
+            "2.51 复制打开抖音，看看【嵐的图文作品】# wlw# 年上 "
+            "https://v.douyin.com/nYrwjP_Cfs4/ c@N.Wm"
+        )
+        assert link.platform == "douyin_note"
+        assert link.needs_resolution is True
+
+    def test_作品_alone_is_a_video(self):
+        from app.links import extract
+
+        link = extract(
+            "7.99 复制打开抖音，看看【悄悄的小八的作品】你的黑长直已上线# lwl "
+            "https://v.douyin.com/5F3noRWBzcs/"
+        )
+        assert link.platform == "douyin"
+
+    def test_the_author_survives_的图文作品(self):
+        """The pattern wanted 的作品】 and 图文 sits between the two.
+
+        So every 图文 row lost its author and its caption -- and the
+        caption is what the filter runs on, so the row went out as
+        untagged. Found the day the corpus became mostly 图文.
+        """
+        from app.links import describe
+
+        said = describe(
+            "4.84 复制打开抖音，看看【皓明的图文作品】好可爱的老婆...好喜欢"
+            "# wlw# la# 恋爱... https://v.douyin.com/2mtISHhKpHc/"
+        )
+        assert said.author_name == "皓明"
+        assert "# wlw" in said.caption
+
+    def test_a_blob_with_no_author_still_yields_its_caption(self):
+        """The other share form: caption first, no 【】 at all."""
+        from app.links import describe
+
+        said = describe(
+            "9.94 淡淡的稳稳的幸福的两个人 # lwl # 同居日常 # 妻妻 "
+            "https://v.douyin.com/2gei-utzpv4/ 复制此链接，打开抖音搜索，直接观看视频！"
+        )
+        assert said.author_name is None
+        assert said.caption.startswith("淡淡的稳稳的幸福的两个人")
+        assert "#" in said.caption
+
+    def test_these_captions_are_in_scope(self):
+        """The filter is unchanged; 图文 captions label themselves too."""
+        from app.relevance import classify
+
+        for caption in (
+            "# wlw# 年上# 无名女士# 嵐",
+            "一半一伴.# wlw",
+            "淡淡的稳稳的幸福的两个人 # lwl # 同居日常 # 妻妻",
+            "闺蜜我爱你# wlw # h # 朋友",
+        ):
+            assert classify(caption, policy="tags") is None, caption

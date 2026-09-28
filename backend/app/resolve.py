@@ -196,8 +196,11 @@ def resolve_pending(
         # Only the address it lands on says which of the two it is, and
         # it has to say so here: a note id fetched from /video/ is not
         # a failure, it is answered with a different post.
-        if parsed.platform == "douyin_note" and link.platform != "douyin_note":
-            link.platform = "douyin_note"
+        # The landing page is the authority, both ways: a blob that
+        # said 图文作品 but redirects to /video/ was misread, and one
+        # that said nothing may still land on /note/.
+        if parsed.platform in ("douyin", "douyin_note"):
+            link.platform = parsed.platform
         known[source] = (parsed.video_id, link.canonical_url)
         if parsed.author_handle and not link.author_handle:
             link.author_handle = parsed.author_handle
