@@ -30,7 +30,8 @@ _TIKTOK_SHORT = re.compile(
 #: post, which carries an aweme id exactly as a video does and is as
 #: much a part of the sample.
 _DOUYIN_FULL = re.compile(
-    r"(?:douyin\.com/(?:video|note)/|iesdouyin\.com/share/(?:video|note)/)"
+    r"(?:douyin\.com/(?P<kind>video|note)/"
+    r"|iesdouyin\.com/share/(?P<kind2>video|note)/)"
     r"(?P<vid>\d+)",
     re.IGNORECASE,
 )
@@ -93,11 +94,22 @@ def extract(text: str) -> ExtractedLink:
         _DOUYIN_MODAL.search(haystack) if "douyin.com" in haystack.lower() else None
     ):
         vid = m.group("vid")
+        # Which of the two the link named, where it said. A 图文 post
+        # carries an aweme id exactly as a video does, so the id alone
+        # cannot tell them apart -- and the wrong address does not
+        # merely fail, it gets answered with something else, which is
+        # the failure this project keeps having to guard against.
+        # `modal_id` says nothing about the kind, so it stays a video.
+        kind = (m.groupdict().get("kind") or m.groupdict().get("kind2") or "video")
+        note = kind.lower() == "note"
         return ExtractedLink(
-            platform="douyin",
+            platform="douyin_note" if note else "douyin",
             video_id=vid,
             author_handle=None,
-            canonical_url=f"https://www.douyin.com/video/{vid}",
+            canonical_url=(
+                f"https://www.douyin.com/note/{vid}" if note
+                else f"https://www.douyin.com/video/{vid}"
+            ),
             raw_url=raw_url,
             needs_resolution=False,
         )
@@ -162,4 +174,6 @@ def canonical_url_for(platform: str, video_id: str, handle: str | None = None) -
         return f"https://www.youtube.com/watch?v={video_id}"
     if platform.startswith("tiktok"):
         return f"https://www.tiktok.com/@{handle or 'i'}/video/{video_id}"
+    if platform == "douyin_note":
+        return f"https://www.douyin.com/note/{video_id}"
     return f"https://www.douyin.com/video/{video_id}"

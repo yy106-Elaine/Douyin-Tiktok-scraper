@@ -254,3 +254,107 @@ class TestSnapshot:
         for _ in range(4):
             snapshot(tmp_path, keep=2)
         assert len(list(tmp_path.glob("scraper-*.db"))) <= 2
+
+
+class TestSharedLinks:
+    """A 图文 link copied on the phone, with no app change at all."""
+
+    def test_a_note_share_link_is_not_filed_as_a_video(self):
+        from app.links import extract
+
+        shared = (
+            "5.61 复制打开抖音，看看【酸奶烧烧的作品】拉拉们都是怎么谈上的啊"
+            "#拉子们 #lwl #le https://www.iesdouyin.com/share/note/"
+            "7689123456789012345/ :8p"
+        )
+        link = extract(shared)
+        assert link.platform == "douyin_note"
+        assert link.video_id == "7689123456789012345"
+        assert link.canonical_url.endswith("/note/7689123456789012345")
+
+    def test_a_video_link_is_still_a_video(self):
+        from app.links import extract
+
+        link = extract("https://www.douyin.com/video/7689123456789012345")
+        assert link.platform == "douyin"
+        assert "/video/" in link.canonical_url
+
+    def test_a_modal_id_says_nothing_about_the_kind(self):
+        """Opened over an author's page, the address carries no kind.
+
+        Guessing "note" there would send video ids to /note/, which is
+        the same mistake pointed the other way.
+        """
+        from app.links import extract
+
+        link = extract("https://www.douyin.com/user/MS4wLj?modal_id=7689123456789012345")
+        assert link.platform == "douyin"
+
+    def test_the_share_text_still_gives_author_and_caption(self):
+        """The caption is what the filter runs on, and it is in the text."""
+        from app.links import describe
+
+        said = describe(
+            "5.61 复制打开抖音，看看【酸奶烧烧的作品】拉拉们都是怎么谈上的啊 "
+            "#lwl #le https://www.iesdouyin.com/share/note/7689/ :8p"
+        )
+        assert said.author_name == "酸奶烧烧"
+        assert "#lwl" in (said.caption or "")
+
+
+class TestPasted:
+    """Collection by hand, for the days the phone cannot reach anything."""
+
+    def test_blocks_split_where_a_person_pastes(self):
+        from app.paste import blocks
+
+        assert blocks("a\n\nb\n\n\n c \n") == ["a", "b", "c"]
+        assert blocks("   ") == []
+
+    def test_a_pasted_note_becomes_the_row_the_phone_would_have_sent(
+        self, session
+    ):
+        from app.paste import store
+
+        row, said = store(
+            session,
+            "5.61 复制打开抖音，看看【酸奶烧烧的作品】拉拉们都是怎么谈上的啊 "
+            "#lwl #le https://www.iesdouyin.com/share/note/7689123456789012345/",
+            participant_id="P001",
+        )
+        assert row is not None
+        assert row.platform == "douyin_note"
+        assert row.video_id == "7689123456789012345"
+        assert row.canonical_url.endswith("/note/7689123456789012345")
+        # And it says it had no capture behind it.
+        assert row.source == "pasted"
+
+    def test_the_same_post_pasted_twice_is_not_two_sightings(self, session):
+        from app.paste import store
+
+        text = "【酸奶烧烧的作品】x https://www.douyin.com/note/7689123456789012345"
+        first, _ = store(session, text, participant_id="P001")
+        second, why = store(session, text, participant_id="P001")
+        assert first is not None
+        assert second is None
+        assert "already known" in why
+
+    def test_text_with_no_link_is_refused_rather_than_stored_empty(self, session):
+        from app.paste import store
+
+        row, why = store(session, "拉拉们都是怎么谈上的啊", participant_id="P001")
+        assert row is None
+        assert "no link" in why
+
+    def test_a_short_link_is_stored_for_resolve_to_follow(self, session):
+        """No id yet, and that is fine: app.resolve follows it later."""
+        from app.paste import store
+
+        row, _ = store(
+            session,
+            "7.88 【7iiu^的作品】每天和姐姐都好幸福呀 #lwl https://v.douyin.com/abcdefg/",
+            participant_id="P001",
+        )
+        assert row is not None
+        assert row.video_id is None
+        assert row.raw_text

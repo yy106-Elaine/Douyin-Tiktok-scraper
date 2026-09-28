@@ -85,7 +85,12 @@ def test_the_forms_a_douyin_short_link_lands_on():
     }
     for url, expected in landings.items():
         parsed = extract(url)
-        assert parsed.platform == "douyin", url
+        # Both are Douyin; which of the two matters, because the wrong
+        # path is answered with a different post rather than with an
+        # error. Changed 2026-09-28, when a tag search turned out to be
+        # returning 图文 posts and no video at all.
+        assert parsed.platform in ("douyin", "douyin_note"), url
+        assert ("note" in url.lower()) == (parsed.platform == "douyin_note"), url
         assert parsed.video_id == expected, url
         assert parsed.needs_resolution is False, url
 

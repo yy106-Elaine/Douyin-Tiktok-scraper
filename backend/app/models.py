@@ -192,6 +192,14 @@ class SharedLink(Base):
     #: The capture this link was harvested for, when the device knew.
     fingerprint: Mapped[str | None] = mapped_column(String(255), index=True)
 
+    #: How the link reached this database. Null or "phone" is the
+    #: ordinary path: the app harvested it beside a screen capture.
+    #: "pasted" means a person typed or pasted the share blob in, with
+    #: no capture behind it -- which happens when the phone cannot
+    #: reach the backend at all, and which analysis that relies on the
+    #: passive stream should be able to exclude.
+    source: Mapped[str | None] = mapped_column(String(16), index=True)
+
     matched_capture_id: Mapped[int | None] = mapped_column(
         ForeignKey("capture_events.id"), index=True
     )

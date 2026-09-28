@@ -191,6 +191,13 @@ def resolve_pending(
 
         link.video_id = parsed.video_id
         link.canonical_url = parsed.canonical_url or final_url
+        # The phone files a copied link under whichever app was in
+        # front, so a 图文 post shared from Douyin arrives as "douyin".
+        # Only the address it lands on says which of the two it is, and
+        # it has to say so here: a note id fetched from /video/ is not
+        # a failure, it is answered with a different post.
+        if parsed.platform == "douyin_note" and link.platform != "douyin_note":
+            link.platform = "douyin_note"
         known[source] = (parsed.video_id, link.canonical_url)
         if parsed.author_handle and not link.author_handle:
             link.author_handle = parsed.author_handle
