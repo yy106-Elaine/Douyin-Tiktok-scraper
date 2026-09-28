@@ -53,19 +53,30 @@ DEFAULT_PROFILE = Path(__file__).resolve().parent.parent / ".browser-profile"
 PROFILES: dict[str, Path] = {
     "douyin": DEFAULT_PROFILE,
     "tiktok": DEFAULT_PROFILE.with_name(".browser-profile-tiktok"),
+    # Notes are Douyin, read with the same signed-in session: one
+    # account, one profile, whatever the post is made of.
+    "douyin_note": DEFAULT_PROFILE,
 }
 
 #: Where the site's cookies live, for deciding whether a session is
 #: actually present, and where to open to find out.
-DOMAINS: dict[str, str] = {"douyin": "douyin.com", "tiktok": "tiktok.com"}
+DOMAINS: dict[str, str] = {
+    "douyin": "douyin.com",
+    "douyin_note": "douyin.com",
+    "tiktok": "tiktok.com",
+}
 HOMES: dict[str, str] = {
     "douyin": "https://www.douyin.com/",
+    "douyin_note": "https://www.douyin.com/",
     "tiktok": "https://www.tiktok.com/",
 }
 
 #: The site's own pages, which is what a signed-in browser can read.
 #: The share host stays the fallback for an anonymous fetch.
 VIDEO_URL = "https://www.douyin.com/video/{video_id}"
+#: The same post, the 图文 path. A note id served from /video/
+#: gets a redirect or a wall, not the post.
+NOTE_URL = "https://www.douyin.com/note/{video_id}"
 AUTHOR_URL = "https://www.douyin.com/user/{sec_uid}"
 
 #: Cookies the site sets once a sign-in has actually happened.

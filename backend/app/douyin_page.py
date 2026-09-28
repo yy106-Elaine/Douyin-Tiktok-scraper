@@ -64,6 +64,9 @@ USER_AGENT = (
 )
 
 VIDEO_URL = "https://www.iesdouyin.com/share/video/{video_id}/"
+#: A 图文 post -- image and text, no video. Same record shape, its own
+#: address. Douyin will not serve one of these from the /video/ path.
+NOTE_URL = "https://www.iesdouyin.com/share/note/{video_id}/"
 AUTHOR_URL = "https://www.iesdouyin.com/share/user/{sec_uid}"
 
 
@@ -303,3 +306,51 @@ def _video_ids(blob: object) -> list[str]:
         if value and value.isdigit() and value not in seen:
             seen.append(value)
     return seen
+
+
+#: Where a 图文 record keeps its pictures. One post is several images,
+#: each with a list of mirrors for the same picture, so the shape is
+#: two levels deep and only the first working mirror of each image is
+#: wanted.
+def image_urls(
+    html: str = "", payloads: Sequence[dict] = (), video_id: str | None = None
+) -> list[list[str]]:
+    """Every address for every image in this post, grouped per image.
+
+    Grouped rather than flattened because the two levels mean
+    different things. Across the outer list, each entry is a
+    *different picture* and all of them are wanted. Within an entry,
+    the addresses are mirrors of the *same* picture and the first one
+    that answers ends it. Flattening the two would download one image
+    several times and call the post complete.
+
+    Ordered as the post orders them, so image 1 is the first card. The
+    id is checked where the record carries one, for the same reason
+    the video path checks it: Douyin answers a request for a removed
+    post by serving a different one, and images filed under the wrong
+    id are worse than no images.
+    """
+    groups: list[list[str]] = []
+    for blob in list(payloads) + list(embedded(html)):
+        for record in dicts_with(blob, ("images",)):
+            if video_id is not None:
+                found = _text(_first(record, "aweme_id", "awemeId"))
+                if found and found != video_id:
+                    continue
+            images = record.get("images")
+            if not isinstance(images, list):
+                continue
+            for image in images:
+                if not isinstance(image, dict):
+                    continue
+                mirrors = _first(image, "url_list", "urlList")
+                if not isinstance(mirrors, list):
+                    continue
+                addresses = [
+                    _text(m) for m in mirrors if isinstance(m, str) and _text(m)
+                ]
+                if addresses:
+                    groups.append(addresses)
+            if groups:
+                return groups
+    return groups

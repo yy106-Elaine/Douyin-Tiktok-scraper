@@ -83,6 +83,9 @@ FILTER_POLICY: dict[str, str] = {
     "tiktok_lite": "chinese-wlw",
     "douyin": "tags",
     "douyin_lite": "tags",
+    # 图文 posts carry the same captions and came from the same tag
+    # searches, so they are judged by the same rule.
+    "douyin_note": "tags",
 }
 
 
@@ -99,6 +102,10 @@ def filter_policy(platform: str | None) -> str:
 PLATFORM_FAMILY: dict[str, str] = {
     "douyin": "douyin",
     "douyin_lite": "douyin",
+    # A separate platform for counting, the same table for storing:
+    # the rows have the same columns, and pooling their removal
+    # rates would hide the one comparison worth making.
+    "douyin_note": "douyin",
     "tiktok": "tiktok",
     "tiktok_lite": "tiktok",
     "youtube": "youtube",

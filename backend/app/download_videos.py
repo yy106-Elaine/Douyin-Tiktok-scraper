@@ -137,11 +137,76 @@ def wanted(
     return [row for row in rows if not held(row)]
 
 
+#: An image is not a video and must not be measured like one. A
+#: 图文 card is often 40-150 KB, so the video floor would reject most
+#: of them as error pages. What an image has instead is a signature in
+#: its first bytes, which is a stronger test than any size.
+MIN_IMAGE_BYTES = 1_000
+
+#: The first bytes of the formats Douyin serves 图文 images in.
+_IMAGE_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+)
+
+
+def image_kind(blob: bytes) -> str | None:
+    """The file extension for these bytes, or None if not an image.
+
+    Same job as `looks_like_video` and the same reason: an image
+    address fetched without the session answers 200 with HTML, and a
+    folder of error pages named `.jpg` is a corpus that looks
+    complete. WebP carries its marker at offset 8, inside a RIFF
+    container, so it is checked separately.
+    """
+    if len(blob) < MIN_IMAGE_BYTES:
+        return None
+    for magic, suffix in _IMAGE_MAGIC:
+        if blob.startswith(magic):
+            return suffix
+    if blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+def looks_like_image(blob: bytes) -> bool:
+    return image_kind(blob) is not None
+
+
+def save_image(directory: Path, video_id: str, index: int, blob: bytes) -> Path:
+    """One picture of a post, in the post's own folder.
+
+    A folder per post because a post is several pictures and their
+    order is part of it: a chat-log screenshot split across four cards
+    reads as nonsense shuffled. The number is 1-based and zero-padded
+    so the filenames sort the way the post does.
+    """
+    suffix = image_kind(blob) or ".jpg"
+    folder = directory / video_id
+    folder.mkdir(parents=True, exist_ok=True)
+    final = folder / f"{index:02d}{suffix}"
+    partial = folder / f"{index:02d}{suffix}.part"
+    partial.write_bytes(blob)
+    partial.replace(final)
+    return final
+
+
 def held(row: WebVideo) -> bool:
-    """Whether this row's file is on disk now, not merely recorded."""
+    """Whether this row's file is on disk now, not merely recorded.
+
+    For a 图文 post `local_path` names the folder, and a folder counts
+    as held only if it still has pictures in it. A post whose images
+    were deleted is not held, however complete the row looks.
+    """
     if not row.local_path:
         return False
     path = Path(row.local_path)
+    if path.is_dir():
+        return any(
+            child.is_file() and child.suffix != ".part" for child in path.iterdir()
+        )
     return path.is_file() and path.stat().st_size >= MIN_BYTES
 
 

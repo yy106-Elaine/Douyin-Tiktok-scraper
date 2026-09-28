@@ -34,9 +34,11 @@ from .browser import HOMES, PROFILES, open_browser
 from .download_videos import (
     default_dir,
     held,
+    looks_like_image,
     looks_like_video,
     record,
     save,
+    save_image,
     write_manifest,
 )
 from .fetch_videos import (
@@ -137,8 +139,13 @@ def one(
 
     addresses = site.file_urls(page.html or "", page.payloads, video_id=video_id)
     if not addresses:
-        record(session, row, None, None, "no file address for this id")
-        return "read", f"{said}  -- no file address", 0
+        what = "image" if site.kind == "images" else "file"
+        record(session, row, None, None, f"no {what} address for this id")
+        return "read", f"{said}  -- no {what} address", 0
+
+    if site.kind == "images":
+        return _keep_images(session, row, download, url, video_id, directory,
+                            addresses, said)
 
     last = "no url answered"
     for address in addresses:
@@ -159,6 +166,55 @@ def one(
 
     record(session, row, None, None, last)
     return "read", f"{said}  -- {last}", 0
+
+
+def _keep_images(
+    session: Session, row, download, url: str, video_id: str,
+    directory: Path, groups: list[list[str]], said: str,
+) -> tuple[str, str, int]:
+    """Every picture of one 图文 post, or the post is not archived.
+
+    `groups` is one list per picture, each holding mirrors of that
+    same picture. So the inner loop stops at the first mirror that
+    answers and the outer loop must not stop at all: a post kept
+    without its third card is a post whose meaning may be missing,
+    and unlike a video there is no partial file to notice later.
+
+    A post that loses even one picture is recorded as an error rather
+    than as held, so the next pass tries again while the post is still
+    there. That is the asymmetry the whole archive rests on -- a
+    removal destroys the evidence, and the copy cannot be made after.
+    """
+    kept: list[Path] = []
+    blobs: list[bytes] = []
+    for index, mirrors in enumerate(groups, start=1):
+        last = "no url answered"
+        for address in mirrors:
+            blob, status = download(address, url)
+            if blob is None:
+                last = str(status)
+                continue
+            if not looks_like_image(blob):
+                last = f"not an image ({len(blob)} bytes, http {status})"
+                continue
+            kept.append(save_image(directory, video_id, index, blob))
+            blobs.append(blob)
+            break
+        else:
+            record(
+                session, row, None, None,
+                f"image {index} of {len(groups)}: {last}",
+            )
+            return "read", f"{said}  -- image {index}/{len(groups)}: {last}", 0
+
+    total = sum(len(b) for b in blobs)
+    # The row points at the folder, and the hash covers the pictures
+    # in the post's own order -- one value that changes if any card
+    # changes, is added or is reordered.
+    record(session, row, kept[0].parent, b"".join(blobs), None)
+    row.file_bytes = total
+    session.commit()
+    return "saved", f"{said}  {len(kept)} image(s), {total / 1_000_000:.1f} MB", total
 
 
 def run(

@@ -353,7 +353,7 @@ CADENCE_FLOOR = timedelta(days=27)
 #: so a mismatched id is the removal signal, and it is written here
 #: as evidence `served another video`. The two commands share this
 #: table; only the fetching differs.
-BROWSER_ONLY = frozenset({"douyin", "douyin_lite"})
+BROWSER_ONLY = frozenset({"douyin", "douyin_lite", "douyin_note"})
 
 #: Platforms whose checks go through an API in batches, and therefore
 #: cost almost nothing: YouTube answers fifty ids per request for one

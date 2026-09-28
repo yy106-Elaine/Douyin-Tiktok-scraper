@@ -33,6 +33,7 @@ from typing import Callable
 
 from .clock import now as utc_now
 from .browser import (
+    NOTE_URL as BROWSER_NOTE_URL,
     VIDEO_URL as BROWSER_VIDEO_URL,
     DEFAULT_PROFILE,
     HOMES,
@@ -71,6 +72,12 @@ class Site:
     #: session is the only way in. TikTok mostly answers, so a missing
     #: session is worth saying and not worth refusing over.
     needs_session: bool
+    #: What a post is made of: "video" (one file) or "images" (several,
+    #: and the post is only complete when all of them are held). The
+    #: text is read the same way either way -- a 图文 record carries the
+    #: same desc, author and statistics -- so this decides the archive
+    #: path and nothing about the caption.
+    kind: str = "video"
 
 
 SITES: dict[str, Site] = {
@@ -85,6 +92,28 @@ SITES: dict[str, Site] = {
         ),
         file_urls=douyin_page.file_urls,
         needs_session=True,
+    ),
+    # 图文 -- image-and-text posts. Searching #lwl on the phone in
+    # late September returned these and no video at all, so a study
+    # that collects only video reports a community that has moved
+    # format as a community that has gone quiet.
+    #
+    # Its own platform key, not a flag on "douyin": the question these
+    # rows exist to answer is whether video and 图文 under the same tag
+    # are moderated differently, and a pooled removal rate cannot be
+    # unpooled afterwards.
+    "douyin_note": Site(
+        platform="douyin_note",
+        facts=douyin_page.video_facts,
+        page_url=lambda video_id, handle: BROWSER_NOTE_URL.format(
+            video_id=video_id
+        ),
+        share_url=lambda video_id, handle: douyin_page.NOTE_URL.format(
+            video_id=video_id
+        ),
+        file_urls=douyin_page.image_urls,
+        needs_session=True,
+        kind="images",
     ),
     "tiktok": Site(
         platform="tiktok",
