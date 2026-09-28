@@ -1065,6 +1065,31 @@ format up. This instrument cannot establish that from outside; the
 people posting can say it in an interview, and it is now a question to
 put to them.
 
+**And 图文 can be measured, which was not obvious.** The first pass over
+image-and-text posts settled the question that decided whether any of
+this was worth building: 31 read, 27 archived, and **one gone -- the
+site served a different post in its place**. That is the same answer
+Douyin gives for a removed video, so the removal signal is the same
+signal, and the id check already written for video detects it unchanged.
+Had 图文 answered a removed post with a 404, or with the post marked
+unavailable, this would have needed its own detector and its own
+validation before any rate could be quoted.
+
+So the two formats are measured by one instrument and can be compared
+on equal terms -- which is the comparison the format shift makes
+interesting, and the reason `douyin_note` is a platform of its own
+rather than a flag. Whether video and 图文 under the same tags are
+removed at the same rate is now a question this can answer, and it
+could not have been asked a day ago.
+
+Two costs of the format, both worth stating. A post is several pictures
+and is archived only when every one of them is held, because unlike a
+truncated video an incomplete post looks complete; the longest in the
+first batch ran to 23 images. And a page that answers with its meta
+tags and no data yields the caption but no addresses, which leaves a
+post read, unarchived, and -- until this was noticed -- never retried,
+since the row exists and the "new" pass skips it.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
