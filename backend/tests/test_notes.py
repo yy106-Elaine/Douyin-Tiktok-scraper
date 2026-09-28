@@ -567,3 +567,65 @@ class TestGoingBackForTheThinReads:
 
         assert wanted(session, "douyin_note", refresh=False) == []
         assert wanted(session, "douyin_note", refresh=True) == ["7689"]
+
+
+class TestOnePlatformAtATime:
+    """For a network that reaches one site and not the other."""
+
+    def _targets(self):
+        from app.recheck import Target
+
+        from datetime import datetime
+
+        seen = datetime(2026, 9, 20, 12, 0)
+        return [
+            Target("youtube", "a", "https://y/a", None, seen),
+            Target("tiktok", "b", "https://t/b", None, seen),
+            Target("youtube", "c", "https://y/c", None, seen),
+        ]
+
+    def test_only_the_named_platform_is_checked(self, db):
+        from app.db import SessionLocal
+        from app.recheck import FetchResult
+        from app.recheck import run_round
+
+        asked = []
+
+        def fetcher(url, **kw):
+            asked.append(url)
+            return FetchResult(status=200, final_url=url, body="")
+
+        with SessionLocal() as session:
+            run_round(
+                session,
+                fetcher=fetcher,
+                targets=self._targets(),
+                ignore_cadence=True,
+                pause_seconds=0,
+                platforms={"youtube"},
+                youtube_checker=None,
+            )
+        assert all("/t/" not in url for url in asked), asked
+        assert len(asked) == 2
+
+    def test_no_filter_still_checks_everything(self, db):
+        from app.db import SessionLocal
+        from app.recheck import FetchResult
+        from app.recheck import run_round
+
+        asked = []
+
+        def fetcher(url, **kw):
+            asked.append(url)
+            return FetchResult(status=200, final_url=url, body="")
+
+        with SessionLocal() as session:
+            run_round(
+                session,
+                fetcher=fetcher,
+                targets=self._targets(),
+                ignore_cadence=True,
+                pause_seconds=0,
+                youtube_checker=None,
+            )
+        assert len(asked) == 3

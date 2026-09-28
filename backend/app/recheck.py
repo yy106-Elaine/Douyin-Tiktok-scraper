@@ -645,6 +645,7 @@ def run_round(
     targets: Iterable[Target] | None = None,
     ignore_cadence: bool = False,
     skip_gone: bool = False,
+    platforms: frozenset[str] | set[str] | None = None,
     youtube_checker: Callable[[list[Target]], dict[str, FetchResult]] | None = check_youtube,
     on_progress: Callable[[int, int, str], None] | None = None,
 ) -> RecheckReport:
@@ -668,6 +669,15 @@ def run_round(
         due = list(targets) if targets is not None else collected_targets(session)
     else:
         due = due_targets(session, moment, targets, skip_gone=skip_gone)
+    # One platform at a time, when only one of them is reachable. A
+    # travel network that intercepts tiktok.com while youtube.com goes
+    # through untouched spends five minutes writing 142 checks that say
+    # nothing, and the useful half of the round is buried in them. The
+    # rows are excluded from every rate either way; what this saves is
+    # the round.
+    if platforms:
+        due = [t for t in due if t.platform in platforms]
+
     # Left for the command that can actually read them. See
     # BROWSER_ONLY: making these checks writes a certain UNKNOWN, and
     # enough of those turn a real finding into a doubtful one.
@@ -725,6 +735,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     parser = argparse.ArgumentParser(description="Re-check collected video links.")
     parser.add_argument("--limit", type=int, default=None, help="stop after N videos")
+    parser.add_argument(
+        "--platform",
+        action="append",
+        help=(
+            "check only this platform. Repeatable. For a network that "
+            "reaches one site and not another -- checking the reachable "
+            "one is a real round, while the other half only records "
+            "that the network was in the way"
+        ),
+    )
     parser.add_argument("--pause", type=float, default=2.0, help="seconds between requests")
     parser.add_argument(
         "--all",
@@ -753,6 +773,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 pause_seconds=args.pause,
                 ignore_cadence=args.all,
                 skip_gone=args.skip_gone,
+                platforms=frozenset(args.platform) if args.platform else None,
                 on_progress=show,
             )
         )
