@@ -88,6 +88,39 @@ def store(
     return row, f"{link.platform or 'douyin'}  {what}{who}"
 
 
+def _when(said: str) -> datetime:
+    """A date or a date and time, in the researcher's zone, as UTC.
+
+    Stored columns are UTC and the person types wall clock, so the
+    conversion belongs here rather than in anyone's head. A bare date
+    means midday, not midnight: the true time is somewhere in that day
+    and the middle is the reading that is least wrong.
+    """
+    from zoneinfo import ZoneInfo
+
+    from .clock import zone
+
+    text = said.strip()
+    for shape, midday in (
+        ("%Y-%m-%d %H:%M", False),
+        ("%Y-%m-%dT%H:%M", False),
+        ("%Y-%m-%d", True),
+    ):
+        try:
+            when = datetime.strptime(text, shape)
+        except ValueError:
+            continue
+        if midday:
+            when = when.replace(hour=12)
+        local: ZoneInfo = zone()
+        return (
+            when.replace(tzinfo=local)
+            .astimezone(__import__("datetime").timezone.utc)
+            .replace(tzinfo=None)
+        )
+    raise SystemExit(f"cannot read a time from {said!r}: use 2026-09-27 or 2026-09-27 22:10")
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
@@ -101,7 +134,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument(
         "--apply", action="store_true", help="actually write the rows"
     )
+    parser.add_argument(
+        "--collected",
+        metavar="WHEN",
+        help=(
+            "when these were actually found on the phone, in local time: "
+            "2026-09-27 or 2026-09-27 22:10. Defaults to now, which is "
+            "right only if the pasting follows the searching. A batch "
+            "carried for a day is a sighting a day old, and the age of a "
+            "post at collection is one of the things this measures"
+        ),
+    )
     args = parser.parse_args()
+
+    collected = _when(args.collected) if args.collected else None
 
     text = (
         open(args.file, encoding="utf-8").read() if args.file else sys.stdin.read()
@@ -130,7 +176,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     stored = skipped = 0
     with SessionLocal() as session:
         for index, chunk in enumerate(chunks, start=1):
-            row, why = store(session, chunk, args.participant)
+            row, why = store(
+                session, chunk, args.participant, shared_at=collected
+            )
             print(f"[{index}] {why}")
             if row is None:
                 skipped += 1

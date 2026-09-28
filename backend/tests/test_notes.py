@@ -426,3 +426,49 @@ class TestShareSheetSaysWhich:
             "闺蜜我爱你# wlw # h # 朋友",
         ):
             assert classify(caption, policy="tags") is None, caption
+
+
+class TestWhenItWasCollected:
+    """The sighting happened when it happened, not when it was typed in."""
+
+    def test_a_local_date_becomes_that_day_at_midday_utc(self):
+        from app.paste import _when
+
+        # America/New_York, so noon local is 16:00 UTC in September.
+        assert _when("2026-09-27") == __import__("datetime").datetime(
+            2026, 9, 27, 16, 0
+        )
+
+    def test_an_evening_crosses_into_the_next_utc_day(self):
+        """22:10 in Boston is 02:10 tomorrow in UTC, and that is fine.
+
+        What must not happen is the reverse: storing 22:10 as if it
+        were UTC, which would date the sighting four hours early and,
+        for an evening's work, a whole day late in every local bucket.
+        """
+        from app.paste import _when
+
+        assert _when("2026-09-27 22:10") == __import__("datetime").datetime(
+            2026, 9, 28, 2, 10
+        )
+
+    def test_a_time_it_cannot_read_stops_rather_than_guesses(self):
+        import pytest as _pytest
+
+        from app.paste import _when
+
+        with _pytest.raises(SystemExit):
+            _when("last tuesday")
+
+    def test_the_row_carries_the_time_it_was_given(self, session):
+        from datetime import datetime
+
+        from app.paste import store
+
+        row, _ = store(
+            session,
+            "【嵐的图文作品】# wlw https://www.douyin.com/note/7689123456789012345",
+            participant_id="P001",
+            shared_at=datetime(2026, 9, 27, 16, 0),
+        )
+        assert row.shared_at == datetime(2026, 9, 27, 16, 0)
