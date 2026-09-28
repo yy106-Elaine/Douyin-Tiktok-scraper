@@ -501,6 +501,44 @@ class TestGoingBackForTheThinReads:
         }
         assert thin == {"2", "4"}
 
+    def test_a_download_that_failed_is_also_unarchived(self, session):
+        """The other way a post ends up read and not kept.
+
+        The page gave its addresses, the fetch of one image failed, and
+        the row exists with a download_error. Nothing about that row is
+        "surface", so a selector looking only at parsed_by walks past
+        it -- which is how a post can sit read, unarchived and
+        unretried until it disappears.
+        """
+        from sqlalchemy import or_, select
+
+        from app.models import WebVideo
+
+        session.add(
+            WebVideo(platform="douyin_note", video_id="5", parsed_by="api",
+                     download_error="image 1/1: Error")
+        )
+        session.add(
+            WebVideo(platform="douyin_note", video_id="6", parsed_by="api",
+                     local_path="/tmp/6")
+        )
+        session.commit()
+
+        missed = {
+            found
+            for (found,) in session.execute(
+                select(WebVideo.video_id).where(
+                    WebVideo.platform == "douyin_note",
+                    or_(
+                        WebVideo.parsed_by == "surface",
+                        WebVideo.download_error.isnot(None),
+                    ),
+                )
+            )
+        }
+        assert "5" in missed
+        assert "6" not in missed
+
     def test_new_only_would_never_come_back_for_them(self, session):
         """Which is why the flag exists.
 

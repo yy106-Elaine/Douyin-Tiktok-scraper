@@ -305,15 +305,17 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
-        "--surface-only",
+        "--unarchived", "--surface-only",
+        dest="unarchived",
         action="store_true",
         help=(
-            "only the posts whose last read got no data out of the page. "
-            "Douyin sometimes answers with a page that carries the "
-            "caption in its meta tags and nothing else, and a post read "
-            "that way has no file addresses -- so it has a row, which "
-            "makes --new-only skip it for ever, and no copy. This is how "
-            "to go back for exactly those"
+            "only the posts that were read but never archived. Two ways "
+            "that happens and neither leaves a mark --new-only can see: "
+            "Douyin answers with a page carrying the caption in its meta "
+            "tags and no data, so there are no file addresses; or the "
+            "addresses were there and the download failed. Either way "
+            "the row exists, so --new-only skips it from then on, and "
+            "the copy is never made. This is how to go back for them"
         ),
     )
     parser.add_argument(
@@ -347,22 +349,25 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 # "nothing to do", which reads as "already done".
                 print(f"not in this platform's corpus: {', '.join(sorted(missing))}")
 
-        if args.surface_only:
-            from sqlalchemy import select
+        if args.unarchived:
+            from sqlalchemy import or_, select
 
             from .models import WebVideo
 
-            thin = {
+            missed = {
                 video_id
                 for (video_id,) in session.execute(
                     select(WebVideo.video_id).where(
                         WebVideo.platform == args.platform,
-                        WebVideo.parsed_by == "surface",
+                        or_(
+                            WebVideo.parsed_by == "surface",
+                            WebVideo.download_error.isnot(None),
+                        ),
                     )
                 )
             }
-            targets = [v for v in targets if v in thin]
-            print(f"{len(targets)} read from the surface last time")
+            targets = [v for v in targets if v in missed]
+            print(f"{len(targets)} read before but not archived")
 
         if args.skip_gone:
             from .recheck import disappeared
