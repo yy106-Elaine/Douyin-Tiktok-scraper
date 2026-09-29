@@ -193,7 +193,15 @@ def dashboard(
     unique = unique_in_scope(session, platform, rows=countable)
     day = unique_in_scope(session, platform, now - timedelta(hours=24), rows=countable)
     three = unique_in_scope(session, platform, now - timedelta(days=3), rows=countable)
-    per_day = daily_counts(session, platform, days=7, now=now, rows=countable)
+    # Every day since collection began on this platform, not a
+    # trailing week. The week was chosen when the study was a week
+    # old; now the interesting shape is the whole run -- which days
+    # yielded nothing, and when the yield changed. The chart flows
+    # into columns, so more days cost width, not height.
+    per_day = daily_counts(
+        session, platform, days=_days_of_collection(countable), now=now,
+        rows=countable,
+    )
 
     return HTMLResponse(
         _page(
@@ -405,6 +413,19 @@ def _kind_cell(row) -> str:
     )
 
 
+#: How many days the chart has to cover to show everything, bounded
+#: so a stray row with a bad date cannot ask for a thousand bars.
+def _days_of_collection(rows, cap: int = 60) -> int:
+    from .clock import local_date, now as utc_now
+
+    when = [row.when for row in rows if row.when]
+    if not when:
+        return 7
+    first = local_date(min(when))
+    span = (local_date(utc_now()) - first).days + 1
+    return max(7, min(span, cap))
+
+
 def _video_rows(rows) -> str:
     if not rows:
         return (
@@ -597,20 +618,31 @@ _SHARED_CSS = """  :root {
   .chip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   /* New videos per day. One series, so the heading names it and the
      counts are labelled directly rather than read off an axis. */
-  .days { margin-bottom: 26px; max-width: 520px; }
-  .day { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  /* Columns rather than one long list: a month of collection is the
+     shape worth seeing, and stacked vertically it runs off the page.
+     The browser fills each column top to bottom, so dates read down
+     and then across. */
+  .days {
+    margin-bottom: 26px;
+    columns: 300px auto;
+    column-gap: 28px;
+  }
+  .day {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+    break-inside: avoid;
+  }
   .dlabel {
-    width: 48px; font-size: 12px; color: var(--ink-2);
+    width: 38px; font-size: 11px; color: var(--ink-2);
     font-variant-numeric: tabular-nums; flex: none;
   }
-  .dtrack { flex: 1; height: 14px; }
+  .dtrack { flex: 1; height: 11px; }
   .dbar {
-    display: block; height: 14px; border-radius: 4px;
+    display: block; height: 11px; border-radius: 3px;
     background: var(--accent); min-width: 2px;
   }
   .dcount {
-    width: 34px; font-size: 12px; color: var(--ink-2);
-    font-variant-numeric: tabular-nums; flex: none;
+    width: 28px; font-size: 11px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; flex: none; text-align: right;
   }
   td.rank { color: var(--ink-3); font-variant-numeric: tabular-nums; width: 38px; }
   .empty code {

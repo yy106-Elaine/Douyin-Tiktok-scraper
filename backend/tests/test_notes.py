@@ -852,3 +852,48 @@ class TestResumingAnInterruptedPass:
             )
         }
         assert recent == {"7689"}
+
+
+class TestTheDayChartCoversTheRun:
+    """A week was right when the study was a week old."""
+
+    def _row(self, when):
+        from app.views import VideoRow
+
+        return VideoRow(
+            when=when, participant_id="P001", platform="douyin", state="x",
+            posted_at=None, posted_display=None, posted_source="",
+            video_id="1", video_url=None, author_handle=None,
+            author_name=None, caption=None, feed=None,
+        )
+
+    def test_it_reaches_back_to_the_first_collection(self):
+        from datetime import timedelta
+
+        from app.clock import now as utc_now
+        from app.dashboard import _days_of_collection
+
+        rows = [self._row(utc_now() - timedelta(days=20))]
+        assert _days_of_collection(rows) == 21
+
+    def test_a_short_run_still_shows_a_week(self):
+        """Fewer bars than a week reads as a broken chart, not a new study."""
+        from datetime import timedelta
+
+        from app.clock import now as utc_now
+        from app.dashboard import _days_of_collection
+
+        assert _days_of_collection([self._row(utc_now() - timedelta(days=1))]) == 7
+
+    def test_one_bad_date_cannot_ask_for_a_thousand_bars(self):
+        from datetime import datetime
+
+        from app.dashboard import _days_of_collection
+
+        stray = [self._row(datetime(2001, 1, 1))]
+        assert _days_of_collection(stray) == 60
+
+    def test_no_rows_at_all_is_a_week(self):
+        from app.dashboard import _days_of_collection
+
+        assert _days_of_collection([]) == 7
