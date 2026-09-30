@@ -1122,6 +1122,38 @@ to the precision of how often it looks. A day missed does not lose a
 removal -- it moves it, and widens the interval it could have happened
 in from one day to two.
 
+**2026-09-30: three posts came back, and all three are 图文.** Until
+today the study had one reinstatement in its whole history -- a Douyin
+video, gone on the 23rd and watchable again on the 25th. Today's pass
+over 245 图文 posts found three at once:
+
+    7689854536140600249   gone by 09-29 14:03, back by 09-30 12:14
+    7690578315472794747   gone by 09-29 14:20, back by 09-30 12:32
+    7690941999546175611   gone by 09-29 22:48, back by 09-30 13:03
+
+Those are the times *the instrument looked*, not the times anything
+happened to the posts, and the difference matters here more than
+usual. The first two "disappearances" are minutes apart because that
+is when one pass reached them, and all three "returns" fall inside the
+next day's pass for the same reason. What the data supports is an
+interval -- gone by the time we looked on the 29th, back by the time
+we looked on the 30th -- and not a duration. Writing "down for 22
+hours" would be reporting the schedule as a finding.
+
+Two things are worth noting all the same. Three in one day against one
+in nine days is a difference in kind, not in degree, and it arrived
+with the format: every reinstatement today is an image-and-text post.
+If that holds, it says the two formats are not merely removed at
+different rates but *handled* differently -- a removal that is
+reversed looks more like a review that ran and was overturned than
+like a deletion.
+
+And a reinstated post is the best interview there is. Its author knows
+they were taken down and knows they came back, which means they can
+say what this instrument cannot: whether they were told, whether they
+appealed, how long it felt like, and whether they changed anything
+before it returned.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
