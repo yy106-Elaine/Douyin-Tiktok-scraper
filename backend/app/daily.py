@@ -492,7 +492,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
         from .survival import findings, today_at_a_glance
 
-        new_gone, back = today_at_a_glance(findings(session, args.platform))
+        # This platform only, not the family. `findings` groups 图文
+        # under douyin for the dashboard, which is right there -- one
+        # table, one comparison. It is wrong here: a pass that checked
+        # 241 videos would report the notes' removals as its own, and
+        # the two runs would each claim the same comebacks.
+        mine = [
+            f for f in findings(session, args.platform)
+            if f.platform == args.platform
+        ]
+        new_gone, back = today_at_a_glance(mine)
 
         manifest = write_manifest(session, directory, args.platform)
         print(

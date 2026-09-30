@@ -897,3 +897,31 @@ class TestTheDayChartCoversTheRun:
         from app.dashboard import _days_of_collection
 
         assert _days_of_collection([]) == 7
+
+
+class TestARunReportsItsOwnPass:
+    """The family merge is for the dashboard, not for the run report."""
+
+    def test_a_douyin_pass_does_not_claim_the_notes_removals(self, session):
+        from app.clock import now as utc_now
+        from app.models import LinkCheck
+        from app.survival import findings, today_at_a_glance
+
+        for platform, video_id in (("douyin", "111"), ("douyin_note", "222")):
+            session.add(
+                LinkCheck(
+                    platform=platform, video_id=video_id, target_kind="video",
+                    url=f"https://www.douyin.com/video/{video_id}",
+                    http_status=200, evidence="served another video",
+                    checked_at=utc_now(),
+                )
+            )
+        session.commit()
+
+        family = findings(session, "douyin")
+        assert {f.video_id for f in family} == {"111", "222"}
+
+        # What the run report must use: this platform's own rows.
+        mine = [f for f in family if f.platform == "douyin"]
+        assert today_at_a_glance(mine)[0] == 1
+        assert today_at_a_glance(family)[0] == 2
