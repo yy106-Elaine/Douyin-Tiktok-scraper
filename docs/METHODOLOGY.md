@@ -1154,6 +1154,47 @@ say what this instrument cannot: whether they were told, whether they
 appealed, how long it felt like, and whether they changed anything
 before it returned.
 
+### 14. What the analysis pass will and will not compute
+
+`app/analyse.py` is the first pass over the collection, and most of
+what it does is refuse to print numbers the data cannot carry. Three
+refusals in particular:
+
+**A raw removal rate is not comparable across platforms.** Douyin is
+searched by tag on the day of posting; TikTok is searched by an English
+phrase and returns videos already weeks old. The TikTok sample is a
+survivor set -- the videos pulled on day one were never in it to be
+found -- so its rate is a rate among things that lasted a month, and
+Douyin's is not. The two must never be put in the same column without
+the collection age beside them. The comparable figure is survival at a
+fixed horizon (1, 3, 7 days) computed only over videos that were being
+watched that early; everything first seen later is excluded from that
+question rather than counted as a survivor of it.
+
+**A median time to removal needs half the population removed.** At
+roughly a fifth removed, as of 2026-09-30, the median is not "long" --
+it is undefined, and a number produced anyway is an artefact of the
+censoring, not a measurement of the platform. So the pass reports
+survival at horizons and the count of events behind each one, and the
+median waits until the data supports it.
+
+**A removal time is an interval.** Every finding is "alive when we
+looked on day *n*, gone when we looked on day *n+1*". The width of that
+bracket is the checking cadence and nothing else, so the pass prints
+the median bracket width beside every rate, and the CSV export carries
+`last_alive_at` and `first_gone_at` as separate columns rather than a
+single removal time. An interval-censored fit in R or lifelines can use
+both; a single timestamp would silently discard the uncertainty.
+
+Two smaller rules follow the same logic. The per-day hazard series is
+built from the checks themselves, so **a day the study did not run is
+absent from the series rather than present as a zero** -- a zero claims
+that we looked and found nothing, which on 2026-09-27 would be false.
+And 图文 are analysed as their own platform here even though the
+dashboard shows them merged under Douyin, because the question of
+whether the two formats are moderated differently is exactly the one
+the merge erases.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
