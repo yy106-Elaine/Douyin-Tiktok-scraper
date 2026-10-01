@@ -321,10 +321,19 @@ class Target:
 #: Checks get sparser as a video ages, because removals cluster early
 #: and every request is borrowed from someone else's servers. Each
 #: entry is (age of the video, minimum gap between checks).
+#:
+#: The six-day tier this replaced was written when a check meant a
+#: page fetch on every platform. It no longer does: the platforms
+#: this cadence still governs are the ones an anonymous request can
+#: read in one cheap call, and the study is now read as "checked
+#: every morning". A video past a fortnight was being checked every
+#: six days, which both left rows looking stale the morning after a
+#: run and widened the bracket a removal is dated to from a day to
+#: most of a week. Twenty hours keeps a 09:00 job due the next
+#: morning without making a second run that day free.
 CADENCE: tuple[tuple[timedelta, timedelta], ...] = (
     (timedelta(hours=48), timedelta(hours=8)),
-    (timedelta(days=14), timedelta(hours=20)),
-    (timedelta(days=90), timedelta(days=6)),
+    (timedelta(days=90), timedelta(hours=20)),
 )
 #: Anything older than the last tier.
 CADENCE_FLOOR = timedelta(days=27)
@@ -728,6 +737,71 @@ def run_round(
     return report
 
 
+def freshness(
+    session: Session,
+    now: datetime | None = None,
+    targets: Iterable[Target] | None = None,
+) -> list[dict]:
+    """Per platform: how many videos, and how recently each was read.
+
+    Written because "is the morning job actually running?" was being
+    answered by opening the dashboard and looking for a row with
+    yesterday's time on it. Two different things produce that row and
+    they need different fixes: a platform the scheduled job does not
+    cover at all (Douyin needs the signed-in browser, so it is only
+    ever as fresh as the last hand-run of `app.daily`), and a video
+    the cadence did not make due this morning.
+
+    So the counts are reported per platform and the browser-only ones
+    are named as such, rather than averaged into one number that is
+    reassuring on one platform and wrong on another.
+    """
+    moment = now or _utcnow()
+    seen = last_checked(session)
+    watched = list(
+        targets if targets is not None else collected_targets(session))
+    due = {t.video_id
+           for t in due_targets(session, now=moment, targets=watched)}
+
+    rows: dict[str, dict] = {}
+    for target in watched:
+        row = rows.setdefault(target.platform, {
+            "platform": target.platform,
+            "tracked": 0, "today": 0, "never": 0, "due": 0,
+            "oldest": None,
+            "browser_only": target.platform in BROWSER_ONLY,
+        })
+        row["tracked"] += 1
+        if target.video_id in due:
+            row["due"] += 1
+        previous = seen.get(target.video_id)
+        if previous is None:
+            row["never"] += 1
+            continue
+        if moment - previous < timedelta(hours=24):
+            row["today"] += 1
+        if row["oldest"] is None or previous < row["oldest"]:
+            row["oldest"] = previous
+    return [rows[name] for name in sorted(rows)]
+
+
+def _print_freshness(session: Session) -> None:  # pragma: no cover - CLI
+    moment = _utcnow()
+    print(f"{'platform':14} {'tracked':>8} {'checked 24h':>12} "
+          f"{'never':>6} {'due now':>8}  oldest check")
+    for row in freshness(session, now=moment):
+        oldest = row["oldest"]
+        age = "—" if oldest is None else f"{(moment - oldest).days}d ago"
+        mark = " (browser only)" if row["browser_only"] else ""
+        print(f"{row['platform']:14} {row['tracked']:8} {row['today']:12} "
+              f"{row['never']:6} {row['due']:8}  {age}{mark}")
+    print("\n  The scheduled 09:00 job runs app.recheck, which cannot read\n"
+          "  douyin.com without a session -- those rows are only as fresh\n"
+          "  as the last hand-run of  python -m app.daily --platform douyin\n"
+          "  --apply. For the rest, 'due now' should be near zero just\n"
+          "  after the morning run.")
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     import argparse
 
@@ -759,6 +833,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "removal that gets reversed then goes unseen"
         ),
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="report how fresh each platform's checks are, and stop",
+    )
     args = parser.parse_args()
 
     def show(done: int, total: int, outcome: str) -> None:
@@ -766,6 +845,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
+        if args.status:
+            _print_freshness(session)
+            return
         print(
             run_round(
                 session,

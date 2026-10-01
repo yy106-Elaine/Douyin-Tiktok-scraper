@@ -11,6 +11,16 @@
 # fatal. A YouTube quota error must not stop the re-check: the
 # re-check is the measurement, and a day missed there widens the
 # removal window for every video due that day.
+#
+# What this does NOT do, and why:
+#
+#  - Douyin. Reading douyin.com needs the signed-in browser, which
+#    wants a window and sometimes a verification tap, so it is run by
+#    hand:  python -m app.daily --platform douyin --apply
+#  - TikTok pages and files. TikTok is now check-only -- it is kept
+#    as a comparison case for removals, and the content analysis is
+#    Douyin's. The takedown check below still covers it; nothing
+#    fetches its pages or downloads its videos any more.
 
 cd "$(dirname "$0")"
 
@@ -53,6 +63,12 @@ run "youtube collect" "$PY" -m app.youtube collect \
 run "resolve links" "$PY" -m app.resolve
 run "mark relevance" "$PY" -m app.relevance
 run "recheck links" "$PY" -m app.recheck
+
+# Not a step: the log's own answer to "did this morning's run cover
+# everything?". Douyin is expected to be stale here -- it needs the
+# signed-in browser and is run by hand.
+say "-- freshness"
+"$PY" -m app.recheck --status >>"$LOG" 2>&1 || true
 
 if [[ -n "$FAILURES" ]]; then
   say "=== finished with failures: $FAILURES"

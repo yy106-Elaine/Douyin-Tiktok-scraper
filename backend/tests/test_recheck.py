@@ -451,7 +451,10 @@ def test_youtube_is_always_due(client):
     assert minimum_gap(timedelta(hours=1), "youtube") == timedelta(0)
     # The page platforms keep it.
     assert minimum_gap(timedelta(hours=1), "douyin") == timedelta(hours=8)
-    assert minimum_gap(timedelta(days=30), "douyin") == timedelta(days=6)
+    # A fortnight-old video is still due the next morning: the study
+    # is read as "checked every morning", and the six-day tier this
+    # replaced widened a removal's bracket to most of a week.
+    assert minimum_gap(timedelta(days=30), "douyin") == timedelta(hours=20)
     assert minimum_gap(timedelta(days=200), "douyin") == timedelta(days=27)
 
 
@@ -531,3 +534,76 @@ def test_other_platforms_still_read_a_page_that_loaded_as_alive():
         excerpt="youtube api: privacyStatus=public",
     )
     assert classify(page) == ALIVE
+
+
+class TestFreshness:
+    """Is the scheduled morning job actually covering everything?
+
+    The question was being answered by opening the dashboard and
+    looking for a row carrying yesterday's time, which cannot tell
+    the two causes apart: a platform the job does not cover at all
+    (Douyin needs the signed-in browser), and a video the cadence did
+    not make due this morning. The fixes are different, so the report
+    separates them.
+    """
+
+    def _target(self, platform: str, video_id: str) -> Target:
+        return Target(
+            platform=platform, video_id=video_id,
+            url=f"https://example.com/{video_id}",
+            author_handle=None, first_seen=NOW - timedelta(days=20),
+        )
+
+    def test_a_platform_the_scheduled_job_cannot_read_is_named(self, client):
+        from app.db import SessionLocal
+        from app.recheck import freshness
+
+        with SessionLocal() as session:
+            rows = {r["platform"]: r for r in freshness(
+                session, NOW,
+                [self._target("tiktok", "7001"),
+                 self._target("douyin", "7002")])}
+
+        assert rows["douyin"]["browser_only"] is True
+        assert rows["tiktok"]["browser_only"] is False
+
+    def test_a_video_checked_this_morning_is_fresh_and_not_due(self, client):
+        """And a fortnight-old one is due again the next morning.
+
+        The six-day tier this cadence replaced left exactly that row
+        looking stale the morning after a run, and dated any removal
+        in between to a bracket most of a week wide.
+        """
+        from app.db import SessionLocal
+        from app.recheck import freshness
+
+        target = self._target("tiktok", "7001")
+        with SessionLocal() as session:
+            run_round(
+                session,
+                fetcher=lambda url: _page("<title>fine</title>"),
+                now=NOW,
+                targets=[target],
+                pause_seconds=0,
+            )
+
+            same_day = freshness(session, NOW + timedelta(hours=2), [target])[0]
+            assert same_day["today"] == 1
+            assert same_day["due"] == 0
+            assert same_day["never"] == 0
+
+            tomorrow = freshness(session, NOW + timedelta(hours=24), [target])[0]
+            assert tomorrow["today"] == 0
+            assert tomorrow["due"] == 1
+
+    def test_a_video_never_checked_is_counted_separately(self, client):
+        """Never read is not the same as read a long time ago."""
+        from app.db import SessionLocal
+        from app.recheck import freshness
+
+        with SessionLocal() as session:
+            row = freshness(session, NOW, [self._target("tiktok", "7001")])[0]
+
+        assert row["never"] == 1
+        assert row["oldest"] is None
+        assert row["due"] == 1
