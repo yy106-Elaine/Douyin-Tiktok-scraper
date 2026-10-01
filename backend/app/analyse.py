@@ -246,25 +246,65 @@ def caption_dump(session: Session, path: str) -> int:
     return len(seen)
 
 
+def douyin_format(session: Session) -> dict[str, str]:
+    """Which Douyin format each video id is: a video, or a 图文.
+
+    The capture tables do not record it -- a post the phone read is a
+    row in `douyin_posts` whichever format it was. What knows is
+    everything written after the link was resolved: the fetched page,
+    the shared link and every check all carry the platform the study
+    tracks it under. `douyin_note` wins any disagreement, because that
+    label is only ever written by a resolver that saw a `/note/` URL,
+    while `douyin` is also the default.
+    """
+    found: dict[str, str] = {}
+    for model in (WebVideo, SharedLink, LinkCheck):
+        for video_id, platform in session.execute(
+            select(model.video_id, model.platform).where(
+                model.video_id.isnot(None),
+                model.platform.in_(("douyin", "douyin_note")),
+            )
+        ):
+            if platform == "douyin_note" or video_id not in found:
+                found[video_id] = platform
+    return found
+
+
 def corpus_captions(session: Session) -> list[tuple[str, str, str]]:
-    """(platform, video_id, caption) for every in-scope Douyin post.
+    """(platform, video_id, caption) for every in-scope Douyin post, once.
 
     One definition of "the corpus", used by the label export and by
     the page, so the two can never disagree about what was counted.
+
+    **Keyed by video id, because the two Douyin formats share one
+    capture table.** `captions("douyin")` and `captions("douyin_note")`
+    both read `douyin_posts` -- the phone writes there whichever
+    format it read -- so walking the two platforms and appending
+    returned every captured post twice, and the page reported a
+    corpus half again larger than the one the dashboard counts.
+
     Two exclusions, for two different reasons: the topic filter's own
     mark, and -- for a hand-pasted link, which has no capture row for
     `relevance` to have marked -- the filter run over the text here.
     """
-    found: list[tuple[str, str, str]] = []
+    kind = douyin_format(session)
+    out_of_scope = excluded(session, "douyin") | excluded(session, "douyin_note")
+
+    merged: dict[str, str] = {}
     for platform in ("douyin", "douyin_note"):
-        out_of_scope = excluded(session, platform)
-        for video_id, text in sorted(captions(session, platform).items()):
-            if video_id in out_of_scope:
-                continue
+        for video_id, text in captions(session, platform).items():
             flat = " ".join(text.split())
-            if flat and classify(flat, policy=filter_policy(platform)):
-                continue
-            found.append((platform, video_id, flat))
+            if flat or video_id not in merged:
+                merged.setdefault(video_id, flat)
+
+    found: list[tuple[str, str, str]] = []
+    for video_id, flat in sorted(merged.items()):
+        if video_id in out_of_scope:
+            continue
+        platform = kind.get(video_id, "douyin")
+        if flat and classify(flat, policy=filter_policy(platform)):
+            continue
+        found.append((platform, video_id, flat))
     return found
 
 

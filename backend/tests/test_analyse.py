@@ -281,3 +281,64 @@ def test_an_out_of_scope_row_is_not_in_the_caption_dump(db: None) -> None:
 
     assert "和老婆的第三年" in written
     assert "师傅教做菜" not in written
+
+
+def test_a_post_is_in_the_corpus_once(db: None) -> None:
+    """The two Douyin formats share one capture table.
+
+    The phone writes every post it reads into `douyin_posts`,
+    whichever format it was, so `captions("douyin")` and
+    `captions("douyin_note")` both return it. Walking the two
+    platforms and appending counted every captured post twice, and the
+    page reported a corpus half again larger than the dashboard's.
+    """
+    from app.analyse import corpus_captions
+    from app.models import CaptureEvent, DouyinPost
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-25",
+            captured_at=datetime(2026, 9, 25, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add(DouyinPost(
+            capture_event_id=event.id, participant_id="P001",
+            captured_at=datetime(2026, 9, 25, 18, 0),
+            video_id="7001", caption="跟老婆在一起307天了 #wlw",
+        ))
+        session.commit()
+
+        assert [row[1] for row in corpus_captions(session)] == ["7001"]
+
+
+def test_a_note_is_reported_as_a_note(db: None) -> None:
+    """Deduplicating must not flatten the format distinction.
+
+    Nothing in the capture row says which format it was; the rows
+    written after the link resolved do. A 图文 counted as a video
+    would put it on the wrong side of the one comparison the two
+    formats exist to support.
+    """
+    from app.analyse import corpus_captions
+    from app.models import CaptureEvent, DouyinPost
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-25",
+            captured_at=datetime(2026, 9, 25, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add_all([
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       captured_at=datetime(2026, 9, 25, 18, 0),
+                       video_id="7002", caption="淡淡的稳稳的两个人 #lwl"),
+            WebVideo(platform="douyin_note", video_id="7002",
+                     fetched_at=datetime(2026, 9, 25, 18, 0)),
+        ])
+        session.commit()
+
+        assert corpus_captions(session)[0][0] == "douyin_note"
