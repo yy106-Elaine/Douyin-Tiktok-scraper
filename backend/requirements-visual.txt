@@ -1,0 +1,6 @@
+# Only the visual coding pass needs this, and only on the machine
+# doing the coding. Everything else -- the server, the dashboard, the
+# daily job, the report -- runs without it.
+#
+#     ./.venv/bin/pip install -r requirements-visual.txt
+anthropic>=1.0

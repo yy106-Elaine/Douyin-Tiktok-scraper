@@ -142,3 +142,40 @@ def test_resume_reads_back_what_was_already_coded(tmp_path) -> None:
     # re-run that quietly retried it would hide the failure rate.
     assert already_done(out) == {"7001", "7002"}
     assert already_done(tmp_path / "nothing.jsonl") == set()
+
+
+def test_the_schema_covers_every_field_the_codebook_defines() -> None:
+    """The prompt and the schema are two halves of one contract.
+
+    The codebook says what each field means; the schema says what
+    shape it arrives in. A field defined in one and missing from the
+    other is a column that silently never gets filled.
+    """
+    from app.visual import SCHEMA
+
+    prompt = prompt_text(ROOT)
+    top = set(SCHEMA["properties"])
+    person = set(SCHEMA["$defs"]["person"]["properties"])
+
+    for name in top | person:
+        assert name in prompt, f"{name} is in the schema but not the prompt"
+
+    # And the fields the analysis is built around are really there.
+    assert {"presentation_distance", "physical_affection",
+            "two_women_together"} <= top
+    assert {"hair_length", "menswear_items", "gaze_direct"} <= person
+
+
+def test_every_field_is_required_so_nothing_comes_back_half_filled() -> None:
+    """A field the model may omit is a field that will be missing on
+    exactly the posts that were hard to read -- which is the opposite
+    of what the data needs. Everything is required; "cannot see" has
+    its own value instead."""
+    from app.visual import SCHEMA
+
+    assert set(SCHEMA["required"]) == set(SCHEMA["properties"])
+    person = SCHEMA["$defs"]["person"]
+    assert set(person["required"]) == set(person["properties"])
+    # ...and nothing else may be invented.
+    assert SCHEMA["additionalProperties"] is False
+    assert person["additionalProperties"] is False

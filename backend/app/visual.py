@@ -1,6 +1,7 @@
 """Visual coding of the archived posts, one call per post.
 
-    ./.venv/bin/python -m app.visual --platform douyin_note --limit 30 --dry-run
+    ./.venv/bin/pip install -r requirements-visual.txt
+    ./.venv/bin/python -m app.visual --platform douyin_note --limit 30
     ./.venv/bin/python -m app.visual --platform douyin_note --limit 30 --apply
 
 The codebook is `docs/prompts/video-codebook.zh.md`; this module
@@ -19,6 +20,13 @@ finding about the instrument, not noise to be cleaned. The raw text
 is kept and the row is marked, rather than the call being repeated
 until something parseable comes out.
 
+**The reply's shape is enforced, its content is not.** `SCHEMA` goes
+to the API as a structured-output format, so a malformed reply cannot
+come back and the only unparseable outcome left is a refusal -- which
+is exactly the outcome worth counting. The codebook stays the
+authority on what each field *means*; this file is only the authority
+on what shape it arrives in.
+
 **One line per post, appended.** A run that dies halfway has coded
 everything up to that point, and `--resume` skips what is already
 written. 560 posts at a few seconds each is not a thing to start over.
@@ -33,7 +41,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import os
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -169,69 +176,174 @@ def parse(raw: str) -> tuple[dict | None, str]:
     return found, ""
 
 
-def _parts(post: Post) -> list[dict]:
-    """The images, inline, as the Gemini REST body wants them."""
-    out = []
+#: The shape of a reply, enforced by the API rather than hoped for.
+#: The codebook is the authority on what each field *means*; this is
+#: the authority on what comes back, so a malformed reply cannot
+#: happen and the only unparseable outcome left is a refusal.
+SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "people_visible", "primary_subject", "face_visible",
+        "coding_possible", "subject", "second_person",
+        "subject_appears_female", "presentation_distance",
+        "two_women_together", "physical_affection", "presented_as_couple",
+        "onscreen_tph_terms", "onscreen_wlw_terms",
+        "onscreen_relationship_terms", "onscreen_moderation_terms",
+        "onscreen_contact", "confidence", "notes",
+    ],
+    "properties": {
+        "people_visible": {"type": "integer"},
+        "primary_subject": {"enum": ["single", "pair", "group", "none"]},
+        "face_visible": {"type": "boolean"},
+        "coding_possible": {"type": "boolean"},
+        "subject": {"anyOf": [{"$ref": "#/$defs/person"}, {"type": "null"}]},
+        "second_person": {
+            "anyOf": [{"$ref": "#/$defs/person"}, {"type": "null"}]},
+        "subject_appears_female": {
+            "anyOf": [{"type": "boolean"}, {"enum": ["unclear"]}]},
+        "presentation_distance": {
+            "anyOf": [{"type": "integer", "minimum": 1, "maximum": 5},
+                      {"type": "null"}]},
+        "two_women_together": {"type": "boolean"},
+        "physical_affection": {
+            "enum": ["none", "proximity", "hand_holding", "embrace", "kiss"]},
+        "presented_as_couple": {"type": "boolean"},
+        "onscreen_tph_terms": {"type": "array", "items": {"type": "string"}},
+        "onscreen_wlw_terms": {"type": "array", "items": {"type": "string"}},
+        "onscreen_relationship_terms": {
+            "type": "array", "items": {"type": "string"}},
+        "onscreen_moderation_terms": {
+            "type": "array", "items": {"type": "string"}},
+        "onscreen_contact": {"type": "boolean"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "notes": {"type": "string"},
+    },
+    "$defs": {
+        "person": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "hair_length", "hair_mullet", "hair_undercut", "hair_dyed",
+                "makeup_visible", "nails", "upper_garment", "menswear_items",
+                "chest_presentation", "skin_exposure", "stance_wide",
+                "hands_in_pockets", "arms_crossed", "gaze_direct",
+                "head_tilt_or_chin_tuck", "peace_sign_or_heart",
+                "hand_gesture_dance", "full_body_dance", "lip_sync",
+            ],
+            "properties": {
+                "hair_length": {"enum": [
+                    "shaved", "cropped_above_ear", "ear_to_jaw",
+                    "jaw_to_shoulder", "below_shoulder", "not_visible"]},
+                "hair_mullet": {"type": "boolean"},
+                "hair_undercut": {"type": "boolean"},
+                "hair_dyed": {"type": "boolean"},
+                "makeup_visible": {
+                    "enum": ["none", "light", "heavy", "not_visible"]},
+                "nails": {"enum": [
+                    "short_bare", "long_or_decorated", "not_visible"]},
+                "upper_garment": {
+                    "enum": ["fitted", "loose_or_boxy", "not_visible"]},
+                "menswear_items": {
+                    "type": "array",
+                    "items": {"enum": [
+                        "necktie", "suit_jacket", "oversized_shirt",
+                        "sports_jersey", "cap", "chain", "none"]}},
+                "chest_presentation": {"enum": [
+                    "flattened_or_bound", "unmodified", "not_visible"]},
+                "skin_exposure": {"enum": [
+                    "covered", "arms_or_shoulders", "midriff_or_legs",
+                    "not_visible"]},
+                "stance_wide": {"type": "boolean"},
+                "hands_in_pockets": {"type": "boolean"},
+                "arms_crossed": {"type": "boolean"},
+                "gaze_direct": {"type": "boolean"},
+                "head_tilt_or_chin_tuck": {"type": "boolean"},
+                "peace_sign_or_heart": {"type": "boolean"},
+                "hand_gesture_dance": {"type": "boolean"},
+                "full_body_dance": {"type": "boolean"},
+                "lip_sync": {"type": "boolean"},
+            },
+        }
+    },
+}
+
+
+def _content(post: Post, prompt: str) -> list[dict]:
+    """The images, then the prompt. Images first so the text is last read."""
+    blocks: list[dict] = []
     for image in post.images:
         kind = "image/png" if image.suffix.lower() == ".png" else "image/jpeg"
-        out.append({
-            "inline_data": {
-                "mime_type": kind,
-                "data": base64.b64encode(image.read_bytes()).decode("ascii"),
-            }
+        blocks.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": kind,
+                "data": base64.standard_b64encode(
+                    image.read_bytes()).decode("utf-8"),
+            },
         })
-    return out
+    blocks.append({"type": "text", "text": prompt})
+    return blocks
 
 
-def code_one(post: Post, prompt: str, model: str, api_key: str) -> dict:
-    """One post, one call. Returns the row to write, whatever happened."""
-    import urllib.error
-    import urllib.request
+def code_one(client, post: Post, prompt: str, model: str,
+             effort: str) -> dict:
+    """One post, one call. Returns the row to write, whatever happened.
 
-    body = {
-        "contents": [{"parts": [{"text": prompt}] + _parts(post)}],
-        "generationConfig": {"temperature": 0, "maxOutputTokens": 2048},
-    }
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent"
-    )
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
-    )
+    No `fallbacks`. The SDK guidance is to enable server-side fallback
+    on a refusal, and for most applications that is right -- but here
+    it would silently route some posts to a different model, and a
+    corpus coded by two instruments is worse than a corpus with a
+    recorded gap. A refusal is written down and left as a refusal.
+    """
+    import anthropic
+
     row: dict = {
         "video_id": post.video_id,
         "platform": post.platform,
         "images_sent": len(post.images),
         "model": model,
+        "effort": effort,
     }
     try:
-        with urllib.request.urlopen(request, timeout=180) as answer:
-            payload = json.loads(answer.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        row["error"] = f"HTTP {error.code}: {error.read()[:300].decode('utf-8', 'replace')}"
+        answer = client.messages.create(
+            model=model,
+            max_tokens=8000,
+            output_config={
+                "effort": effort,
+                "format": {"type": "json_schema", "schema": SCHEMA},
+            },
+            messages=[{"role": "user", "content": _content(post, prompt)}],
+        )
+    except anthropic.APIStatusError as error:
+        row["error"] = f"{type(error).__name__} {error.status_code}"
         return row
-    except Exception as error:  # noqa: BLE001 - recorded, never swallowed
+    except anthropic.APIConnectionError as error:
         row["error"] = f"{type(error).__name__}: {error}"
         return row
 
-    try:
-        raw = payload["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError):
-        # A blocked or empty candidate. The reason is the finding.
-        row["error"] = "no text in reply"
-        row["raw"] = json.dumps(payload)[:1000]
+    row["usage"] = {
+        "input": answer.usage.input_tokens,
+        "output": answer.usage.output_tokens,
+    }
+
+    # Always before reading content: a safety classifier may decline,
+    # and that arrives as a 200 with a category rather than an error.
+    if answer.stop_reason == "refusal":
+        detail = getattr(answer, "stop_details", None)
+        row["error"] = "refusal"
+        row["refusal_category"] = getattr(detail, "category", None)
+        return row
+    if answer.stop_reason == "max_tokens":
+        row["error"] = "hit max_tokens"
         return row
 
-    coded, why = parse(raw)
+    text = next((b.text for b in answer.content if b.type == "text"), "")
+    coded, why = parse(text)
     if coded is None:
         row["error"] = why
-        row["raw"] = raw[:2000]
+        row["raw"] = text[:2000]
         return row
     row["coding"] = coded
     return row
@@ -249,8 +361,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                         help="fixed, so a re-run gets the same sample")
     parser.add_argument("--out", default="visual-coding.jsonl",
                         help="one JSON object per post, appended")
-    parser.add_argument("--model", default=os.environ.get(
-        "GEMINI_MODEL", "gemini-2.0-flash"))
+    parser.add_argument("--model", default="claude-opus-5-5")
+    parser.add_argument("--effort", default="high",
+                        choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--apply", action="store_true",
                         help="actually call the model")
     parser.add_argument("--resume", action="store_true",
@@ -283,34 +396,39 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         print("Add --apply to call the model.")
         return
 
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get(
-        "GOOGLE_API_KEY", "")
-    if not api_key:
+    try:
+        import anthropic
+    except ModuleNotFoundError:
         raise SystemExit(
-            "No GEMINI_API_KEY (or GOOGLE_API_KEY) in the environment.\n"
-            "Put it in backend/.env or export it for this shell."
-        )
+            "The anthropic SDK is not installed.\n"
+            "  ./.venv/bin/pip install -r requirements-visual.txt"
+        ) from None
+
+    # Zero-arg: resolves ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN,
+    # then an `ant auth login` profile. `ant auth status` says which.
+    client = anthropic.Anthropic()
 
     coded = refused = failed = 0
     with out.open("a", encoding="utf-8") as handle:
         for index, post in enumerate(chosen, start=1):
-            row = code_one(post, prompt, args.model, api_key)
+            row = code_one(client, post, prompt, args.model, args.effort)
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             handle.flush()
             if "coding" in row:
                 coded += 1
                 said = row["coding"].get("presentation_distance")
                 mark = f"distance {said}" if said is not None else "null"
-            elif "raw" in row:
+            elif row.get("error") == "refusal" or "raw" in row:
                 refused += 1
-                mark = f"UNPARSEABLE — {row['error'][:60]}"
+                mark = f"REFUSED/UNUSABLE — {row['error'][:60]}"
             else:
                 failed += 1
                 mark = f"ERROR — {row['error'][:60]}"
             print(f"[{index}/{len(chosen)}] {post.video_id}  {mark}",
                   flush=True)
 
-    print(f"\ncoded {coded}; {refused} reply not usable; {failed} call failed")
+    print(f"\ncoded {coded}; {refused} refused or unusable; "
+          f"{failed} call failed")
     print(f"written to {out}")
 
 
