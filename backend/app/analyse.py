@@ -40,6 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .clock import local, local_date
+from .links import describe
 from .platforms import PLATFORM_FAMILY, filter_policy
 from .relevance import classify
 from . import labels
@@ -175,11 +176,22 @@ def captions(session: Session, platform: str) -> dict[str, str]:
     ):
         if row.video_id:
             said.setdefault(row.video_id, (row.caption or "").replace("\n", " "))
+    # A pasted share blob carries its own caption, and nothing else
+    # was reading it. Until `app.daily` fetches the page there is no
+    # fetched row, so every hand-pasted post counted as having no
+    # caption at all -- and if the post is removed before that first
+    # fetch ever happens, the blob is the only copy of its text there
+    # will ever be. Truncated by the share sheet, and an ellipsis is
+    # more than an empty column.
     for link in session.scalars(
         select(SharedLink).where(SharedLink.platform == platform)
     ):
-        if link.video_id:
-            said.setdefault(link.video_id, "")
+        if not link.video_id:
+            continue
+        held = said.get(link.video_id)
+        if held:
+            continue
+        said[link.video_id] = (describe(link.raw_text or "").caption or "")
     return said
 
 
@@ -330,6 +342,15 @@ def author_names(session: Session) -> dict[str, str]:
         )
     ):
         found.setdefault(video_id, name)
+    # And the share blob, for the same reason the caption is read from
+    # it: a hand-pasted post has no other record of who posted it
+    # until the page is fetched.
+    for link in session.scalars(
+        select(SharedLink).where(SharedLink.video_id.isnot(None))
+    ):
+        name = describe(link.raw_text or "").author_name
+        if name:
+            found.setdefault(link.video_id, name)
     return found
 
 
@@ -357,8 +378,10 @@ def label_dump(session: Session, path: str) -> int:
         out.writerow([
             "platform", "video_id", "caption", "truncated",
             "wlw_tags", "tph_tags", "tph_terms", "compliance",
-            "content", "is_gone", "first_gone_at", "collected_at",
+            "account_marks", "content", "is_gone", "first_gone_at",
+            "collected_at",
         ])
+        named = author_names(session)
         for platform, video_id, flat in corpus_captions(session):
                 found = verdicts.get(video_id)
                 out.writerow([
@@ -368,6 +391,7 @@ def label_dump(session: Session, path: str) -> int:
                     "|".join(labels.tph_tags(flat)) if flat else "",
                     "|".join(labels.tph_terms(flat)),
                     int(labels.compliance(flat)),
+                    "|".join(labels.account_marks(named.get(video_id))),
                     "",  # for the content category, once it is coded
                     int(bool(found and found.is_gone)) if found else "",
                     local(found.first_gone_ever) if found else "",

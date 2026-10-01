@@ -342,3 +342,32 @@ def test_a_note_is_reported_as_a_note(db: None) -> None:
         session.commit()
 
         assert corpus_captions(session)[0][0] == "douyin_note"
+
+
+def test_a_pasted_blob_is_the_only_copy_of_its_own_caption(db: None) -> None:
+    """Until the page is fetched, the share text is all there is.
+
+    A hand-pasted post has no capture row and no fetched row, so every
+    one of them counted as having no caption at all -- 119 of them at
+    once, which is what made a quarter of the corpus look captionless.
+    Worse: a post removed before that first fetch ever happens leaves
+    the blob as the only copy of its text there will ever be.
+    """
+    from app.analyse import author_names, captions
+    from app.models import SharedLink
+
+    blob = (
+        "7.15 复制打开抖音，看看【qianxxxx（限流版的图文作品】"
+        "就算你对我说谎我也会爱着你呀。# 古早 # 韩流 ... "
+        "https://v.douyin.com/v559YY3leFg/ UYM:/ :8pm"
+    )
+    with SessionLocal() as session:
+        session.add(SharedLink(
+            participant_id="P001", platform="douyin_note", raw_text=blob,
+            video_id="7003", shared_at=datetime(2026, 10, 1, 2, 0),
+            source="pasted",
+        ))
+        session.commit()
+
+        assert "就算你对我说谎" in captions(session, "douyin_note")["7003"]
+        assert author_names(session)["7003"].startswith("qianxxxx")

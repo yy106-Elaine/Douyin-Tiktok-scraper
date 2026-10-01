@@ -653,16 +653,17 @@ def _content(session: Session, page: Page) -> str:
             marks.setdefault(kind, set()).add(video_id)
     renamed = len({v for ids in marks.values() for v in ids})
 
+    untagged = sum(
+        1 for _, _, text in with_text if labels.wlw_tags(text) == ["none"]
+    )
     tiles = "".join([
         tile("Posts in the corpus", str(total),
              f"{blank} carry no caption at all"),
         tile("Caption speaks to the moderator", str(flagged),
              "#无不良倾向 (no bad influence), 被屏了重发 (blocked, "
              "reposted), 解封 (unbanned)"),
-        tile("Account name reports being actioned", str(renamed),
-             " · ".join(f"{_MARKS[kind]} {len(ids)}"
-                        for kind, ids in sorted(marks.items()))
-             or "no account in the corpus says so"),
+        tile("Carry no community tag", str(untagged),
+             "the caption is on topic but nothing in it is searchable"),
     ])
 
     def per_tag(rows: list[list[str]], kind) -> str:
@@ -705,14 +706,13 @@ def _content(session: Session, page: Page) -> str:
         + '<p class="note">The removal columns are descriptive. Several of '
         'these groups hold a handful of posts, nothing here is a test, and '
         'no difference between them should be read as one yet.</p>'
-        '<p class="note"><strong>The two moderation tiles are what the '
-        'authors say happened to them, not what this study observed.</strong> '
-        'A removal is in the Overview; these are the posts whose own text, '
-        'or whose account name, reports being throttled, blocked, or rebuilt '
-        'after the first account went — 限流版 (throttled edition), 新号 '
-        '(new account), 小号 (spare account). The account names themselves '
-        'are not printed: only how many said it, and which of these things '
-        'they said.</p>'
+        '<p class="note"><strong>“Caption speaks to the moderator” is what '
+        'the authors say happened to them, not what this study '
+        'observed</strong> — the observed removals are in the Overview. '
+        'Account names say it too (限流版 throttled edition, 新号 rebuilt '
+        'account); that count is in the label export rather than here, '
+        'since so far it is a handful. The names themselves are never '
+        'printed: these are the accounts least able to afford it.</p>'
         "</section>"
     )
 
