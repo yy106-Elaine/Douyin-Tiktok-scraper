@@ -52,10 +52,8 @@ from .analyse import (
 )
 from .clock import local, now as clock_now, today as clock_today
 from .survival import (
-    Curve,
     Finding,
     by_collection_age,
-    horizon,
     kaplan_meier,
     quartiles,
     removal_ages,
@@ -424,204 +422,77 @@ class Page:
     reveal: bool = False
 
 
-@dataclass
-class Counted:
-    """Share removed by each age, counted rather than estimated.
-
-    `points` is (age in days, removed, answerable, unknown).
-    `answerable` is the posts whose fate at that age is known: watched
-    from before it, and either already gone or watched past it. A post
-    collected two days ago cannot say anything about what happens by
-    day seven, so it is out of that denominator rather than counted as
-    a survivor of it. `unknown` is the rest -- still up, but not
-    watched long enough to answer.
-
-    Counting this way is honest at every age but not unbiased at every
-    age: a post removed on day two is known at every later age, while
-    a surviving post has to be watched that long to count at all. So
-    as the age grows the known set fills up with removals and the
-    share climbs towards 100%. That is an artefact of how long
-    collection has been running, not a property of the platform.
-
-    So an age is drawn only when both things hold: at least `FLOOR`
-    posts have actually outlived it, and most of the eligible posts
-    have an answer at it (`answerable >= unknown`). Neither alone is
-    enough. Without the first, 图文 at fourteen days reads 100% off
-    fifteen removals and no survivors at all. Without the second, it
-    reads 65% at seven days off the twenty-three posts that happen to
-    have an answer -- counted, but counted over a set that is two
-    thirds removals because 343 of the 366 notes are younger than
-    that. An earlier version drew those ages dashed and labelled them
-    thin. That was no good: a line climbing to 65% is read as 65%
-    whatever is written beside it.
-
-    A format then stops where its own collection stops supporting it,
-    and the page says so in counts rather than leaving a short line
-    looking like a bug.
-    """
-
-    #: Posts that have to have outlived an age before it is drawn.
-    FLOOR = 8
-
-    name: str
-    slot: int
-    points: list[tuple[float, int, int]] = field(default_factory=list)
-
-    @property
-    def shown(self) -> list[tuple[float, int, int, int]]:
-        """The ages this line can actually answer for."""
-        return [p for p in self.points
-                if p[2] - p[1] >= self.FLOOR and p[2] >= p[3]]
-
-    def survivors(self, age: float) -> int:
-        """Posts watched past this age without being removed."""
-        return next((n - r for at, r, n, _ in self.points if at == age), 0)
-
-    @property
-    def reach(self) -> float:
-        return max((age for age, _, _, _ in self.shown), default=1.0)
-
-    def share(self, age: float) -> float | None:
-        for at, removed, answerable, _ in self.points:
-            if at == age and answerable:
-                return removed / answerable
-        return None
-
-    def answerable(self, age: float) -> int:
-        return next((n for at, _, n, _ in self.points if at == age), 0)
-
-
-def counted(name: str, slot: int, items: list[Finding],
-            ages: list[float]) -> Counted:
-    """Observed share removed at each age, via `horizon`.
-
-    No estimator and no extrapolation: at every age this is a count
-    over a denominator that is stated on the chart. It is the same
-    question the horizon table asked, asked at more ages.
-    """
-    out = Counted(name=name, slot=slot)
-    for age in ages:
-        window = horizon(items, timedelta(days=age))
-        out.points.append((age, window.removed,
-                           window.removed + window.survived, window.censored))
-    return out
-
-
-def removal_chart(lines: list[Counted], *, ident: str,
-                  width: int = 820, height: int = 300) -> str:
-    """Share removed by age since publication, counted at each age.
-
-    Rising from zero rather than falling from one, so the baseline is
-    a real zero and the axis can stop at the top of the data without
-    truncating anything.
-
-    **Nothing here is estimated.** Each point is removed over
-    answerable, and the answerable counts are printed under the axis.
-    Where that number is small the point is a handful of posts, which
-    is why it is on the chart rather than in a footnote.
-    """
-    pad_left, pad_right, pad_top = 46, 108, 14
-    pad_bottom = 46 + 18 * len(lines)
-    plot_w = width - pad_left - pad_right
-    plot_h = height - pad_top - pad_bottom
-
-    peak = max(
-        [share for line in lines for age, _, _, _ in line.shown
-         if (share := line.share(age)) is not None] or [0.1])
-    top = max(0.1, min(1.0, (int(peak * 10) + 1) / 10))
-    reach = max([line.reach for line in lines] or [1.0])
-
-    def x_of(days: float) -> float:
-        return pad_left + plot_w * min(days / reach, 1.0)
-
-    def y_of(share: float) -> float:
-        return pad_top + plot_h * (1 - share / top)
-
-    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
-           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
-    out.append(f'<title id="{ident}-t">Share removed by age since '
-               f'publication</title>')
-
-    rungs = 4
-    for index in range(rungs + 1):
-        share = top * index / rungs
-        y = y_of(share)
-        out.append(f'<line class="grid" x1="{pad_left}" y1="{y:.1f}" '
-                   f'x2="{pad_left + plot_w}" y2="{y:.1f}" />')
-        out.append(f'<text class="tick" x="{pad_left - 6}" y="{y + 4:.1f}" '
-                   f'text-anchor="end">{share * 100:.0f}%</text>')
-    for age in sorted({age for line in lines for age, _, _, _ in line.shown}):
-        out.append(f'<text class="tick" x="{x_of(age):.1f}" '
-                   f'y="{pad_top + plot_h + 18:.0f}" '
-                   f'text-anchor="middle">{age:g}d</text>')
-    out.append(f'<line class="axis" x1="{pad_left}" y1="{pad_top + plot_h}" '
-               f'x2="{pad_left + plot_w}" y2="{pad_top + plot_h}" />')
-
-    row = pad_top + plot_h + 48
-    out.append(f'<text class="tick" x="{pad_left - 6}" y="{row - 14:.0f}" '
-               f'text-anchor="end">posts</text>')
-    for line in lines:
-        for age, _, answerable, _ in line.shown:
-            out.append(
-                f'<text class="tick risk" x="{x_of(age):.1f}" '
-                f'y="{row:.0f}" text-anchor="middle">{answerable}</text>')
-        out.append(f'<rect class="key-swatch c{line.slot}" '
-                   f'x="{pad_left - 15}" y="{row - 9:.0f}" '
-                   f'width="9" height="9" rx="2" />')
-        row += 18
-
-    labelled: list[float] = []
-    for line in lines:
-        drawn = [(age, share) for age, _, _, _ in line.shown
-                 if (share := line.share(age)) is not None]
-        if not drawn:
-            continue
-        path = " ".join(
-            f"{'M' if index == 0 else 'L'}{x_of(age):.1f} {y_of(share):.1f}"
-            for index, (age, share) in enumerate(drawn))
-        out.append(f'<path class="line c{line.slot}" d="{path}" />')
-        for age, share in drawn:
-            removed = next(r for at, r, _, _ in line.points if at == age)
-            answerable = line.answerable(age)
-            hover = (f"{line.name}\nby day {age:g}: {removed} of "
-                     f"{answerable} removed ({share * 100:.0f}%)\n"
-                     f"counted, not estimated")
-            out.append(
-                f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
-                f'<circle class="hit" cx="{x_of(age):.1f}" '
-                f'cy="{y_of(share):.1f}" r="12" />'
-                f'<circle class="dot c{line.slot}" cx="{x_of(age):.1f}" '
-                f'cy="{y_of(share):.1f}" r="3.5" /></g>')
-        last_age, last_share = drawn[-1]
-        y = y_of(last_share) + 4
-        while any(abs(y - taken) < 15 for taken in labelled):
-            y += 15
-        labelled.append(y)
-        out.append(f'<text class="end-label c{line.slot}" '
-                   f'x="{x_of(last_age) + 8:.1f}" y="{y:.1f}">'
-                   f'{_e(line.name)} {last_share * 100:.0f}%</text>')
-
-    out.append("</svg>")
-    return "".join(out)
-
-
-def _day_ticks(reach: float) -> list[float]:
-    step = 1.0
-    for candidate in (1, 2, 3, 5, 7, 10, 14, 30, 60):
-        step = candidate
-        if reach / candidate <= 7:
-            break
-    ticks, day = [], 0.0
-    while day <= reach:
-        ticks.append(day)
-        day += step
-    return ticks
-
-
 def _rate_tile(label: str, items: list[Finding]) -> str:
     s = summarise(items)
     measured = s.gone + s.alive
     return tile(label, _pct1(s.rate), f"{s.gone} of {measured} watched")
+
+
+#: How fast a removal was, in the only units the data has: the age
+#: of the post when it went. The last bucket is open-ended, so the
+#: wedges partition the removals exactly and nothing is estimated.
+SPEEDS: tuple[tuple[str, float, float], ...] = (
+    ("24小时内 (within 1 day)", 0.0, 1.0),
+    ("1–3天 (1–3 days)", 1.0, 3.0),
+    ("3–7天 (3–7 days)", 3.0, 7.0),
+    ("7天以上 (over 7 days)", 7.0, float("inf")),
+)
+
+
+def _share_pie(name: str, items: list[Finding], ident: str) -> str:
+    """Removed against still up, for one format.
+
+    Every post watched is in exactly one wedge, and both wedges are
+    counts of posts whose state was read at the last check. Nothing
+    here is controlled for the age of the post -- see the note under
+    the figure, and `python -m app.analyse` for the age-matched
+    numbers.
+    """
+    s = summarise(items)
+    watched = s.gone + s.alive
+    slices = [
+        Slice("已下架 (removed)", s.gone,
+              f"已下架 (removed)\n{s.gone} of {watched} watched"),
+        Slice("仍在 (still up)", s.alive,
+              f"仍在 (still up)\n{s.alive} of {watched} watched"),
+    ]
+    return (f'<figure class="panel"><figcaption>{_e(name)} — '
+            f'{s.gone}/{watched} ({_pct1(s.rate)})</figcaption>'
+            f'{pie(slices, ident=ident, title=f"{name} removed")}</figure>')
+
+
+def _speed_slices(items: list[Finding]) -> list[Slice]:
+    """The removals only, split by how old the post was when it went."""
+    lasted = removal_ages(items)
+    total = len(lasted) or 1
+    out = []
+    for label, low, high in SPEEDS:
+        count = sum(1 for age in lasted
+                    if low <= age.total_seconds() / 86400 < high)
+        out.append(Slice(label, count,
+                         f"{label}\n{count} of {len(lasted)} removals\n"
+                         f"{count / total * 100:.0f}%"))
+    return out
+
+
+def _speed_pie(name: str, items: list[Finding], ident: str) -> str:
+    """How fast the removals were, among the posts that were removed.
+
+    The denominator here is the removed posts, so nothing is censored
+    out of it and no age is better observed than another: a post that
+    has gone has a known age at removal whatever day it went. This is
+    the one part-to-whole on the page that the length of collection
+    cannot distort.
+    """
+    lasted = removal_ages(items)
+    if not lasted:
+        return (f'<figure class="panel"><figcaption>{_e(name)} — '
+                '下架速度 (how fast)</figcaption>'
+                '<p class="note">nothing removed yet.</p></figure>')
+    return (f'<figure class="panel"><figcaption>{_e(name)} — 下架速度 '
+            f'(how fast, {len(lasted)} removals)</figcaption>'
+            f'{pie(_speed_slices(items), ident=ident, title=f"{name} speed")}'
+            "</figure>")
 
 
 def _douyin(session: Session, page: Page) -> str:
@@ -630,17 +501,10 @@ def _douyin(session: Session, page: Page) -> str:
     notes = page.held.get("douyin_note", [])
     both = video + notes
     whole = kaplan_meier(both)
-    ages = [1, 2, 3, 5, 7, 10, 14, 21, 30]
-    curves = [
-        counted("视频 (video)", 1, video, ages),
-        counted("图文 (note)", 2, notes, ages),
-    ]
 
     lasted = removal_ages(both)
     spread = quartiles(lasted)
     tiles = "".join([
-        _rate_tile("视频 (video)", video),
-        _rate_tile("图文 (note)", notes),
         tile("The removed posts lasted",
              _span(spread[1]) if spread else "—",
              f"median of {len(lasted)} removals; middle half "
@@ -654,108 +518,51 @@ def _douyin(session: Session, page: Page) -> str:
              "that saw it gone"),
     ])
 
-    # The table is the chart's own numbers, with the denominator
-    # beside each one rather than under the axis.
-    # The table is the chart's twin, so it holds the same ages and
-    # drops the same ones: a cell for an age with no survivors would
-    # read 100% and mean only that collection has not run that long.
-    drawable = {age for line in curves for age, _, _, _ in line.shown}
-    rows = []
-    for days in ages:
-        if days not in drawable:
-            continue
-        row = [f"{days}d"]
-        for line in curves:
-            share = line.share(days)
-            if days not in {age for age, _, _, _ in line.shown}:
-                share = None
-            row.append("—" if share is None else f"{share * 100:.0f}%")
-            row.append("—" if share is None else str(line.answerable(days)))
-        rows.append(row)
+    share_rows = []
+    speed_rows = []
+    for name, items in (("视频 (video)", video), ("图文 (note)", notes)):
+        s = summarise(items)
+        share_rows.append([name, str(s.gone), str(s.alive),
+                           str(s.gone + s.alive), _pct1(s.rate)])
+        removals = len(removal_ages(items))
+        row = [name, str(removals)]
+        for piece in _speed_slices(items):
+            row.append(f"{piece.count}" if removals else "—")
+        speed_rows.append(row)
 
     return (
-        '<section class="core"><h2>抖音 (Douyin) — removal by age of post</h2>'
+        '<section class="core"><h2>抖音 (Douyin) — how much, and how fast'
+        "</h2>"
         f'<div class="tiles">{tiles}</div>'
-        '<div class="scale">'
-        '<span class="key"><i class="rule c1"></i>视频 (video)</span>'
-        '<span class="key"><i class="rule c2"></i>图文 (note)</span></div>'
-        f'{removal_chart(curves, ident="km")}'
-        '<p class="note"><strong>Counted, not estimated.</strong> Each '
-        'point is "of the posts this question can be asked of, how many were '
-        'gone by this age" — and the row under the axis is how many posts '
-        'that was. A post collected two days ago cannot say anything about '
-        'what happens by day seven, so it is left out of that denominator '
-        'rather than counted as having survived it. Each line stops at the '
-        'last age most of its posts have actually reached: carried past '
-        'there it would climb, because the posts that can answer are then '
-        'mostly the ones already taken down, and it would be reporting how '
-        'long collection has run rather than anything about 抖音.</p>'
-        + _coverage(curves, ages)
-        + table(["Age", "视频 removed", "视频 watched", "图文 removed",
-                 "图文 watched"], rows, "share removed by age")
+        '<div class="panels">'
+        + _share_pie("视频 (video)", video, "pv")
+        + _share_pie("图文 (note)", notes, "pn")
+        + "</div>"
+        '<p class="note"><strong>Counted, not estimated.</strong> Every post '
+        'the study watches is in exactly one wedge, as read at the last '
+        'check. <strong>These two are not a like-for-like comparison:</strong> '
+        'the 视频 have been watched longer, so they have had more time to be '
+        'removed. The age-matched numbers — how many were gone by one day, '
+        'by three, by seven, among the posts watched from that early — are '
+        'in <code>python -m app.analyse</code>; at one day of age the two '
+        'formats are close.</p>'
+        + table(["Format", "已下架 (removed)", "仍在 (still up)",
+                 "Watched", "Share"], share_rows, "removal share by format")
+        + '<div class="panels">'
+        + _speed_pie("视频 (video)", video, "sv")
+        + _speed_pie("图文 (note)", notes, "sn")
+        + "</div>"
+        '<p class="note">These two read only the posts that <em>were</em> '
+        'removed, split by how old the post was when it went. That makes '
+        'them the one part-to-whole here the length of collection cannot '
+        'distort: a post that has gone has a known age at removal whatever '
+        'day it went. Each age is the middle of the bracket between the '
+        'check that saw the post up and the one that saw it gone, so it is '
+        f'good to about {_span(whole.resolution)}.</p>'
+        + table(["Format", "Removals"] + [label for label, _, _ in SPEEDS],
+                speed_rows, "how fast the removals were")
         + "</section>"
     )
-
-
-def _coverage(lines: list[Counted], ages: list[float]) -> str:
-    """How far each format is actually watched, in counts.
-
-    A line that stops at a day looks like a bug unless the page says
-    why it stops, and the why is a count: how many posts of that
-    format have outlived each age. 图文 stops early not because the
-    study has run for a day but because most notes were collected in
-    the last couple of days, and that is visible here and nowhere
-    else on the chart.
-    """
-    out = []
-    for line in lines:
-        far = [f"{line.survivors(age)} past {age:g}d" for age in ages
-               if line.survivors(age)]
-        if not far:
-            continue
-        reach = line.shown[-1][0] if line.shown else None
-        stop = (f"so the line stops at {reach:g}d"
-                if reach is not None else "so no line is drawn")
-        out.append(f'<li><b>{_e(line.name)}</b>: {", ".join(far)} — {stop}.'
-                   '</li>')
-    if not out:
-        return ""
-    return ('<p class="note"><strong>How far each format is watched.</strong> '
-            'Posts that have outlived each age without being removed — the '
-            'survivors in the denominator above:</p>'
-            f'<ul class="note">{"".join(out)}</ul>')
-
-
-def _median_line(whole: Curve, lasted: list[timedelta]) -> str:
-    """The sentence that keeps the two medians from being confused.
-
-    The tile reports the median of the removals that have happened.
-    That number is not how long a post lasts: the posts destined for
-    a slow removal have not had it yet, so they are missing from it
-    and it drifts upward as the study runs. The curve is the estimate
-    that keeps them in, and what it says about a median is usually
-    that there is not one yet.
-    """
-    reached = whole.quantile(0.5)
-    if reached:
-        return (f"Over the whole corpus, half of all posts are gone by "
-                f"{_span(reached)}.")
-    quarter = whole.quantile(0.25)
-    tail = (f"a quarter of all posts are gone by {_span(quarter)}"
-            if quarter else "not even a quarter of all posts has gone")
-    return (f"The tile above describes the {len(lasted)} removals that have "
-            f"happened, not how long a post lasts — the slow removals have "
-            f"not happened yet. Across the whole corpus, {tail}, and the "
-            f"halfway point has not been reached.")
-
-
-def _at_risk(curve: Curve, age: timedelta) -> int:
-    held = 0
-    for step in curve.steps:
-        if step.age > age:
-            break
-        held = step.at_risk
-    return held
 
 
 def _content(session: Session, page: Page) -> str:

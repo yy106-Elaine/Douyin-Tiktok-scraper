@@ -6,11 +6,12 @@ still being complete when the script does not run.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.db import SessionLocal
 from app.models import LinkCheck, WebVideo
 from app.report import Column, build, columns, mask
+from app.survival import Finding
 
 CAPTION = "姐妹 情侣 日常 这个人的脸 #wlw #长发t"
 VIDEO_ID = "7512345678901234567"
@@ -182,83 +183,67 @@ def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
     assert '<nav class="tab-strip">' not in page
 
 
-def test_a_line_stops_where_its_own_collection_stops_supporting_it() -> None:
-    """Two ways a counted share stops meaning what it says.
+POSTED = datetime(2026, 9, 1, 12, 0)
 
-    These are the real numbers. 图文 at fourteen days is fifteen
-    removals and no survivors at all, so the share reads 100%; at
-    seven days it is fifteen removals against eight survivors, so it
-    reads 65%. Both are counted and neither is about 抖音 -- 343 of
-    the 366 notes are younger than seven days, so the posts that can
-    answer are the ones that were taken down. An age is drawn only
-    when posts have outlived it AND most of the eligible posts have
-    reached it.
+
+def _post(*, gone_after: timedelta | None) -> Finding:
+    """One watched post: removed after `gone_after`, or still up."""
+    from app.recheck import ALIVE, GONE
+
+    gone = POSTED + gone_after if gone_after is not None else None
+    alive_until = (gone - timedelta(hours=12) if gone
+                   else POSTED + timedelta(days=30))
+    return Finding(
+        video_id="1", platform="douyin", author_handle=None, url=None,
+        checks=3, uninformative=0, first_checked_at=POSTED,
+        last_checked_at=gone or alive_until, last_alive_at=alive_until,
+        first_gone_at=gone, current=GONE if gone else ALIVE,
+        outcome=GONE if gone else None, published_at=POSTED,
+        collected_at=POSTED, first_gone_ever=gone,
+    )
+
+
+def test_the_removal_pie_is_every_post_watched() -> None:
+    """Two wedges, and every post the study watches is in one of them.
+
+    The line chart this replaced asked a harder question -- the share
+    removed by each age of post -- and on 图文 could not answer it
+    without either stopping at a day or reading 65% off the
+    twenty-three posts old enough to have an answer. This asks a
+    smaller question the counts can carry.
     """
-    from app.report import Counted
+    from app.report import _share_pie
 
-    # (age, removed, answerable, unknown)
-    note = Counted(name="图文 (note)", slot=2, points=[
-        (1.0, 10, 213, 118),   # 203 survivors, most posts answered
-        (2.0, 13, 110, 238),   # 97 survivors, but 238 posts too young
-        (7.0, 15, 23, 343),    # the 65% point
-        (14.0, 15, 15, 351),   # the 100% point
-    ])
-    assert [age for age, _, _, _ in note.shown] == [1.0]
-    assert note.survivors(2.0) == 97
-    # The dropped ages still exist and can still be read.
-    assert note.share(7.0) is not None
+    html = _share_pie(
+        "视频 (video)",
+        [_post(gone_after=timedelta(days=2))]
+        + [_post(gone_after=None)] * 3,
+        "pv",
+    )
 
-    video = Counted(name="视频 (video)", slot=1, points=[
-        (7.0, 40, 194, 46),
-        (10.0, 46, 145, 95),
-        (14.0, 47, 47, 193),
-    ])
-    assert [age for age, _, _, _ in video.shown] == [7.0, 10.0]
+    assert "1/4" in html and "25.0%" in html
+    assert "已下架 (removed)" in html and "仍在 (still up)" in html
 
 
-def test_the_page_says_in_counts_why_a_line_is_short() -> None:
-    """A line that stops at a day looks like a bug on its own.
+def test_the_speed_pie_reads_only_the_removals() -> None:
+    """The one part-to-whole the length of collection cannot distort.
 
-    The reason is a count -- how many posts have outlived each age --
-    so the page prints that rather than a line drawn past where it
-    means anything.
+    A post that has gone has a known age at removal whatever day it
+    went, so no bucket is better observed than another -- unlike the
+    share-removed-by-age question, where a post has to be watched to
+    an age before it can answer for it at all.
     """
-    from app.report import Counted, _coverage
+    from app.report import SPEEDS, _speed_slices
 
-    html = _coverage([Counted(name="图文 (note)", slot=2, points=[
-        (1.0, 10, 213, 118),
-        (2.0, 13, 110, 238),
-        (7.0, 15, 23, 343),
-    ])], [1.0, 2.0, 7.0])
+    slices = _speed_slices([
+        _post(gone_after=timedelta(hours=6)),
+        _post(gone_after=timedelta(days=2)),
+        _post(gone_after=timedelta(days=5)),
+        _post(gone_after=timedelta(days=20)),
+        _post(gone_after=None),
+    ])
 
-    assert "203 past 1d" in html
-    assert "97 past 2d" in html
-    assert "8 past 7d" in html
-    assert "stops at 1d" in html
-
-
-def test_the_chart_draws_only_what_it_can_answer_for() -> None:
-    """No dashed continuation, no hollow dots, no "most that can be
-    said so far": a line climbing to 65% is read as 65% whatever is
-    written beside it."""
-    from app.report import Counted, removal_chart
-
-    svg = removal_chart([
-        Counted(name="视频 (video)", slot=1, points=[
-            (1.0, 12, 128, 0),
-            (7.0, 40, 194, 46),
-            (10.0, 46, 145, 95),
-            (14.0, 47, 47, 193),
-        ]),
-        Counted(name="图文 (note)", slot=2, points=[
-            (1.0, 10, 213, 118),
-            (7.0, 15, 23, 343),
-        ]),
-    ], ident="t")
-
-    assert "thin" not in svg
-    assert "hollow" not in svg
-    assert ">145</text>" in svg   # 视频 reaches ten days
-    assert ">47</text>" not in svg
-    assert ">23</text>" not in svg  # and 图文 does not reach seven
-    assert "65%" not in svg
+    assert [s.label for s in slices] == [label for label, _, _ in SPEEDS]
+    assert [s.count for s in slices] == [1, 1, 1, 1]
+    # The post still up is in none of them: this pie is the removals.
+    assert sum(s.count for s in slices) == 4
