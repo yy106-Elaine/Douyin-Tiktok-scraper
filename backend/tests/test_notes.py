@@ -925,3 +925,71 @@ class TestARunReportsItsOwnPass:
         mine = [f for f in family if f.platform == "douyin"]
         assert today_at_a_glance(mine)[0] == 1
         assert today_at_a_glance(family)[0] == 2
+
+
+def test_the_fullest_record_wins_not_the_first() -> None:
+    """A page describes one post several times, and not equally fully.
+
+    One record carries the whole card deck; another carries only the
+    cover. Returning the first record that had any images at all filed
+    199 of 350 collected posts as single-image posts -- the cover, and
+    nothing after it. A 图文's text often sits on the second and third
+    cards, so what was lost is most of what those posts said.
+    """
+    from app.douyin_page import image_urls
+
+    page = {
+        "cover_only": {
+            "aweme_id": "7001",
+            "images": [{"url_list": ["https://x/cover.jpg"]}],
+        },
+        "whole_deck": {
+            "aweme_id": "7001",
+            "images": [
+                {"url_list": ["https://x/01.jpg"]},
+                {"url_list": ["https://x/02.jpg"]},
+                {"url_list": ["https://x/03.jpg"]},
+            ],
+        },
+    }
+
+    found = image_urls(payloads=[page], video_id="7001")
+    assert [group[0] for group in found] == [
+        "https://x/01.jpg", "https://x/02.jpg", "https://x/03.jpg",
+    ]
+
+
+def test_a_longer_deck_without_an_id_never_beats_this_post() -> None:
+    """"Most pictures" is a safe tie-break only among records that are
+    certainly about this post. Across all of them it would happily
+    take a longer deck belonging to something else on the page."""
+    from app.douyin_page import image_urls
+
+    page = {
+        "mine": {
+            "aweme_id": "7001",
+            "images": [{"url_list": ["https://x/mine.jpg"]}],
+        },
+        "someone_elses": {
+            "images": [
+                {"url_list": ["https://y/01.jpg"]},
+                {"url_list": ["https://y/02.jpg"]},
+            ],
+        },
+    }
+
+    found = image_urls(payloads=[page], video_id="7001")
+    assert [group[0] for group in found] == ["https://x/mine.jpg"]
+
+
+def test_an_unnamed_record_is_still_used_when_nothing_names_the_post() -> None:
+    """Preferring named records must not mean discarding the rest."""
+    from app.douyin_page import image_urls
+
+    page = {"anon": {"images": [
+        {"url_list": ["https://x/01.jpg"]},
+        {"url_list": ["https://x/02.jpg"]},
+    ]}}
+
+    found = image_urls(payloads=[page], video_id="7001")
+    assert len(found) == 2

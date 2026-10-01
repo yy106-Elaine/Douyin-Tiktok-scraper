@@ -330,16 +330,28 @@ def image_urls(
     post by serving a different one, and images filed under the wrong
     id are worse than no images.
     """
-    groups: list[list[str]] = []
+    # Several records in one page describe the same post and they are
+    # not equally complete: one carries the whole card deck, another
+    # only the cover. Returning the first that had any images at all
+    # filed 199 of 350 posts as single-image posts -- the cover, and
+    # nothing after it. So every record is read and the fullest wins.
+    #
+    # Records naming this id are preferred outright over records
+    # naming none. "Most pictures" is a safe tie-break only among
+    # records that are certainly about this post; applied across all
+    # of them it would take a longer deck belonging to something else
+    # on the page.
+    named: list[list[list[str]]] = []
+    unnamed: list[list[list[str]]] = []
     for blob in list(payloads) + list(embedded(html)):
         for record in dicts_with(blob, ("images",)):
-            if video_id is not None:
-                found = _text(_first(record, "aweme_id", "awemeId"))
-                if found and found != video_id:
-                    continue
+            found = _text(_first(record, "aweme_id", "awemeId"))
+            if video_id is not None and found and found != video_id:
+                continue
             images = record.get("images")
             if not isinstance(images, list):
                 continue
+            groups: list[list[str]] = []
             for image in images:
                 if not isinstance(image, dict):
                     continue
@@ -352,5 +364,10 @@ def image_urls(
                 if addresses:
                     groups.append(addresses)
             if groups:
-                return groups
+                (named if found else unnamed).append(groups)
+
+    for candidates in (named, unnamed):
+        if candidates:
+            return max(candidates, key=len)
+    return []
     return groups
