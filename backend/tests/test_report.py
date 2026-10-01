@@ -182,55 +182,65 @@ def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
     assert '<nav class="tab-strip">' not in page
 
 
-def test_the_counted_curve_needs_survivors_not_just_a_denominator() -> None:
-    """A share with no survivors in it is 100% by construction.
+def test_a_line_stops_where_its_own_collection_stops_supporting_it() -> None:
+    """Two ways a counted share stops meaning what it says.
 
-    These are the real 图文 counts. At fourteen days the format reads
-    100% off fifteen removals and no survivors -- not because notes
-    are always removed, but because nothing has been watched that long
-    yet, so the only posts that can answer are the ones taken down. A
-    floor on the denominator let those through; the floor belongs on
-    the posts that outlived the age.
+    These are the real numbers. 图文 at fourteen days is fifteen
+    removals and no survivors at all, so the share reads 100%; at
+    seven days it is fifteen removals against eight survivors, so it
+    reads 65%. Both are counted and neither is about 抖音 -- 343 of
+    the 366 notes are younger than seven days, so the posts that can
+    answer are the ones that were taken down. An age is drawn only
+    when posts have outlived it AND most of the eligible posts have
+    reached it.
     """
     from app.report import Counted
 
     # (age, removed, answerable, unknown)
     note = Counted(name="图文 (note)", slot=2, points=[
-        (1.0, 10, 213, 118),   # 203 survivors -- solid
-        (2.0, 13, 110, 238),   # 97 survivors, but most posts too new
-        (3.0, 14, 40, 316),    # 26 survivors
-        (5.0, 15, 25, 335),    # 10 survivors
-        (7.0, 15, 23, 343),    # 8 survivors -- the floor
-        (10.0, 15, 16, 350),   # 1 survivor -- gone
-        (14.0, 15, 15, 351),   # none -- 100% by construction, gone
+        (1.0, 10, 213, 118),   # 203 survivors, most posts answered
+        (2.0, 13, 110, 238),   # 97 survivors, but 238 posts too young
+        (7.0, 15, 23, 343),    # the 65% point
+        (14.0, 15, 15, 351),   # the 100% point
     ])
-
-    assert [age for age, _, _, _ in note.shown] == [1.0, 2.0, 3.0, 5.0, 7.0]
-    assert [note.firm(age) for age, _, _, _ in note.shown] == [
-        True, False, False, False, False]
-    assert note.reach == 7.0
+    assert [age for age, _, _, _ in note.shown] == [1.0]
+    assert note.survivors(2.0) == 97
     # The dropped ages still exist and can still be read.
-    assert note.share(14.0) == 1.0
+    assert note.share(7.0) is not None
 
-    # The video line, same data, is well supported for ten days.
     video = Counted(name="视频 (video)", slot=1, points=[
         (7.0, 40, 194, 46),
         (10.0, 46, 145, 95),
         (14.0, 47, 47, 193),
     ])
     assert [age for age, _, _, _ in video.shown] == [7.0, 10.0]
-    assert all(video.firm(age) for age, _, _, _ in video.shown)
 
 
-def test_a_thin_stretch_is_drawn_dashed_and_hollow() -> None:
-    """The reader has to be able to see where the support runs out.
+def test_the_page_says_in_counts_why_a_line_is_short() -> None:
+    """A line that stops at a day looks like a bug on its own.
 
-    Colour alone would not carry it and a footnote would not be read
-    at the point of looking, so the line itself changes: dashed from
-    the last well-supported age onwards, with hollow dots. These are
-    the real lines -- 视频 is solid for ten days, while 图文, collected
-    in one burst, is well supported at a day and dashed from there.
+    The reason is a count -- how many posts have outlived each age --
+    so the page prints that rather than a line drawn past where it
+    means anything.
     """
+    from app.report import Counted, _coverage
+
+    html = _coverage([Counted(name="图文 (note)", slot=2, points=[
+        (1.0, 10, 213, 118),
+        (2.0, 13, 110, 238),
+        (7.0, 15, 23, 343),
+    ])], [1.0, 2.0, 7.0])
+
+    assert "203 past 1d" in html
+    assert "97 past 2d" in html
+    assert "8 past 7d" in html
+    assert "stops at 1d" in html
+
+
+def test_the_chart_draws_only_what_it_can_answer_for() -> None:
+    """No dashed continuation, no hollow dots, no "most that can be
+    said so far": a line climbing to 65% is read as 65% whatever is
+    written beside it."""
     from app.report import Counted, removal_chart
 
     svg = removal_chart([
@@ -238,21 +248,17 @@ def test_a_thin_stretch_is_drawn_dashed_and_hollow() -> None:
             (1.0, 12, 128, 0),
             (7.0, 40, 194, 46),
             (10.0, 46, 145, 95),
+            (14.0, 47, 47, 193),
         ]),
         Counted(name="图文 (note)", slot=2, points=[
             (1.0, 10, 213, 118),
-            (3.0, 14, 40, 316),
             (7.0, 15, 23, 343),
         ]),
     ], ident="t")
 
-    assert 'class="line c1"' in svg        # 视频, solid throughout
-    assert 'class="line thin c1"' not in svg
-    assert 'class="line thin c2"' in svg   # 图文, thin from day one
-    # The well-supported point keeps a filled dot even when the line
-    # leaving it is dashed; the thin ones are hollow.
-    assert svg.count("hollow") == 2
-    # Nothing above the floor was dropped: every age prints its own
-    # denominator under the axis.
-    for count in ("128", "194", "145", "213", "40", "23"):
-        assert f">{count}</text>" in svg
+    assert "thin" not in svg
+    assert "hollow" not in svg
+    assert ">145</text>" in svg   # 视频 reaches ten days
+    assert ">47</text>" not in svg
+    assert ">23</text>" not in svg  # and 图文 does not reach seven
+    assert "65%" not in svg
