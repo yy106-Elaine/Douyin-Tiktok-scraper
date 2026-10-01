@@ -176,6 +176,17 @@ def parse(raw: str) -> tuple[dict | None, str]:
     return found, ""
 
 
+#: Input / output dollars per million tokens, for the estimate. The
+#: cheapest model that holds the codebook is the right one here --
+#: these are enum choices from a picture, not reasoning -- but which
+#: model that is has to be measured on the sample, not assumed. Batch
+#: pricing is half of these.
+PRICES: dict[str, tuple[float, float]] = {
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-opus-5-5": (4.00, 20.00),
+}
+
 #: The shape of a reply, enforced by the API rather than hoped for.
 #: The codebook is the authority on what each field *means*; this is
 #: the authority on what comes back, so a malformed reply cannot
@@ -349,6 +360,39 @@ def code_one(client, post: Post, prompt: str, model: str,
     return row
 
 
+def estimate(client, posts: list[Post], prompt: str, model: str) -> None:
+    """What the sample really costs, counted rather than guessed.
+
+    Images dominate the bill and their token count depends on their
+    pixel dimensions, so an estimate from the number of posts is worth
+    nothing. This counts the actual bytes that would be sent.
+    """
+    tokens = 0
+    for post in posts:
+        tokens += client.messages.count_tokens(
+            model=model,
+            messages=[{"role": "user", "content": _content(post, prompt)}],
+        ).input_tokens
+
+    per_post = tokens / max(len(posts), 1)
+    # The reply is one filled-in schema: a few hundred tokens, plus
+    # whatever thinking the effort level buys.
+    out_per_post = 1200
+
+    print(f"\n{len(posts)} post(s): {tokens:,} input tokens "
+          f"({per_post:,.0f} per post, {out_per_post} output assumed)\n")
+    print(f"{'model':20} {'this sample':>12} {'all 560':>10} "
+          f"{'560 batched':>12}")
+    for name, (dollars_in, dollars_out) in PRICES.items():
+        here = (tokens * dollars_in + len(posts) * out_per_post * dollars_out)
+        here /= 1_000_000
+        whole = here / max(len(posts), 1) * 560
+        print(f"{name:20} {'$' + format(here, '.2f'):>12} "
+              f"{'$' + format(whole, '.2f'):>10} "
+              f"{'$' + format(whole / 2, '.2f'):>12}")
+    print("\n  Batched is the Batch API: half price, hours not seconds.")
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
@@ -368,6 +412,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                         help="actually call the model")
     parser.add_argument("--resume", action="store_true",
                         help="skip posts already in --out")
+    parser.add_argument("--estimate", action="store_true",
+                        help="count the real tokens and price the run, "
+                             "without coding anything")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -385,6 +432,13 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     print(f"{len(posts)} archived {args.platform} post(s) on disk; "
           f"{len(chosen)} to code")
+
+    if args.estimate:
+        import anthropic
+
+        estimate(anthropic.Anthropic(), chosen, prompt, args.model)
+        return
+
     if not args.apply:
         for post in chosen[:10]:
             what = (f"{len(post.images)} image(s)" if post.images
