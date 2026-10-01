@@ -36,6 +36,15 @@
     <string name="auto_dry_run">Dry run — find the buttons, press nothing</string>
     <string name="auto_try">Try a short run — 1 minute</string>
     <string name="auto_start">Start a 30-minute run</string>
+    <!--
+        图文 posts are not in a feed. They are cells in the search
+        results, so a run has to open one, copy, and come back out.
+        See SearchGrid and AutoCapture.Mode.GRID.
+    -->
+    <string name="grid_dry_run">图文 dry run — read the search grid, press nothing</string>
+    <string name="grid_start">图文 — open each search result in turn</string>
+    <string name="grid_dry_started">Dry run. Switch to Douyin and stand on the search results.</string>
+    <string name="grid_started">Running. Switch to Douyin\'s search results now.</string>
     <string name="auto_stop">Stop the run</string>
     <string name="auto_started">Running. Switch to the app now.</string>
     <string name="auto_dry_started">Dry run, watching for 30s. Switch over and open one share sheet by hand.</string>

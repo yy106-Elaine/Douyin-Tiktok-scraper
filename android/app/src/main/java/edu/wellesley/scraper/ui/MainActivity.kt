@@ -58,6 +58,12 @@ class MainActivity : AppCompatActivity() {
         binding.autoStart.setOnClickListener {
             startAssisted(AutoCapture.Mode.LIVE, MINUTES, VIDEOS)
         }
+        binding.gridDryRun.setOnClickListener {
+            startAssisted(AutoCapture.Mode.GRID_DRY_RUN, MINUTES, VIDEOS)
+        }
+        binding.gridStart.setOnClickListener {
+            startAssisted(AutoCapture.Mode.GRID, MINUTES, VIDEOS)
+        }
         binding.autoProfiles.setOnClickListener { toggleProfileVisits() }
         binding.autoForgetAuthors.setOnClickListener { forgetVisitedAuthors() }
         binding.autoStop.setOnClickListener {
@@ -147,8 +153,12 @@ class MainActivity : AppCompatActivity() {
         }
         toast(
             getString(
-                if (mode == AutoCapture.Mode.DRY_RUN) R.string.auto_dry_started
-                else R.string.auto_started
+                when (mode) {
+                    AutoCapture.Mode.DRY_RUN -> R.string.auto_dry_started
+                    AutoCapture.Mode.GRID_DRY_RUN -> R.string.grid_dry_started
+                    AutoCapture.Mode.GRID -> R.string.grid_started
+                    AutoCapture.Mode.LIVE -> R.string.auto_started
+                }
             )
         )
         refreshRunState()

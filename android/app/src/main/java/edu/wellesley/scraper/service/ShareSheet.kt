@@ -182,8 +182,10 @@ object ShareSheet {
      * A run that ends up here keeps swiping a grid that has no share
      * control, which is not collection and is not where anything
      * should be pressed. It is a surface with its own shape -- many
-     * videos at once, no author beside any of them -- and reading it
-     * properly is a separate job from this loop.
+     * videos at once, no author beside any of them. Reading it as a
+     * list of posts to open is [SearchGrid]'s job, and a grid run
+     * reads this same answer the other way round: there the results
+     * page is home rather than a wrong turn.
      */
     fun isSearchResults(roots: List<AccessibilityNodeInfo>): Boolean {
         for (root in roots) {

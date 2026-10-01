@@ -49,7 +49,16 @@ import kotlinx.coroutines.launch
  */
 class AutoCapture(private val service: AccessibilityService) {
 
-    enum class Mode { DRY_RUN, LIVE }
+    /**
+     * A run reads one of two surfaces.
+     *
+     * [DRY_RUN] and [LIVE] work a vertical feed: the post fills the
+     * screen and the next one is a swipe away. [GRID_DRY_RUN] and
+     * [GRID] work Douyin's search results, where 图文 posts live --
+     * there the next post is a cell to open, and getting back out is
+     * part of the loop. See [SearchGrid].
+     */
+    enum class Mode { DRY_RUN, LIVE, GRID_DRY_RUN, GRID }
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -71,6 +80,22 @@ class AutoCapture(private val service: AccessibilityService) {
 
     /** Consecutive checks finding another app in front; see keepGoing. */
     private var awayReadings = 0
+
+    /**
+     * Cells already opened, by their own text; see [SearchGrid].
+     *
+     * Kept for the length of a run and no longer. Coming back out of
+     * a post does not always restore the scroll offset, so an index
+     * would re-open the same cell and never reach the next one.
+     */
+    private val opened = mutableSetOf<String>()
+
+    /** Consecutive scrolls of the grid that turned up nothing new. */
+    private var barrenScrolls = 0
+
+    /** Whether this run reads the results grid rather than a feed. */
+    private val onGrid: Boolean
+        get() = mode == Mode.GRID || mode == Mode.GRID_DRY_RUN
 
     // What a dry run has seen so far. The share control and the copy
     // entry are never on screen at the same time, so each is kept from
@@ -98,13 +123,21 @@ class AutoCapture(private val service: AccessibilityService) {
         this.tries = 0
         this.consecutiveFailures = 0
         this.awayReadings = 0
+        this.opened.clear()
+        this.barrenScrolls = 0
         running = true
         CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
-        if (mode == Mode.DRY_RUN) {
-            handler.postDelayed(::inspect, FIRST_STEP_MILLIS)
-        } else {
-            handler.postDelayed(::openShare, FIRST_STEP_MILLIS)
-        }
+        handler.postDelayed(
+            {
+                when (mode) {
+                    Mode.DRY_RUN -> inspect()
+                    Mode.GRID_DRY_RUN -> inspectGrid()
+                    Mode.GRID -> openTile()
+                    Mode.LIVE -> openShare()
+                }
+            },
+            FIRST_STEP_MILLIS,
+        )
     }
 
     /**
@@ -155,6 +188,124 @@ class AutoCapture(private val service: AccessibilityService) {
         stop(if (haveBoth) "dry run finished, both found" else "dry run finished")
     }
 
+    /**
+     * Report what the results grid looks like, and press nothing.
+     *
+     * No wording on this surface has ever been dumped from a device,
+     * so this is the first thing to run: stand on the search results
+     * with the 图文 tab showing and read back what the selectors
+     * found. A cell whose label is a like count or a tab name is a
+     * selector to fix before anything is tapped, not after.
+     */
+    private fun inspectGrid() {
+        if (!running) return
+
+        val roots = roots()
+        if (!SearchGrid.isGrid(roots)) {
+            CaptureStats.onAutoFailure(
+                "this is not the search results page -- open a search " +
+                    "first; below is what was on screen instead",
+                SearchGrid.describe(roots),
+            )
+            stop("dry run finished, not on the grid")
+            return
+        }
+
+        val tiles = SearchGrid.tiles(roots, service.resources.displayMetrics.heightPixels)
+        CaptureStats.onAutoStep("grid: ${tiles.size} cell(s) readable")
+        tiles.take(DRY_TILES).forEach { CaptureStats.onAutoStep("cell: ${it.label}") }
+        if (tiles.isEmpty()) {
+            CaptureStats.onAutoFailure(
+                "no cells found on the grid",
+                SearchGrid.describe(roots),
+            )
+        }
+        stop("dry run finished, ${tiles.size} cell(s)")
+    }
+
+    /**
+     * Open the next cell that has not been opened yet.
+     *
+     * Nothing is tapped unless the grid is the screen in front: every
+     * other state -- a post still open, a sheet still up -- is handled
+     * by getting back to the grid first, because a tap aimed at a cell
+     * that lands on something else is the failure this whole class is
+     * written to avoid.
+     */
+    private fun openTile() {
+        if (!keepGoing()) return
+
+        val roots = roots()
+        if (!SearchGrid.isGrid(roots)) {
+            backToGrid(0)
+            return
+        }
+
+        val tiles = SearchGrid.tiles(roots, service.resources.displayMetrics.heightPixels)
+        val index = SearchGrid.pick(tiles.map { it.label }, opened)
+        if (index == null) {
+            // Everything on screen has been done. Scrolling is the
+            // only movement this loop makes on the grid, and a scroll
+            // that turns up nothing new twice running means the list
+            // has ended or stopped loading.
+            if (barrenScrolls >= BARREN_SCROLLS) {
+                CaptureStats.onAutoStep("no new cells after $barrenScrolls scroll(s)")
+                stop("the grid ran out of new posts")
+                return
+            }
+            barrenScrolls++
+            CaptureStats.onAutoStep("scrolling the grid")
+            swipeUp()
+            handler.postDelayed(::openTile, SETTLE_MILLIS)
+            return
+        }
+
+        barrenScrolls = 0
+        val tile = tiles[index]
+        // Marked before the tap, not after. A cell that fails to open
+        // has to be stepped over, or the run spends the rest of its
+        // deadline tapping the same broken one.
+        opened.add(tile.label)
+        CaptureStats.onAutoStep("open: ${tile.label}")
+        tap(tile.node)
+        handler.postDelayed({ waitForCaption(0) }, POST_OPEN_MILLIS)
+    }
+
+    /**
+     * Come back out of a post to the grid, and check rather than
+     * assume.
+     *
+     * The same shape as [closeProfile]: press only while something is
+     * detected to be covering the grid, then wait and look again. On
+     * this surface BACK is the way out -- a post opened from search
+     * goes back to the results it was opened from -- which is the
+     * movement the feed loop must never make and the only one this
+     * loop lives on.
+     */
+    private fun backToGrid(attempt: Int) {
+        if (!keepGoing()) return
+
+        if (SearchGrid.isGrid(roots())) {
+            handler.postDelayed(::openTile, SETTLE_MILLIS)
+            return
+        }
+        if (attempt >= BACK_TO_GRID_TRIES) {
+            CaptureStats.onAutoFailure(
+                "could not get back to the search results",
+                SearchGrid.describe(roots()),
+            )
+            stop("lost the search results")
+            return
+        }
+        // A sheet or a profile is dismissed by its own control; a post
+        // has none of ours on it, so BACK is what leaves it.
+        if (!dismissWhatIsOnTop()) {
+            CaptureStats.onAutoStep("leaving the post with back")
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        }
+        handler.postDelayed({ backToGrid(attempt + 1) }, BACK_MILLIS)
+    }
+
     fun stop(why: String) {
         if (!running) return
         running = false
@@ -187,11 +338,20 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
+        // On a grid run the results page is home, not a wrong turn:
+        // the post was closed earlier than expected, so take the next
+        // cell rather than stopping.
+        if (onGrid && SearchGrid.isGrid(roots())) {
+            CaptureStats.onAutoStep("back on the grid already")
+            openTile()
+            return
+        }
+
         // Not a feed at all. Swiping a results grid is not collection,
         // and a run that has wandered off the surface it was started
         // on should say so rather than keep going somewhere it was
         // never pointed.
-        if (ShareSheet.isSearchResults(roots())) {
+        if (!onGrid && ShareSheet.isSearchResults(roots())) {
             CaptureStats.onAutoFailure(
                 "this is the search results page, not a video",
                 ShareSheet.describe(roots()),
@@ -294,6 +454,17 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!keepGoing()) return
 
         val prefs = Prefs(service.applicationContext)
+        // Never on a grid run. Getting back out of a post to the grid
+        // is already one return trip per post; adding a profile makes
+        // it two nested ones, and the way back from the second is
+        // ambiguous -- BACK from a profile opened inside a post may
+        // land on the post or on the grid. The 抖音号 for a note is
+        // better fetched from the link afterwards than guessed at by
+        // pressing BACK and hoping.
+        if (onGrid) {
+            advance()
+            return
+        }
         // Off unless asked for. Collecting a link never leaves the
         // video; opening a profile does, and getting back from one is
         // the only thing in this loop that has ever gone wrong. The
@@ -557,7 +728,11 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun advance() {
         remaining--
         consecutiveFailures = 0
-        CaptureStats.onAutoStep("next video, $remaining left")
+        CaptureStats.onAutoStep("next post, $remaining left")
+        if (onGrid) {
+            backToGrid(0)
+            return
+        }
         swipeUp()
         handler.postDelayed({ waitForCaption(0) }, SETTLE_MILLIS)
     }
@@ -620,6 +795,23 @@ class AutoCapture(private val service: AccessibilityService) {
      */
     private fun recover(why: String) {
         consecutiveFailures++
+
+        if (onGrid) {
+            if (consecutiveFailures >= MAX_FAILURES) {
+                CaptureStats.onAutoFailure(
+                    "$why, and $consecutiveFailures in a row",
+                    SearchGrid.describe(activeRoots()),
+                )
+                stop(why)
+                return
+            }
+            // The cell is already marked opened, so going back to the
+            // grid steps over it rather than retrying it.
+            CaptureStats.onAutoStep("$why -- skipping this post")
+            remaining--
+            backToGrid(0)
+            return
+        }
 
         if (!onAVideo()) {
             CaptureStats.onAutoFailure(
@@ -689,7 +881,10 @@ class AutoCapture(private val service: AccessibilityService) {
                 // the search box. Whatever was pending is abandoned;
                 // this becomes the only thing waiting to happen.
                 handler.removeCallbacksAndMessages(null)
-                handler.postDelayed(::openShare, SETTLE_MILLIS)
+                handler.postDelayed(
+                    { if (onGrid) openTile() else openShare() },
+                    SETTLE_MILLIS,
+                )
             }
             return false
         }
@@ -816,5 +1011,26 @@ class AutoCapture(private val service: AccessibilityService) {
         // apps, find the video again and open the share sheet by hand.
         const val DRY_TRIES = 30
         const val DRY_INTERVAL_MILLIS = 1_000L
+
+        /** Cells a grid dry run lists, so the log stays readable. */
+        const val DRY_TILES = 8
+
+        /**
+         * A post opened from the grid is a page load, not an
+         * animation: its caption has further to come than a feed
+         * post's, which is already half-drawn behind the one in front.
+         */
+        const val POST_OPEN_MILLIS = 2_000L
+
+        /** One BACK per try, waiting for the results to come back. */
+        const val BACK_TO_GRID_TRIES = 6
+
+        /**
+         * Scrolls of the grid that turn up nothing new before the run
+         * accepts that the list has ended. Two, because the first
+         * scroll after a long run of opened cells can land on a row
+         * that is still loading its labels.
+         */
+        const val BARREN_SCROLLS = 2
     }
 }
