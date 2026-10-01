@@ -42,6 +42,17 @@ object SearchGrid {
      * nothing.
      */
     private val CHROME = listOf(
+        // Read off a real grid. Douyin marks every control in the
+        // accessibility tree with 按钮, and the first dry run offered
+        // "未点赞，喜欢，按钮" as a cell to open -- the like button on
+        // a card. Tapping that is an action on somebody's account,
+        // which is the one thing this must never do.
+        Regex("""[，,]\s*按钮$"""),
+        Regex("""^(未)?[点點]?[赞贊]|^喜[欢歡]$|^收藏$|^[评評][论論]$"""),
+        // A card's age. The digits are gone by the time this is read
+        // (see fingerprint), so "3小时前" arrives as "小时前".
+        Regex("""^(秒|分[钟鐘]|小[时時]|天|周|[个個]?月|年)前$"""),
+        Regex("""^(刚刚|剛剛|昨天|前天)$"""),
         Regex("""^(综合|綜合|视频|視頻|用户|用戶|直播|商品|音乐|音樂|图文|圖文)$"""),
         Regex("""^(取消|搜索|搜尋|返回|清除|cancel|search|back)$""", RegexOption.IGNORE_CASE),
         Regex("""^(筛选|篩選|排序|最多点赞|最新发布|综合排序)"""),
@@ -49,8 +60,18 @@ object SearchGrid {
         Regex("""^搜索[:：]"""),
     )
 
-    /** One result cell: what to tap, and what it calls itself. */
-    data class Tile(val node: AccessibilityNodeInfo, val label: String)
+    /**
+     * One result cell: what to tap, what it calls itself, and how big
+     * it is. The size is carried so a dry run can print it -- the
+     * thresholds below were set from one screen, and the next screen
+     * that disagrees should be able to say so in numbers.
+     */
+    data class Tile(
+        val node: AccessibilityNodeInfo,
+        val label: String,
+        val width: Int = 0,
+        val height: Int = 0,
+    )
 
     /**
      * Whether the results grid is the screen in front.
@@ -75,21 +96,48 @@ object SearchGrid {
      */
     fun tiles(
         roots: List<AccessibilityNodeInfo>,
+        screenWidth: Int,
         screenHeight: Int,
+        onReject: ((String) -> Unit)? = null,
     ): List<Tile> {
         val bounds = Rect()
         val found = mutableListOf<Triple<Int, Int, Tile>>()
         val seen = mutableSetOf<String>()
         for (root in roots) {
             walk(root) { node ->
-                val text = labelOf(node)?.let { fingerprint(it) }
-                if (text == null || !isPostLabel(text)) return@walk true
+                val raw = labelOf(node) ?: return@walk true
+                val text = fingerprint(raw)
+                if (text.isEmpty()) return@walk true
+                if (!isPostLabel(text)) {
+                    onReject?.invoke("not a post: $text")
+                    return@walk true
+                }
                 val target = clickableSelfOrAncestor(node) ?: return@walk true
                 target.getBoundsInScreen(bounds)
                 val belowChrome = bounds.top > screenHeight * TOP_BAND
                 val onScreen = bounds.bottom <= screenHeight && bounds.top >= 0
-                if (belowChrome && onScreen && seen.add(text)) {
-                    found.add(Triple(bounds.top, bounds.left, Tile(target, text)))
+                if (!belowChrome || !onScreen) {
+                    onReject?.invoke("off the grid area: $text")
+                    return@walk true
+                }
+                if (!isCardSized(
+                        bounds.width(), bounds.height(), screenWidth, screenHeight,
+                    )
+                ) {
+                    onReject?.invoke(
+                        "too small (${bounds.width()}x${bounds.height()} " +
+                            "of ${screenWidth}x$screenHeight): $text",
+                    )
+                    return@walk true
+                }
+                if (seen.add(text)) {
+                    found.add(
+                        Triple(
+                            bounds.top,
+                            bounds.left,
+                            Tile(target, text, bounds.width(), bounds.height()),
+                        ),
+                    )
                 }
                 true
             }
@@ -98,6 +146,25 @@ object SearchGrid {
             .sortedWith(compareBy({ it.first / ROW_TOLERANCE }, { it.second }))
             .map { it.third }
     }
+
+    /**
+     * Whether something this size can be a card.
+     *
+     * The wording checks are a list of what has been seen; this is
+     * the rule that does not need to have seen it. A results card is
+     * a column of the grid and most of a thumbnail tall. The first
+     * dry run offered a like button and a timestamp as cells to open
+     * -- both carry text, both are clickable, and both are a fraction
+     * of this size. One of them likes somebody's post.
+     */
+    fun isCardSized(
+        width: Int,
+        height: Int,
+        screenWidth: Int,
+        screenHeight: Int,
+    ): Boolean =
+        width >= screenWidth * MIN_TILE_WIDTH &&
+            height >= screenHeight * MIN_TILE_HEIGHT
 
     /**
      * Whether a label looks like a post rather than the page's own
@@ -215,6 +282,15 @@ object SearchGrid {
 
     /** Below this fraction of the screen is the page's own chrome. */
     private const val TOP_BAND = 0.12
+
+    /**
+     * A card's smallest plausible share of the screen. Douyin's
+     * results are two or three columns, so a third of the width is
+     * already generous for the narrow case; the height keeps out the
+     * single-line rows that sit under a card.
+     */
+    private const val MIN_TILE_WIDTH = 0.22
+    private const val MIN_TILE_HEIGHT = 0.12
 
     /** Cells within this many pixels of each other are one row. */
     private const val ROW_TOLERANCE = 80

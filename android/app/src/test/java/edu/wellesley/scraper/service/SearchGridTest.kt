@@ -53,6 +53,34 @@ class SearchGridTest {
     }
 
     @Test
+    fun `the labels the first dry run offered`() {
+        // Read off a real 图文 results page. Three were posts and
+        // three were not, and one of the three was the like button --
+        // tapping that is an action on somebody's account.
+        assertTrue(SearchGrid.isPostLabel(
+            SearchGrid.fingerprint("叫声姐姐命都给你。#长发t #wlw #微⚡️长欢出品了")))
+        assertTrue(SearchGrid.isPostLabel(
+            SearchGrid.fingerprint("要我告诉你你现在属于谁吗。##wlw#fyp")))
+        assertTrue(SearchGrid.isPostLabel(
+            SearchGrid.fingerprint("🏅#fyp #运动会 #长发t #wlw")))
+
+        assertFalse(SearchGrid.isPostLabel(
+            SearchGrid.fingerprint("未点赞，喜欢，按钮")))
+        assertFalse(SearchGrid.isPostLabel(SearchGrid.fingerprint("3小时前")))
+    }
+
+    @Test
+    fun `size is the rule that does not need to have seen the label`() {
+        // 1080x2400 phone. A card is a column of the grid; the like
+        // button and the timestamp under it are not, whatever they
+        // happen to be called in the next app version.
+        assertTrue(SearchGrid.isCardSized(520, 700, 1080, 2400))
+        assertFalse(SearchGrid.isCardSized(88, 88, 1080, 2400))
+        // A full-width single line: wide enough, far too short.
+        assertFalse(SearchGrid.isCardSized(1080, 60, 1080, 2400))
+    }
+
+    @Test
     fun `a title is a post`() {
         assertTrue(SearchGrid.isPostLabel("拉拉们都是怎么谈上的啊 #lwl #le"))
         assertTrue(SearchGrid.isPostLabel("和老婆的第三年"))

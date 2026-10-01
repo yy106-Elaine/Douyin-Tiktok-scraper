@@ -211,9 +211,22 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
-        val tiles = SearchGrid.tiles(roots, service.resources.displayMetrics.heightPixels)
+        // A dry run reports what it refused as well as what it kept.
+        // The first one offered a like button and a timestamp as
+        // cells to open, and neither was visible in a list of what
+        // had been accepted.
+        val refused = mutableListOf<String>()
+        val metrics = service.resources.displayMetrics
+        val tiles = SearchGrid.tiles(
+            roots, metrics.widthPixels, metrics.heightPixels,
+        ) { refused.add(it) }
         CaptureStats.onAutoStep("grid: ${tiles.size} cell(s) readable")
-        tiles.take(DRY_TILES).forEach { CaptureStats.onAutoStep("cell: ${it.label}") }
+        tiles.take(DRY_TILES).forEach {
+            CaptureStats.onAutoStep("cell ${it.width}x${it.height}: ${it.label}")
+        }
+        refused.distinct().take(DRY_TILES).forEach {
+            CaptureStats.onAutoStep("refused -- $it")
+        }
         if (tiles.isEmpty()) {
             CaptureStats.onAutoFailure(
                 "no cells found on the grid",
@@ -241,7 +254,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
-        val tiles = SearchGrid.tiles(roots, service.resources.displayMetrics.heightPixels)
+        val tiles = gridTiles(roots)
         val index = SearchGrid.pick(tiles.map { it.label }, opened)
         if (index == null) {
             // Everything on screen has been done. Scrolling is the
@@ -269,6 +282,13 @@ class AutoCapture(private val service: AccessibilityService) {
         CaptureStats.onAutoStep("open: ${tile.label}")
         tap(tile.node)
         handler.postDelayed({ waitForCaption(0) }, POST_OPEN_MILLIS)
+    }
+
+    private fun gridTiles(
+        roots: List<AccessibilityNodeInfo>,
+    ): List<SearchGrid.Tile> {
+        val metrics = service.resources.displayMetrics
+        return SearchGrid.tiles(roots, metrics.widthPixels, metrics.heightPixels)
     }
 
     /**
