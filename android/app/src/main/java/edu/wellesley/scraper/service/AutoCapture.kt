@@ -679,6 +679,25 @@ class AutoCapture(private val service: AccessibilityService) {
         return false
     }
 
+    /**
+     * Nothing is covering the page the run works from.
+     *
+     * Two surfaces, two answers. On a feed the question is "is a
+     * video back", and the results page counts as "no" because a run
+     * that reached it has gone somewhere it should not be. On the
+     * grid a post is where the run is *supposed* to be, and the
+     * results page is home -- so asking [onAVideo] there would answer
+     * no on both, and the sheet-closing loop would press BACK its
+     * full three times on a page with nothing to close. Two of those
+     * go through the post and out of the search results.
+     */
+    private fun coverCleared(): Boolean {
+        if (!onGrid) return onAVideo()
+        val top = activeRoots()
+        if (top.isEmpty()) return false
+        return !ShareSheet.isSheetOpen(top) && !ProfilePage.isProfileOpen(top)
+    }
+
     /** Nothing of ours is covering the feed. */
     private fun onAVideo(): Boolean {
         // "What is covering the screen" is a question about the window
@@ -756,10 +775,10 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun closeSheet(attempt: Int, then: () -> Unit) {
         if (!keepGoing()) return
 
-        // Stop on the video being back, not on the sheet appearing to
+        // Stop on the cover being gone, not on the sheet appearing to
         // be gone: a closing window is still listed for a moment, and
         // the extra BACK that buys goes through the feed.
-        if (onAVideo()) {
+        if (coverCleared()) {
             then()
             return
         }
