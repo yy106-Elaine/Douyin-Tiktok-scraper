@@ -211,26 +211,29 @@ SCHEMA: dict = {
     "required": [
         "people_visible", "primary_subject", "face_visible",
         "coding_possible", "subject", "second_person",
-        "subject_appears_female", "presentation_distance",
-        "two_women_together", "physical_affection", "presented_as_couple",
+        "presentation_distance", "apparent_minors",
+        "two_people_together", "physical_affection", "presented_as_couple",
         "onscreen_tph_terms", "onscreen_wlw_terms",
         "onscreen_relationship_terms", "onscreen_moderation_terms",
         "onscreen_contact", "confidence", "notes",
     ],
     "properties": {
-        "people_visible": {"type": "integer"},
+        # Banded, not counted. A pilot post held a class photo and the
+        # model reported 140 people -- a number about whether there is
+        # a group shot, not about who the post is presenting.
+        "people_visible": {"enum": ["0", "1", "2", "3-5", "6+"]},
         "primary_subject": {"enum": ["single", "pair", "group", "none"]},
         "face_visible": {"type": "boolean"},
         "coding_possible": {"type": "boolean"},
         "subject": {"anyOf": [{"$ref": "#/$defs/person"}, {"type": "null"}]},
         "second_person": {
             "anyOf": [{"$ref": "#/$defs/person"}, {"type": "null"}]},
-        "subject_appears_female": {
-            "anyOf": [{"type": "boolean"}, {"enum": ["unclear"]}]},
         "presentation_distance": {
             "anyOf": [{"type": "integer", "minimum": 1, "maximum": 5},
                       {"type": "null"}]},
-        "two_women_together": {"type": "boolean"},
+        # For protection and exclusion. Never a predictor.
+        "apparent_minors": {"enum": ["none", "possible", "clear"]},
+        "two_people_together": {"type": "boolean"},
         "physical_affection": {
             "enum": ["none", "proximity", "hand_holding", "embrace", "kiss"]},
         "presented_as_couple": {"type": "boolean"},
@@ -250,7 +253,7 @@ SCHEMA: dict = {
             "additionalProperties": False,
             "required": [
                 "hair_length", "hair_mullet", "hair_undercut", "hair_dyed",
-                "makeup_visible", "nails", "upper_garment", "menswear_items",
+                "makeup_visible", "upper_garment", "menswear_items",
                 "chest_presentation", "skin_exposure", "stance_wide",
                 "hands_in_pockets", "arms_crossed", "gaze_direct",
                 "head_tilt_or_chin_tuck", "peace_sign_or_heart",
@@ -265,8 +268,6 @@ SCHEMA: dict = {
                 "hair_dyed": {"type": "boolean"},
                 "makeup_visible": {
                     "enum": ["none", "light", "heavy", "not_visible"]},
-                "nails": {"enum": [
-                    "short_bare", "long_or_decorated", "not_visible"]},
                 "upper_garment": {
                     "enum": ["fitted", "loose_or_boxy", "not_visible"]},
                 "menswear_items": {
@@ -302,6 +303,8 @@ def shrink(path: Path, max_edge: int) -> tuple[bytes, str, tuple[int, int]]:
     is, byte for byte -- re-encoding a JPEG to shrink it by nothing
     would lose quality for no saving.
     """
+    import io
+
     from PIL import Image
 
     with Image.open(path) as picture:
@@ -313,8 +316,6 @@ def shrink(path: Path, max_edge: int) -> tuple[bytes, str, tuple[int, int]]:
         scale = max_edge / max(width, height)
         size = (round(width * scale), round(height * scale))
         smaller = picture.convert("RGB").resize(size, Image.LANCZOS)
-
-    import io
 
     buffer = io.BytesIO()
     smaller.save(buffer, format="JPEG", quality=88)

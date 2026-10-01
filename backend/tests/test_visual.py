@@ -164,8 +164,15 @@ def test_the_schema_covers_every_field_the_codebook_defines() -> None:
 
     # And the fields the analysis is built around are really there.
     assert {"presentation_distance", "physical_affection",
-            "two_women_together"} <= top
+            "two_people_together", "apparent_minors"} <= top
     assert {"hair_length", "menswear_items", "gaze_direct"} <= person
+
+    # Two fields the pilot removed, for two different reasons: nail
+    # length predicts nothing a censor acts on, and asking whether the
+    # subject looked female gated the scale shut on exactly the people
+    # the study is about.
+    assert "nails" not in person
+    assert "subject_appears_female" not in top
 
 
 def test_every_field_is_required_so_nothing_comes_back_half_filled() -> None:

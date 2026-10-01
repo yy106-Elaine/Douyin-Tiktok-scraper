@@ -1245,6 +1245,34 @@ to be shared, the removed posts belong to identifiable people on a
 sensitive topic, and the per-post detail stays where it is already
 protected: the key-gated dashboard and the local CSV.
 
+### 15. Some of the collected posts are by minors
+
+The first four posts put through visual coding included two school
+scenes: uniforms, a military-training line-up, classrooms, a banner.
+This corpus is collected from public community hashtags, and a
+sizeable share of the people posting under them are at school.
+
+Three consequences, none of them optional.
+
+**They cannot enter the interview frame.** Consent from a minor is a
+different procedure with different approvals, and this study's IRB
+covers adults. A post whose author is plausibly under 18 is not a
+recruitment candidate.
+
+**They cannot appear as an example.** No screenshot, no quoted
+caption, no figure. The ordinary caution about illustrating a study of
+censored queer content is sharper here.
+
+**The flag is for exclusion, never for prediction.** `apparent_minors`
+is recorded in the visual coding so these posts can be separated out.
+It must never be used as a covariate in the removal analysis: whether
+the platform removes posts by people who look young is not this
+study's question, and a model fitted on that is a model of something
+nobody asked about.
+
+The flag over-reports by design -- uncertain cases are `possible`, not
+`none` -- because the cost of the two errors is not symmetric.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
