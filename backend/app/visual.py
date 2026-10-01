@@ -176,6 +176,20 @@ def parse(raw: str) -> tuple[dict | None, str]:
     return found, ""
 
 
+#: Claude tokenises an image by pixel area, at roughly one token per
+#: 28x28 patch. So the bill is set by resolution, not by how much is
+#: in the picture -- a 1080x1440 card costs about 2,000 tokens, and a
+#: full-resolution one can reach ~4,800. Downscaling the long edge is
+#: the single biggest cost lever in this pass.
+PATCH = 28 * 28
+
+#: What the long edge is reduced to before sending. 1568 keeps a card
+#: legible enough to read the text printed on it -- which is where
+#: most of a 图文's content lives -- while costing roughly half of
+#: full resolution. Lower it for cheaper runs, but check section F
+#: afterwards: on-screen text is the first thing downscaling loses.
+MAX_EDGE = 1568
+
 #: Input / output dollars per million tokens, for the estimate. The
 #: cheapest model that holds the codebook is the right one here --
 #: these are enum choices from a picture, not reasoning -- but which
@@ -280,18 +294,55 @@ SCHEMA: dict = {
 }
 
 
-def _content(post: Post, prompt: str) -> list[dict]:
+def shrink(path: Path, max_edge: int) -> tuple[bytes, str, tuple[int, int]]:
+    """The image, no larger than `max_edge` on its long side.
+
+    Returns the bytes to send, their media type, and the dimensions
+    they ended up at. An image already within the limit is sent as it
+    is, byte for byte -- re-encoding a JPEG to shrink it by nothing
+    would lose quality for no saving.
+    """
+    from PIL import Image
+
+    with Image.open(path) as picture:
+        width, height = picture.size
+        if max(width, height) <= max_edge:
+            kind = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+            return path.read_bytes(), kind, (width, height)
+
+        scale = max_edge / max(width, height)
+        size = (round(width * scale), round(height * scale))
+        smaller = picture.convert("RGB").resize(size, Image.LANCZOS)
+
+    import io
+
+    buffer = io.BytesIO()
+    smaller.save(buffer, format="JPEG", quality=88)
+    return buffer.getvalue(), "image/jpeg", size
+
+
+def image_tokens(size: tuple[int, int]) -> int:
+    """Roughly what an image of this size costs, before it is sent.
+
+    An approximation of the server's own tokenizer, good enough to
+    choose a model and a resolution by. `--exact` replaces it with a
+    real `count_tokens` call when there are credentials to make one.
+    """
+    width, height = size
+    return round(width * height / PATCH)
+
+
+def _content(post: Post, prompt: str, max_edge: int = MAX_EDGE) -> list[dict]:
     """The images, then the prompt. Images first so the text is last read."""
     blocks: list[dict] = []
     for image in post.images:
-        kind = "image/png" if image.suffix.lower() == ".png" else "image/jpeg"
+        blob, kind, _ = shrink(image, max_edge)
         blocks.append({
             "type": "image",
             "source": {
                 "type": "base64",
                 "media_type": kind,
-                "data": base64.standard_b64encode(
-                    image.read_bytes()).decode("utf-8"),
+                "data": base64.standard_b64encode(blob).decode("utf-8"),
             },
         })
     blocks.append({"type": "text", "text": prompt})
@@ -299,7 +350,7 @@ def _content(post: Post, prompt: str) -> list[dict]:
 
 
 def code_one(client, post: Post, prompt: str, model: str,
-             effort: str) -> dict:
+             effort: str, max_edge: int = MAX_EDGE) -> dict:
     """One post, one call. Returns the row to write, whatever happened.
 
     No `fallbacks`. The SDK guidance is to enable server-side fallback
@@ -316,6 +367,7 @@ def code_one(client, post: Post, prompt: str, model: str,
         "images_sent": len(post.images),
         "model": model,
         "effort": effort,
+        "max_edge": max_edge,
     }
     try:
         answer = client.messages.create(
@@ -325,7 +377,9 @@ def code_one(client, post: Post, prompt: str, model: str,
                 "effort": effort,
                 "format": {"type": "json_schema", "schema": SCHEMA},
             },
-            messages=[{"role": "user", "content": _content(post, prompt)}],
+            messages=[{
+                "role": "user",
+                "content": _content(post, prompt, max_edge)}],
         )
     except anthropic.APIStatusError as error:
         row["error"] = f"{type(error).__name__} {error.status_code}"
@@ -360,37 +414,68 @@ def code_one(client, post: Post, prompt: str, model: str,
     return row
 
 
-def estimate(client, posts: list[Post], prompt: str, model: str) -> None:
-    """What the sample really costs, counted rather than guessed.
+def estimate(posts: list[Post], prompt: str, max_edge: int,
+             client=None, model: str = "") -> None:
+    """What the run really costs, measured from the actual pictures.
 
-    Images dominate the bill and their token count depends on their
-    pixel dimensions, so an estimate from the number of posts is worth
-    nothing. This counts the actual bytes that would be sent.
+    Works with no credentials: image tokens come from pixel area,
+    which is how the server charges for them anyway. Pass a client to
+    replace the approximation with a real `count_tokens` call.
     """
+    from PIL import Image
+
     tokens = 0
+    full = 0
+    sizes: list[int] = []
     for post in posts:
-        tokens += client.messages.count_tokens(
-            model=model,
-            messages=[{"role": "user", "content": _content(post, prompt)}],
-        ).input_tokens
+        for path in post.images:
+            with Image.open(path) as picture:
+                width, height = picture.size
+            full += image_tokens((width, height))
+            scale = min(1.0, max_edge / max(width, height, 1))
+            shrunk = (round(width * scale), round(height * scale))
+            tokens += image_tokens(shrunk)
+            sizes.append(max(width, height))
+    # The prompt rides along with every post, which at 560 posts is
+    # not a rounding error.
+    tokens += len(posts) * len(prompt) // 3
 
-    per_post = tokens / max(len(posts), 1)
-    # The reply is one filled-in schema: a few hundred tokens, plus
-    # whatever thinking the effort level buys.
+    if client is not None:
+        counted = 0
+        for post in posts:
+            counted += client.messages.count_tokens(
+                model=model,
+                messages=[{
+                    "role": "user",
+                    "content": _content(post, prompt, max_edge)}],
+            ).input_tokens
+        print(f"\ncounted exactly: {counted:,} input tokens "
+              f"(approximation said {tokens:,})")
+        tokens = counted
+
+    images = sum(len(post.images) for post in posts)
+    typical = sorted(sizes)[len(sizes) // 2] if sizes else 0
+    print(f"\n{len(posts)} post(s), {images} image(s); "
+          f"long edge typically {typical}px, sent at most {max_edge}px")
+    print(f"{tokens:,} input tokens "
+          f"({tokens / max(len(posts), 1):,.0f} per post)")
+    if full > tokens:
+        print(f"full resolution would be {full:,} — "
+              f"downscaling saves {(1 - tokens / full) * 100:.0f}%")
+
     out_per_post = 1200
-
-    print(f"\n{len(posts)} post(s): {tokens:,} input tokens "
-          f"({per_post:,.0f} per post, {out_per_post} output assumed)\n")
-    print(f"{'model':20} {'this sample':>12} {'all 560':>10} "
+    print(f"\n{'model':20} {'this sample':>12} {'all 560':>10} "
           f"{'560 batched':>12}")
     for name, (dollars_in, dollars_out) in PRICES.items():
-        here = (tokens * dollars_in + len(posts) * out_per_post * dollars_out)
-        here /= 1_000_000
+        here = (tokens * dollars_in
+                + len(posts) * out_per_post * dollars_out) / 1_000_000
         whole = here / max(len(posts), 1) * 560
         print(f"{name:20} {'$' + format(here, '.2f'):>12} "
               f"{'$' + format(whole, '.2f'):>10} "
               f"{'$' + format(whole / 2, '.2f'):>12}")
     print("\n  Batched is the Batch API: half price, hours not seconds.")
+    print("  Output is assumed at 1,200 tokens per post — one filled-in "
+          "schema plus thinking.")
 
 
 def main() -> None:  # pragma: no cover - thin CLI wrapper
@@ -413,8 +498,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--resume", action="store_true",
                         help="skip posts already in --out")
     parser.add_argument("--estimate", action="store_true",
-                        help="count the real tokens and price the run, "
-                             "without coding anything")
+                        help="price the run from the real images, without "
+                             "coding anything and without credentials")
+    parser.add_argument("--exact", action="store_true",
+                        help="with --estimate: replace the approximation "
+                             "with a real count_tokens call (needs a key)")
+    parser.add_argument("--max-edge", type=int, default=MAX_EDGE,
+                        help=f"shrink each image's long edge to this before "
+                             f"sending (default {MAX_EDGE}; lower is cheaper "
+                             f"and reads on-screen text less well)")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -434,9 +526,12 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
           f"{len(chosen)} to code")
 
     if args.estimate:
-        import anthropic
+        client = None
+        if args.exact:
+            import anthropic
 
-        estimate(anthropic.Anthropic(), chosen, prompt, args.model)
+            client = anthropic.Anthropic()
+        estimate(chosen, prompt, args.max_edge, client, args.model)
         return
 
     if not args.apply:
@@ -465,7 +560,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     coded = refused = failed = 0
     with out.open("a", encoding="utf-8") as handle:
         for index, post in enumerate(chosen, start=1):
-            row = code_one(client, post, prompt, args.model, args.effort)
+            row = code_one(client, post, prompt, args.model, args.effort,
+                           args.max_edge)
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             handle.flush()
             if "coding" in row:

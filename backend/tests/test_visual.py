@@ -1,6 +1,8 @@
 """The visual coding runner: sampling, parsing, and what it refuses to hide."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -179,3 +181,47 @@ def test_every_field_is_required_so_nothing_comes_back_half_filled() -> None:
     # ...and nothing else may be invented.
     assert SCHEMA["additionalProperties"] is False
     assert person["additionalProperties"] is False
+
+
+def test_an_image_within_the_limit_is_sent_untouched(tmp_path) -> None:
+    """Re-encoding a JPEG to shrink it by nothing loses quality for free."""
+    from PIL import Image
+
+    from app.visual import shrink
+
+    path = tmp_path / "small.jpg"
+    Image.new("RGB", (800, 600), "white").save(path, quality=95)
+    original = path.read_bytes()
+
+    blob, kind, size = shrink(path, 1568)
+    assert blob == original
+    assert kind == "image/jpeg"
+    assert size == (800, 600)
+
+
+def test_a_large_image_is_shrunk_on_its_long_edge(tmp_path) -> None:
+    """Claude charges for an image by pixel area, so the long edge is
+    the lever. Aspect ratio has to survive it -- a squashed card is a
+    different picture."""
+    from PIL import Image
+
+    from app.visual import image_tokens, shrink
+
+    path = tmp_path / "big.jpg"
+    Image.new("RGB", (2160, 3840), "white").save(path)
+
+    _, _, size = shrink(path, 1568)
+    assert max(size) == 1568
+    assert abs(size[0] / size[1] - 2160 / 3840) < 0.01
+    # ...and that is the saving the estimate promises.
+    assert image_tokens(size) < image_tokens((2160, 3840)) / 2
+
+
+def test_the_token_estimate_tracks_pixel_area() -> None:
+    """Checked against the documented rate: ~1,200 tokens at 1280x720."""
+    from app.visual import image_tokens
+
+    assert 1100 <= image_tokens((1280, 720)) <= 1300
+    # Twice the area, twice the cost.
+    assert image_tokens((2560, 1440)) == pytest.approx(
+        image_tokens((1280, 720)) * 4, rel=0.01)

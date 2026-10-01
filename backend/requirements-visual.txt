@@ -4,3 +4,6 @@
 #
 #     ./.venv/bin/pip install -r requirements-visual.txt
 anthropic>=1.0
+# Images are downscaled before they are sent: Claude charges for them
+# by pixel area, so the long edge is the main cost lever here.
+pillow>=10.0
