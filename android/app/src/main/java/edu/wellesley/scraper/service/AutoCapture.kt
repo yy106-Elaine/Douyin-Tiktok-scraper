@@ -251,6 +251,20 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!keepGoing()) return
 
         if (!onTheGrid()) {
+            // Before the first cell there is nothing to come back
+            // from, so there is nothing to press either: the run was
+            // started on whatever page the person was standing on,
+            // and if that is not the grid the answer is to say so.
+            if (opened.isEmpty()) {
+                CaptureStats.onAutoFailure(
+                    "a 图文 run has to start on the search results, with " +
+                        "the tab strip and a full row of cards on screen. " +
+                        "Nothing was pressed",
+                    SearchGrid.describe(activeRoots()),
+                )
+                stop("not started on the search results")
+                return
+            }
             backToGrid(0)
             return
         }
@@ -321,12 +335,36 @@ class AutoCapture(private val service: AccessibilityService) {
      * goes back to the results it was opened from -- which is the
      * movement the feed loop must never make and the only one this
      * loop lives on.
+     *
+     * **BACK needs evidence that we are inside something**, not
+     * merely the absence of evidence that we are home. The first
+     * version pressed it whenever the grid was not recognised, and a
+     * results page one card short of the threshold is not recognised
+     * -- so a run standing on the results pressed BACK its way out of
+     * the search, which is what a person watching saw as "it went
+     * backwards". The tab strip is the evidence: it is on the results
+     * page and on no post, so when it is there and the grid still does
+     * not qualify, the answer is to say so and stop.
      */
     private fun backToGrid(attempt: Int) {
         if (!keepGoing()) return
 
         if (onTheGrid()) {
             handler.postDelayed(::openTile, SETTLE_MILLIS)
+            return
+        }
+
+        val top = activeRoots()
+        val covered = ShareSheet.isSheetOpen(top) || ProfilePage.isProfileOpen(top)
+        if (!covered && SearchGrid.hasTabStrip(top)) {
+            CaptureStats.onAutoFailure(
+                "this looks like the results page, but fewer than two " +
+                    "cells are readable on it -- scroll it so a full row " +
+                    "of cards is on screen and start again. Nothing was " +
+                    "pressed",
+                SearchGrid.describe(top),
+            )
+            stop("on the results page with nothing readable to open")
             return
         }
         if (attempt >= BACK_TO_GRID_TRIES) {
