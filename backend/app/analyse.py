@@ -40,7 +40,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .clock import local, local_date
-from .platforms import PLATFORM_FAMILY
+from .platforms import PLATFORM_FAMILY, filter_policy
+from .relevance import classify
+from . import labels
 from .models import LinkCheck, SharedLink, WebVideo
 from .survival import (
     Finding,
@@ -224,6 +226,13 @@ def caption_dump(session: Session, path: str) -> int:
         for video_id, text in captions(session, platform).items():
             if video_id in out_of_scope:
                 continue
+            # A hand-pasted link has no capture row, so `relevance`
+            # never saw it and `excluded` cannot know about it. That
+            # is how a restaurant review and a shooter-game stream
+            # were still in the sample after the first fix. The text
+            # is here, so classify it here.
+            if text and classify(text, policy=filter_policy(platform)):
+                continue
             cleaned = " ".join(text.split())
             if not cleaned:
                 empty += 1
@@ -235,6 +244,57 @@ def caption_dump(session: Session, path: str) -> int:
         for line in sorted(seen):
             handle.write(line + "\n")
     return len(seen)
+
+
+def label_dump(session: Session, path: str) -> int:
+    """One row per in-scope Douyin post, with the tag columns filled in.
+
+    The tag axes are matched, not judged (see `app/labels.py`), so
+    they are written here rather than sent to a model: exactly
+    reproducible, free, and needing no agreement statistic. Only the
+    content category is left empty, because that one needs a reader.
+
+    Unlike `caption_dump`, this one carries the outcome. Designing a
+    scheme while looking at the answer is circular; *analysing* with
+    the answer present is the entire point, and these two files exist
+    separately so that the first cannot quietly become the second.
+    """
+    from .survival import Finding
+
+    verdicts: dict[str, Finding] = {
+        f.video_id: f for p in ("douyin", "douyin_note") for f in own(session, p)
+    }
+    written = 0
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        out = csv.writer(handle)
+        out.writerow([
+            "platform", "video_id", "caption", "truncated",
+            "wlw_tags", "tph_tags", "tph_terms", "compliance",
+            "content", "is_gone", "first_gone_at", "collected_at",
+        ])
+        for platform in ("douyin", "douyin_note"):
+            out_of_scope = excluded(session, platform)
+            for video_id, text in sorted(captions(session, platform).items()):
+                if video_id in out_of_scope:
+                    continue
+                if text and classify(text, policy=filter_policy(platform)):
+                    continue
+                found = verdicts.get(video_id)
+                flat = " ".join(text.split())
+                out.writerow([
+                    platform, video_id, flat,
+                    int(labels.truncated(flat)),
+                    "|".join(labels.wlw_tags(flat)) if flat else "",
+                    "|".join(labels.tph_tags(flat)) if flat else "",
+                    "|".join(labels.tph_terms(flat)),
+                    int(labels.compliance(flat)),
+                    "",  # for the content category, once it is coded
+                    int(bool(found and found.is_gone)) if found else "",
+                    local(found.first_gone_ever) if found else "",
+                    local(found.collected_at) if found else "",
+                ])
+                written += 1
+    return written
 
 
 def export(session: Session, path: str) -> int:
@@ -278,6 +338,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", help="also write one row per video here")
+    parser.add_argument(
+        "--labels",
+        help="also write one row per in-scope Douyin post with the tag "
+             "columns filled in and the content column left for coding",
+    )
     parser.add_argument(
         "--captions",
         help="also write every distinct Douyin caption here, one per line, "
@@ -367,6 +432,10 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         if args.captions:
             written = caption_dump(session, args.captions)
             print(f"{written} distinct caption(s) written to {args.captions}")
+
+        if args.labels:
+            written = label_dump(session, args.labels)
+            print(f"{written} labelled row(s) written to {args.labels}")
 
 
 if __name__ == "__main__":  # pragma: no cover

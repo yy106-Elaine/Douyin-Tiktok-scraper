@@ -189,7 +189,7 @@ def test_the_caption_dump_carries_no_outcome(db: None) -> None:
         _check(session, "douyin", "7001", datetime(2026, 9, 26, 18, 0), alive=False)
         session.add_all([
             WebVideo(platform="douyin", video_id="7001",
-                     caption="和女朋友的\n第三年", author_handle="someone",
+                     caption="和女朋友的\n第三年 #wlw", author_handle="someone",
                      fetched_at=datetime(2026, 9, 25, 18, 0)),
             WebVideo(platform="douyin", video_id="7002", caption=None,
                      fetched_at=datetime(2026, 9, 25, 18, 0)),
@@ -200,7 +200,7 @@ def test_the_caption_dump_carries_no_outcome(db: None) -> None:
         assert caption_dump(session, path) == 1
         written = open(path, encoding="utf-8").read()
 
-    assert "和女朋友的 第三年" in written
+    assert "和女朋友的 第三年 #wlw" in written
     assert "7001" not in written
     assert "someone" not in written
     assert "gone" not in written
