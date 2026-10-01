@@ -19,7 +19,7 @@ unknown count means the survival numbers are not yet trustworthy.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -588,3 +588,155 @@ def horizon(items: list["Finding"], age: timedelta) -> Horizon:
         else:
             out.censored += 1
     return out
+
+
+@dataclass
+class Step:
+    """One step of a survival curve: everything needed to read it."""
+
+    #: Age since publication at which the step happens.
+    age: timedelta
+    #: Share of videos still up immediately after it.
+    survival: float
+    #: How many were under observation at that moment. A step taken
+    #: over three videos is noise; the curve has to carry its own
+    #: sample size or it invites being read as a finding.
+    at_risk: int
+    events: int
+
+
+@dataclass
+class Curve:
+    """A Kaplan-Meier estimate, with the caveats it needs to be read."""
+
+    steps: list[Step] = field(default_factory=list)
+    #: Videos that contributed at all -- a publication time, and an
+    #: observation window with some width to it.
+    sample: int = 0
+    events: int = 0
+    #: Median width of the brackets behind the event times. Every age
+    #: on the curve is uncertain by about this much.
+    resolution: timedelta | None = None
+    #: The oldest age anything was still being watched at. The curve
+    #: is flat from its last step to here and undefined beyond it, so
+    #: this is where it has to stop being drawn.
+    watched_to: timedelta | None = None
+
+    def survival_at(self, age: timedelta) -> float | None:
+        """Share still up at `age`, or None past the end of the curve."""
+        if not self.steps:
+            return None
+        if age > self.steps[-1].age and self.steps[-1].survival > 0:
+            # Beyond the last observation the estimate is undefined,
+            # not flat: nothing was still being watched out there.
+            return None
+        current = 1.0
+        for step in self.steps:
+            if step.age > age:
+                break
+            current = step.survival
+        return current
+
+    def quantile(self, share: float) -> timedelta | None:
+        """Age by which `share` of videos are gone, or None if unreached.
+
+        None is the honest answer far more often than a number is. A
+        median needs the curve to cross 0.5, and a curve that never
+        gets there has not measured a median -- it has measured that
+        the median is longer than the study has run.
+        """
+        for step in self.steps:
+            if step.survival <= 1 - share:
+                return step.age
+        return None
+
+
+def _event_age(finding: "Finding") -> timedelta | None:
+    """When a removal happened, as one number, from a bracket.
+
+    The data says the video was alive at one check and gone at the
+    next. The midpoint is the least-wrong single value to hand an
+    estimator that wants one: taking the later check would date every
+    removal to the schedule and shift the whole curve right by about
+    half a cycle. `Curve.resolution` carries the width that this
+    collapses, so the curve can be drawn with it rather than as if it
+    were exact.
+    """
+    if finding.published_at is None or finding.first_gone_at is None:
+        return None
+    later = finding.first_gone_at
+    earlier = finding.last_alive_at or finding.first_checked_at or later
+    middle = earlier + (later - earlier) / 2
+    return max(middle - finding.published_at, timedelta(0))
+
+
+def kaplan_meier(items: list["Finding"]) -> Curve:
+    """Survival since publication, with delayed entry.
+
+    Two departures from a textbook call, both forced by how this
+    sample is built:
+
+    **Delayed entry.** A video joins the risk set when this study
+    first saw it, not when it was published. Everything before that is
+    unobserved, and treating it as observed survival is precisely the
+    survivorship bias that makes a month-old TikTok sample look
+    unkillable. So the risk set at age *t* is the videos whose
+    collection age was below *t* and which were still being watched
+    at it -- the left-truncated estimator, not the plain one.
+
+    **Bracketed event times.** Each removal is known to within a
+    checking cycle, and is placed at the middle of its bracket (see
+    `_event_age`). The curve is therefore accurate to about
+    `resolution`, which is reported with it.
+    """
+    entries: list[tuple[timedelta, timedelta, bool]] = []
+    widths: list[timedelta] = []
+    for finding in items:
+        if finding.published_at is None:
+            continue
+        start = age_at_collection(finding)
+        if start is None:
+            continue
+        if finding.is_gone:
+            end = _event_age(finding)
+            if end is None:  # pragma: no cover - guarded by is_gone
+                continue
+            span = finding.first_gone_at - (
+                finding.last_alive_at or finding.first_checked_at
+                or finding.first_gone_at
+            )
+            widths.append(span)
+            event = True
+        else:
+            last = finding.last_checked_at
+            if last is None:
+                continue
+            end = max(last - finding.published_at, timedelta(0))
+            event = False
+        if end <= start:
+            # Nothing was observed about this video: it entered and
+            # left at the same moment. It cannot inform any step.
+            continue
+        entries.append((start, end, event))
+
+    curve = Curve(sample=len(entries))
+    if entries:
+        curve.watched_to = max(end for _, end, _ in entries)
+    moments = sorted({end for _, end, event in entries if event})
+    alive = 1.0
+    for moment in moments:
+        at_risk = sum(
+            1 for start, end, _ in entries if start < moment <= end
+        )
+        events = sum(
+            1 for _, end, event in entries if event and end == moment
+        )
+        if not at_risk:  # pragma: no cover - events imply a risk set
+            continue
+        alive *= 1 - events / at_risk
+        curve.steps.append(Step(moment, alive, at_risk, events))
+        curve.events += events
+    if widths:
+        widths.sort()
+        curve.resolution = widths[len(widths) // 2]
+    return curve

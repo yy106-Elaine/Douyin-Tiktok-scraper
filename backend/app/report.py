@@ -42,9 +42,15 @@ from html import escape
 
 from sqlalchemy.orm import Session
 
-from .analyse import HORIZONS, PLATFORMS, daily_hazard, own
+from .analyse import PLATFORMS, daily_hazard, own
 from .clock import local, now as clock_now, today as clock_today
-from .survival import Finding, by_collection_age, horizon, summarise
+from .survival import (
+    Curve,
+    Finding,
+    by_collection_age,
+    kaplan_meier,
+    summarise,
+)
 
 #: Sequential blue, low magnitude to high. Light goes light->dark;
 #: dark goes dark->light, because on a dark surface the lighter step
@@ -59,6 +65,12 @@ RAMP_DARK = ("#184f95", "#256abf", "#3987e5", "#86b6ef", "#cde2fb")
 #: no categorical palette is needed. Where a chart would have wanted
 #: several series it is faceted into small multiples instead.
 SERIES = "var(--series-1)"
+
+#: The platform the study is actually about, in the two formats it
+#: serves. Everything above the fold is these two.
+DOUYIN: tuple[str, ...] = ("douyin", "douyin_note")
+#: Kept, reported, and deliberately not charted beside Douyin.
+CONTEXT: tuple[str, ...] = ("tiktok", "youtube")
 
 PRETTY = {
     "douyin": "Douyin video",
@@ -110,96 +122,6 @@ def mask(video_id: str, reveal: bool) -> str:
 
 
 # -- marks ------------------------------------------------------------
-
-
-@dataclass
-class Bar:
-    """One horizontal bar: a label, a share, and what to say on hover."""
-
-    label: str
-    value: float | None
-    #: Printed at the tip. Kept separate from `value` so a bar can say
-    #: "3/41" while being drawn as 7%.
-    tip_text: str
-    hover: str
-    #: Shown in muted ink after the label -- the denominator, usually.
-    note: str = ""
-
-
-def hbars(bars: list[Bar], *, ident: str, width: int = 820) -> str:
-    """Horizontal bars against a 0-100% scale.
-
-    Horizontal because the categories are platform names, and a
-    column chart would either clip "Douyin 图文" or turn it on its
-    side. One hue: these are nominal categories and the bar length
-    already carries the magnitude, so colouring them by size would
-    spend the only free channel on information twice.
-    """
-    pad_left, pad_right, pad_top = 118, 44, 10
-    row, thickness = 30, 14
-    plot = width - pad_left - pad_right
-    height = pad_top + row * len(bars) + 24
-
-    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
-           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
-    out.append(f'<title id="{ident}-t">Share removed, by platform</title>')
-
-    for tick in (0, 25, 50, 75, 100):
-        x = pad_left + plot * tick / 100
-        out.append(f'<line class="grid" x1="{x:.1f}" y1="{pad_top}" '
-                   f'x2="{x:.1f}" y2="{pad_top + row * len(bars)}" />')
-        out.append(f'<text class="tick" x="{x:.1f}" '
-                   f'y="{pad_top + row * len(bars) + 16}" '
-                   f'text-anchor="middle">{tick}%</text>')
-    out.append(f'<line class="axis" x1="{pad_left}" y1="{pad_top}" '
-               f'x2="{pad_left}" y2="{pad_top + row * len(bars)}" />')
-
-    for index, bar in enumerate(bars):
-        mid = pad_top + row * index + row / 2
-        out.append(f'<text class="cat" x="{pad_left - 10}" y="{mid + 4}" '
-                   f'text-anchor="end">{_e(bar.label)}</text>')
-        if bar.value is None:
-            out.append(f'<text class="empty" x="{pad_left + 6}" y="{mid + 4}">'
-                       f'{_e(bar.note or "not measured")}</text>')
-            continue
-        top = mid - thickness / 2
-        if not bar.value:
-            # A true zero is a tick on the baseline, not a sliver of
-            # bar: a 2px stub reads as "a little bit" from across a
-            # room, and the number beside it says none.
-            out.append(f'<g class="mark" tabindex="0" data-tip="{_e(bar.hover)}">'
-                       f'<rect class="hit" x="{pad_left}" y="{top - 8:.1f}" '
-                       f'width="{plot}" height="{thickness + 16}" />'
-                       f'<line class="zero" x1="{pad_left}" y1="{top:.1f}" '
-                       f'x2="{pad_left}" y2="{top + thickness:.1f}" /></g>')
-            out.append(f'<text class="value" x="{pad_left + 8}" '
-                       f'y="{mid + 4}">{_e(bar.tip_text)}</text>')
-            if bar.note:
-                out.append(f'<text class="note-tick" x="{pad_left - 10}" '
-                           f'y="{mid + 15}" text-anchor="end">'
-                           f'{_e(bar.note)}</text>')
-            continue
-        length = max(plot * bar.value, 3.0)
-        # Square at the baseline, 4px rounded at the data end: the
-        # path is drawn by hand because a <rect> rounds both ends.
-        radius = min(4.0, length)
-        out.append(
-            f'<g class="mark" tabindex="0" data-tip="{_e(bar.hover)}">'
-            f'<rect class="hit" x="{pad_left}" y="{top - 8:.1f}" '
-            f'width="{plot}" height="{thickness + 16}" />'
-            f'<path class="bar" d="M{pad_left} {top:.1f} '
-            f'h{length - radius:.1f} a{radius} {radius} 0 0 1 {radius} {radius} '
-            f'v{thickness - 2 * radius} '
-            f'a{radius} {radius} 0 0 1 -{radius} {radius} '
-            f'H{pad_left} z" /></g>'
-        )
-        out.append(f'<text class="value" x="{pad_left + length + 8:.1f}" '
-                   f'y="{mid + 4}">{_e(bar.tip_text)}</text>')
-        if bar.note:
-            out.append(f'<text class="note-tick" x="{pad_left - 10}" '
-                       f'y="{mid + 15}" text-anchor="end">{_e(bar.note)}</text>')
-    out.append("</svg>")
-    return "".join(out)
 
 
 @dataclass
@@ -286,62 +208,6 @@ def columns(series: list[Column], *, ident: str, title: str,
 
 
 @dataclass
-class Cell:
-    value: float | None
-    hover: str
-    text: str
-
-
-def heatmap(rows: list[tuple[str, list[Cell]]], headers: list[str], *,
-            ident: str, width: int = 820) -> str:
-    """Rate by platform × how old the video was when watching began.
-
-    A grid because the question is two-dimensional and the cells are
-    mostly empty: most platforms only occupy one or two age bands, and
-    an empty cell has to read as "nothing here" rather than as zero.
-    """
-    pad_left, pad_top = 148, 30
-    cell_h, gap = 34, 2
-    # The columns fill the page rather than a fixed cell size: band
-    # labels are whole phrases ("publication time unknown") and a
-    # fixed 96px column ran them into each other.
-    cell_w = max(110.0, (width - pad_left) / max(len(headers), 1))
-    width = int(pad_left + cell_w * len(headers))
-    height = pad_top + len(rows) * cell_h + 6
-
-    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
-           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
-    out.append(f'<title id="{ident}-t">Removal rate by collection age</title>')
-    for index, header in enumerate(headers):
-        out.append(f'<text class="tick" x="{pad_left + cell_w * (index + 0.5)}" '
-                   f'y="{pad_top - 10}" text-anchor="middle">'
-                   f'{_e(header)}</text>')
-    for row_index, (name, cells) in enumerate(rows):
-        y = pad_top + cell_h * row_index
-        out.append(f'<text class="cat" x="{pad_left - 10}" y="{y + cell_h / 2 + 4}" '
-                   f'text-anchor="end">{_e(name)}</text>')
-        for index, cell in enumerate(cells):
-            x = pad_left + cell_w * index
-            if cell.value is None:
-                out.append(f'<text class="empty" '
-                           f'x="{x + cell_w / 2:.0f}" '
-                           f'y="{y + cell_h / 2 + 4:.0f}" '
-                           f'text-anchor="middle">—</text>')
-                continue
-            step = min(4, int(cell.value * 5)) if cell.value < 1 else 4
-            out.append(
-                f'<g class="mark" tabindex="0" data-tip="{_e(cell.hover)}">'
-                f'<rect class="cell s{step}" x="{x + gap}" y="{y + gap}" '
-                f'width="{cell_w - 2 * gap}" height="{cell_h - 2 * gap}" '
-                f'rx="3" />'
-                f'<text class="in-cell t{step}" '
-                f'x="{x + cell_w / 2:.0f}" y="{y + cell_h / 2 + 4:.0f}" '
-                f'text-anchor="middle">{_e(cell.text)}</text></g>')
-    out.append("</svg>")
-    return "".join(out)
-
-
-@dataclass
 class Spell:
     label: str
     gone: datetime
@@ -421,8 +287,9 @@ def table(headers: list[str], rows: list[list[str]], caption: str) -> str:
 
 
 def tile(label: str, value: str, note: str) -> str:
+    kind = "tile-value" if value[:1].isdigit() else "tile-value words"
     return (f'<div class="tile"><p class="tile-label">{_e(label)}</p>'
-            f'<p class="tile-value">{_e(value)}</p>'
+            f'<p class="{kind}">{_e(value)}</p>'
             f'<p class="tile-note">{_e(note)}</p></div>')
 
 
@@ -435,171 +302,177 @@ class Page:
     reveal: bool = False
 
 
-def _lead(page: Page) -> str:
-    gone = sum(summarise(items).gone for items in page.held.values())
-    tracked = sum(summarise(items).tracked for items in page.held.values())
-    platforms = sum(1 for items in page.held.values() if items)
-    return (
-        '<section class="lead">'
-        f'<p class="hero-label">Removals observed</p>'
-        f'<p class="hero">{gone}</p>'
-        f'<p class="hero-note">across {tracked} videos on {platforms} '
-        f'platform{"s" if platforms != 1 else ""}, as of '
-        f'{_e(page.generated.strftime("%Y-%m-%d") if page.generated else "—")}. '
-        "Every one of them is an interval — alive when the study last "
-        "looked, gone when it looked next — not a timestamp.</p>"
-        "</section>"
-    )
+def survival_chart(lines: list[tuple[str, int, Curve]], *, ident: str,
+                   width: int = 820, height: int = 300) -> str:
+    """Cumulative share removed, against age since publication.
 
+    Drawn as removals rising from zero rather than survival falling
+    from one. The two are the same estimate; this way the baseline on
+    the page is a real zero and the axis can stop at the top of the
+    data without truncating anything. A survival curve sitting in the
+    top fifth of a 0-100% axis says the same thing and says it
+    invisibly.
 
-def _tiles(page: Page) -> str:
-    out = []
-    for platform, items in page.held.items():
-        if not items:
-            continue
-        s = summarise(items)
-        out.append(tile(
-            label_for(platform),
-            _pct1(s.rate),
-            f"{s.gone} of {s.gone + s.alive} measured · "
-            f"{s.tracked} tracked · ± {_span(s.median_uncertainty)}",
-        ))
-    return f'<div class="tiles">{"".join(out)}</div>'
-
-
-def _horizons(page: Page) -> str:
-    """The cross-platform comparable figure, faceted by horizon.
-
-    One panel per horizon rather than one chart with three series:
-    the comparison the reader wants is between platforms at a fixed
-    T, and faceting keeps the page to a single hue.
+    It is a step function, so it is drawn as one. A smoothed line
+    would put removals at times the estimator never claimed.
     """
-    panels, rows = [], []
-    for age in HORIZONS:
-        bars = []
-        for platform, items in page.held.items():
-            h = horizon(items, age)
-            if not h.eligible:
-                bars.append(Bar(label_for(platform), None, "", "", "no eligible videos"))
-                rows.append([_span(age), label_for(platform), "0", "—", "—", "—"])
-                continue
-            bars.append(Bar(
-                label=label_for(platform),
-                value=h.rate,
-                tip_text=_pct(h.rate),
-                hover=(f"{label_for(platform)} · within {_span(age)}\n"
-                       f"{h.removed} removed\n{h.survived} survived\n"
-                       f"{h.censored} still too young to say\n"
-                       f"{h.eligible} eligible"),
-                note=f"n={h.eligible}",
-            ))
-            rows.append([_span(age), label_for(platform), str(h.eligible),
-                         str(h.removed), str(h.survived), _pct1(h.rate)])
-        panels.append(
-            f'<figure class="panel"><figcaption>Within {_span(age)} of '
-            f'publication</figcaption>'
-            f'{hbars(bars, ident=f"hz{age.days}", width=410)}</figure>')
-    return (
-        '<section><h2>Removed within T of publication</h2>'
-        '<p class="note"><strong>This is the number that compares across '
-        'platforms.</strong> It counts only videos the study was already '
-        'watching before T, so a video first seen at a month old is absent '
-        'from the three-day question rather than counted as having survived '
-        'it. <em>n</em> is how many were eligible to answer; the rest of the '
-        'sample cannot.</p>'
-        f'<div class="panels">{"".join(panels)}</div>'
-        + table(["Horizon", "Platform", "Eligible", "Removed", "Survived",
-                 "Rate"], rows, "removed within T")
-        + "</section>"
-    )
+    pad_left, pad_right, pad_top, pad_bottom = 46, 108, 14, 34
+    plot_w = width - pad_left - pad_right
+    plot_h = height - pad_top - pad_bottom
 
+    peak = max(
+        [1 - step.survival for _, _, c in lines for step in c.steps] or [0.1])
+    top = max(0.1, min(1.0, (int(peak * 10) + 1) / 10))
+    reach = max(
+        [(c.watched_to or c.steps[-1].age).total_seconds() / 86400
+         for _, _, c in lines if c.steps] or [1.0])
 
-def _raw(page: Page) -> str:
-    bars, rows = [], []
-    for platform, items in page.held.items():
-        s = summarise(items)
-        measured = s.gone + s.alive
-        bars.append(Bar(
-            label=label_for(platform),
-            value=s.rate,
-            tip_text=_pct1(s.rate),
-            hover=(f"{label_for(platform)}\n{s.gone} gone\n{s.alive} alive\n"
-                   f"{s.unmeasured} never read\n"
-                   f"± {_span(s.median_uncertainty)} bracket"),
-            note=f"n={measured}",
-        ))
-        rows.append([label_for(platform), str(s.tracked), str(s.gone),
-                     str(s.alive), str(s.unmeasured), _pct1(s.rate),
-                     _span(s.median_uncertainty)])
-    return (
-        '<section><h2>Share removed, of everything watched</h2>'
-        '<p class="note warn"><strong>Not comparable across platforms.</strong> '
-        'Douyin is searched by tag on the day of posting; TikTok is searched '
-        'by an English phrase and returns videos already weeks old. The TikTok '
-        'figure is therefore a rate among videos that had already lasted a '
-        'month — the ones pulled on day one were never in the sample to be '
-        'found. Read it beside the collection-age grid below, and use the '
-        'horizon figures above for any comparison.</p>'
-        f'{hbars(bars, ident="raw")}'
-        '<p class="note">Videos that were never successfully read are out of '
-        'the denominator, not assumed alive. The ± column is the median width '
-        'of the removal brackets: no lifetime here is known better than '
-        'that.</p>'
-        + table(["Platform", "Tracked", "Gone", "Alive", "Never read",
-                 "Rate", "± bracket"], rows, "share removed")
-        + "</section>"
-    )
+    def x_of(days: float) -> float:
+        return pad_left + plot_w * min(days / reach, 1.0)
 
+    def y_of(share: float) -> float:
+        return pad_top + plot_h * (1 - share / top)
 
-def _ages(page: Page) -> str:
-    bands: list[str] = []
-    for items in page.held.values():
-        for label, _ in by_collection_age(items):
-            if label not in bands:
-                bands.append(label)
-    if not bands:
-        return ""
-    rows, flat = [], []
-    for platform, items in page.held.items():
-        if not items:
+    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
+    out.append(f'<title id="{ident}-t">Share removed by age since '
+               f'publication</title>')
+
+    rungs = 4
+    for index in range(rungs + 1):
+        share = top * index / rungs
+        y = y_of(share)
+        out.append(f'<line class="grid" x1="{pad_left}" y1="{y:.1f}" '
+                   f'x2="{pad_left + plot_w}" y2="{y:.1f}" />')
+        out.append(f'<text class="tick" x="{pad_left - 6}" y="{y + 4:.1f}" '
+                   f'text-anchor="end">{share * 100:.0f}%</text>')
+    for day in _day_ticks(reach):
+        x = x_of(day)
+        out.append(f'<text class="tick" x="{x:.1f}" '
+                   f'y="{pad_top + plot_h + 18:.0f}" '
+                   f'text-anchor="middle">{day:g}d</text>')
+    out.append(f'<line class="axis" x1="{pad_left}" y1="{pad_top + plot_h}" '
+               f'x2="{pad_left + plot_w}" y2="{pad_top + plot_h}" />')
+
+    for name, slot, curve in lines:
+        if not curve.steps:
             continue
-        found = dict(by_collection_age(items))
-        cells = []
-        for band in bands:
-            s = found.get(band)
-            if s is None or not (s.gone + s.alive):
-                cells.append(Cell(None, "", ""))
-                continue
-            cells.append(Cell(
-                s.rate,
-                f"{label_for(platform)} · {band}\n{s.gone} of "
-                f"{s.gone + s.alive} removed\n{s.tracked} tracked",
-                _pct(s.rate),
-            ))
-            flat.append([label_for(platform), band, str(s.tracked),
-                         str(s.gone), _pct1(s.rate)])
-        rows.append((label_for(platform), cells))
-    legend = "".join(
-        f'<span class="key"><i class="sw s{step}"></i>'
-        f'{step * 20}–{step * 20 + 20}%</span>' for step in range(5))
+        path = [f"M{x_of(0):.1f} {y_of(0):.1f}"]
+        share = 0.0
+        for step in curve.steps:
+            days = step.age.total_seconds() / 86400
+            path.append(f"H{x_of(days):.1f}")
+            share = 1 - step.survival
+            path.append(f"V{y_of(share):.1f}")
+        # Flat from the last removal to the end of follow-up, and no
+        # further: past there nothing was being watched, so the line
+        # stops rather than implying the share held.
+        ends = (curve.watched_to or curve.steps[-1].age).total_seconds() / 86400
+        path.append(f"H{x_of(ends):.1f}")
+        out.append(f'<path class="line c{slot}" d="{" ".join(path)}" />')
+        for step in curve.steps:
+            days = step.age.total_seconds() / 86400
+            x, y = x_of(days), y_of(1 - step.survival)
+            hover = (f"{name}\n{(1 - step.survival) * 100:.0f}% removed by "
+                     f"day {days:.1f}\n{step.at_risk} still being watched\n"
+                     f"{step.events} removed here")
+            out.append(
+                f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
+                f'<circle class="hit" cx="{x:.1f}" cy="{y:.1f}" r="12" />'
+                f'<circle class="dot c{slot}" cx="{x:.1f}" cy="{y:.1f}" '
+                f'r="3.5" /></g>')
+        out.append(f'<text class="end-label c{slot}" '
+                   f'x="{x_of(ends) + 8:.1f}" y="{y_of(share) + 4:.1f}">'
+                   f'{_e(name)} {share * 100:.0f}%</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _day_ticks(reach: float) -> list[float]:
+    step = 1.0
+    for candidate in (1, 2, 3, 5, 7, 10, 14, 30, 60):
+        step = candidate
+        if reach / candidate <= 7:
+            break
+    ticks, day = [], 0.0
+    while day <= reach:
+        ticks.append(day)
+        day += step
+    return ticks
+
+
+def _rate_tile(label: str, items: list[Finding]) -> str:
+    s = summarise(items)
+    measured = s.gone + s.alive
+    return tile(label, _pct1(s.rate), f"{s.gone} of {measured} watched")
+
+
+def _douyin(session: Session, page: Page) -> str:
+    """The core platform, and the only one with a same-day sample."""
+    video = page.held.get("douyin", [])
+    notes = page.held.get("douyin_note", [])
+    both = video + notes
+    whole = kaplan_meier(both)
+    curves = [
+        ("视频 video", 1, kaplan_meier(video)),
+        ("图文 note", 2, kaplan_meier(notes)),
+    ]
+
+    median = whole.quantile(0.5)
+    quarter = whole.quantile(0.25)
+    tiles = "".join([
+        _rate_tile("视频 video", video),
+        _rate_tile("图文 note", notes),
+        tile("Median time to removal",
+             _span(median) if median else "not reached",
+             f"视频 + 图文; a quarter gone by {_span(quarter)}" if quarter
+             else "视频 + 图文; a quarter has not gone either"),
+        tile("Checking bracket", _span(whole.resolution),
+             "no removal time is sharper than this"),
+    ])
+
+    rows = []
+    for days in (1, 3, 7, 14, 30):
+        age = timedelta(days=days)
+        row = [f"{days}d"]
+        for name, _, curve in curves:
+            survival = curve.survival_at(age)
+            at_risk = _at_risk(curve, age)
+            row.append("—" if survival is None
+                       else f"{(1 - survival) * 100:.0f}%")
+            row.append("—" if survival is None else str(at_risk))
+        rows.append(row)
+
     return (
-        '<section><h2>How old each video was when watching began</h2>'
-        '<p class="note">A rate is only comparable <em>within</em> a column. '
-        'A search that returns month-old videos returns the ones that lasted '
-        'a month, and that selection is what this grid makes visible: where a '
-        'platform has no row in the youngest column, it has nothing to say '
-        'about early removals.</p>'
-        f'<div class="scale">{legend}</div>'
-        f'{heatmap(rows, bands, ident="age")}'
-        + table(["Platform", "Collection age", "Tracked", "Gone", "Rate"],
-                flat, "rate by collection age")
+        '<section class="core"><h2>抖音 Douyin — removal by age of post</h2>'
+        f'<div class="tiles">{tiles}</div>'
+        '<div class="scale">'
+        '<span class="key"><i class="rule c1"></i>视频 video</span>'
+        '<span class="key"><i class="rule c2"></i>图文 note</span></div>'
+        f'{survival_chart(curves, ident="km")}'
+        '<p class="note">Kaplan–Meier, counting each post only from the day '
+        'this study first saw it. Each removal is placed in the middle of the '
+        'bracket that contains it.</p>'
+        + table(["Age", "视频 removed", "视频 watched", "图文 removed",
+                 "图文 watched"], rows, "share removed by age")
         + "</section>"
     )
+
+
+def _at_risk(curve: Curve, age: timedelta) -> int:
+    held = 0
+    for step in curve.steps:
+        if step.age > age:
+            break
+        held = step.at_risk
+    return held
 
 
 def _daily(session: Session, page: Page) -> str:
+    """New removals per day, Douyin only -- the other two are too thin."""
     panels, flat = [], []
-    for platform, items in page.held.items():
+    for platform in DOUYIN:
+        items = page.held.get(platform, [])
         series = daily_hazard(session, platform, items)
         if not series:
             continue
@@ -621,17 +494,46 @@ def _daily(session: Session, page: Page) -> str:
     if not panels:
         return ""
     return (
-        '<section><h2>New removals per day the study looked</h2>'
-        '<p class="note"><strong>A day nobody looked is a <code>//</code>, '
-        'never a zero.</strong> A zero is a claim — we looked and found '
-        'nothing — and on 2026-09-27 that claim would be false. The removals '
-        'of a missed day land on the next day that was observed, which is '
-        'also why a single tall column is a gap in the schedule before it is '
-        'an event on the platform. A flat tick on the baseline is a real '
-        'zero: observed, nothing gone.</p>'
+        '<section><h2>New removals, per day the study looked</h2>'
+        '<p class="note">A <code>//</code> is a day nobody looked; its '
+        'removals land on the next day that was. A tick on the baseline is a '
+        'real zero.</p>'
         f'{"".join(panels)}'
         + table(["Platform", "Day", "At risk", "Newly gone", "Of those at risk"],
                 flat, "new removals per observed day")
+        + "</section>"
+    )
+
+
+def _context(page: Page) -> str:
+    """TikTok and YouTube as context, deliberately not as a comparison.
+
+    They were kept out of the charts above on purpose. Both samples
+    are small and both were collected weeks after publication, so a
+    bar beside Douyin's would invite exactly the comparison the
+    sampling cannot support. A table states what they are and stops.
+    """
+    rows = []
+    for platform in CONTEXT:
+        items = page.held.get(platform, [])
+        if not items:
+            continue
+        s = summarise(items)
+        ages = by_collection_age(items)
+        oldest = ages[-1][0] if ages else "—"
+        rows.append([label_for(platform), str(s.tracked), str(s.gone),
+                     _pct1(s.rate), oldest])
+    if not rows:
+        return ""
+    return (
+        '<section class="aside"><h2>TikTok and YouTube, for context only</h2>'
+        '<p class="note">Not charted beside Douyin, and not comparable to it. '
+        'Both were found by searching phrases that return posts already weeks '
+        'old, so each sample is made of posts that had <em>already</em> '
+        'survived — the ones removed in week one were never there to be '
+        'collected.</p>'
+        + table(["Platform", "Tracked", "Gone", "Rate", "Typical age when found"],
+                rows, "context platforms")
         + "</section>"
     )
 
@@ -659,18 +561,46 @@ def _comebacks(page: Page) -> str:
     spells.sort(key=lambda s: s.gone)
     return (
         '<section><h2>Removed, then back</h2>'
-        '<p class="note">Each row spans the two checks that bracket a '
-        'reinstatement: the first that found the post gone, and the first '
-        'after it that found it back. The width is the checking cadence, so '
-        'the figure at the right is an upper bound on how long the post was '
-        'actually down, never a measurement of it. At this many events this '
-        'is a description, not a rate — and a post that came back is the best '
-        'interview in the study, because its author knows both that they were '
-        'removed and that they returned.</p>'
+        '<p class="note">From the check that found the post gone to the one '
+        'that found it back. The figure on the right is an upper bound on how '
+        'long it was down, not a measurement of it.</p>'
         f'{intervals(spells, ident="back")}'
         + table(["Platform", "Video", "Gone by", "Back by", "At most"],
                 flat, "removed then reinstated")
         + "</section>"
+    )
+
+
+def _method() -> str:
+    """Everything that used to sit between the reader and the charts."""
+    return (
+        '<details class="method"><summary>How to read this page</summary>'
+        "<p><strong>A removal is a bracket, not a time.</strong> Each post is "
+        "checked about once a day, so what the data knows is that it was up at "
+        "one check and gone at the next. The curve places each removal in the "
+        "middle of its bracket; the <em>checking bracket</em> tile says how "
+        "wide those brackets typically are, and nothing here is sharper than "
+        "that.</p>"
+        "<p><strong>Watching starts when the study found the post, not when "
+        "it was published.</strong> A removal before that was never "
+        "observable, so a post joins the curve at the age it was collected "
+        "rather than at zero. Without this, every sample of older posts would "
+        "look unkillable: it only contains posts that lasted long enough to "
+        "be found.</p>"
+        "<p><strong>A median needs half the sample removed.</strong> Below "
+        "that the median is not long, it is undefined, and the tile says "
+        "<em>not reached</em> rather than inventing a number. The quarter "
+        "point is reported instead when the curve has crossed it.</p>"
+        "<p><strong>A day the study did not run is a gap, never a zero.</strong> "
+        "A zero claims we looked and found nothing. On 2026-09-27 nobody "
+        "looked, so that day is a break in the axis and its removals surface "
+        "on the next day that was observed.</p>"
+        "<p><strong>Aggregates only.</strong> No captions, no account names, "
+        "and video ids cut to six digits. These are posts by identifiable "
+        "people on a sensitive topic. The per-post detail stays in the "
+        "key-gated dashboard and the local CSV.</p>"
+        "<p>Full method, and every caveat behind these figures, in "
+        "<code>docs/METHODOLOGY.md</code>.</p></details>"
     )
 
 
@@ -686,6 +616,7 @@ _CSS = """
   --axis: #c3c2b7;
   --border: rgba(11, 11, 11, 0.10);
   --series-1: #2a78d6;
+  --series-2: #eb6834;
   --s0: #86b6ef; --s1: #5598e7; --s2: #2a78d6; --s3: #1c5cab; --s4: #0d366b;
   --warn: #fab219;
 }
@@ -701,6 +632,7 @@ _CSS = """
     --axis: #383835;
     --border: rgba(255, 255, 255, 0.10);
     --series-1: #3987e5;
+    --series-2: #d95926;
     --s0: #184f95; --s1: #256abf; --s2: #3987e5; --s3: #86b6ef; --s4: #cde2fb;
   }
 }
@@ -714,6 +646,7 @@ _CSS = """
   --axis: #383835;
   --border: rgba(255, 255, 255, 0.10);
   --series-1: #3987e5;
+  --series-2: #d95926;
   --s0: #184f95; --s1: #256abf; --s2: #3987e5; --s3: #86b6ef; --s4: #cde2fb;
 }
 * { box-sizing: border-box; }
@@ -737,7 +670,12 @@ section {
   padding: 22px;
   margin: 18px 0;
 }
-.lead { text-align: left; }
+.core { border-color: var(--axis); }
+.method { max-width: 900px; margin: 18px auto 0; color: var(--text-secondary);
+          font-size: 13px; }
+.method summary { cursor: pointer; padding: 6px 0; }
+.method p { max-width: 76ch; }
+.aside h2 { font-size: 15px; }
 .hero-label {
   margin: 0; color: var(--text-secondary); font-size: 13px;
   text-transform: uppercase; letter-spacing: 0.06em;
@@ -753,7 +691,10 @@ section {
   border-radius: 10px; padding: 14px 16px;
 }
 .tile-label { margin: 0; font-size: 13px; color: var(--text-secondary); }
-.tile-value { margin: 2px 0 4px; font-size: 30px; font-weight: 600; line-height: 1; }
+.tile-value { margin: 2px 0 4px; font-size: 30px; font-weight: 600; line-height: 1.1; }
+/* "not reached" is an answer, not a number: at 30px it shouts over
+   the rates beside it, which are the figures the row is for. */
+.tile-value.words { font-size: 19px; }
 .tile-note { margin: 0; font-size: 12px; color: var(--muted); }
 .note { color: var(--text-secondary); font-size: 13.5px; margin: 0 0 14px; max-width: 72ch; }
 .note.warn { border-left: 2px solid var(--warn); padding-left: 12px; }
@@ -772,9 +713,18 @@ figcaption {
 .grid { stroke: var(--grid); stroke-width: 1; }
 .axis { stroke: var(--axis); stroke-width: 1; }
 .bar { fill: var(--series-1); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round;
+        stroke-linecap: round; }
+.line.c1, .dot.c1 { stroke: var(--series-1); }
+.dot.c1 { fill: var(--series-1); }
+.line.c2, .dot.c2 { stroke: var(--series-2); }
+.dot.c2 { fill: var(--series-2); }
+.dot { stroke: var(--surface-1); stroke-width: 2; }
+.end-label { font-size: 12px; font-weight: 600; fill: var(--text-secondary); }
+.mark:hover .dot, .mark:focus .dot { r: 5; }
 .zero { stroke: var(--axis); stroke-width: 2; }
 .spell { stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; }
-.dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+.spell + .dot, circle.dot:not(.c1):not(.c2) { fill: var(--series-1); }
 .hit { fill: transparent; }
 .mark { cursor: default; }
 .mark:hover .bar, .mark:focus .bar { fill-opacity: 0.82; }
@@ -814,6 +764,9 @@ text { font: 12px system-ui, -apple-system, sans-serif; }
 .key { font-size: 11.5px; color: var(--text-secondary); display: flex;
        align-items: center; gap: 5px; }
 .sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.rule { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+.rule.c1 { background: var(--series-1); }
+.rule.c2 { background: var(--series-2); }
 .sw.s0 { background: var(--s0); } .sw.s1 { background: var(--s1); }
 .sw.s2 { background: var(--s2); } .sw.s3 { background: var(--s3); }
 .sw.s4 { background: var(--s4); }
@@ -905,46 +858,21 @@ def build(session: Session, *, reveal: bool = False,
     stamp = page.generated.strftime("%Y-%m-%d %H:%M") if page.generated else "—"
     body = "".join([
         "<header><h1>Takedown observatory</h1>",
-        '<p class="sub">Chinese-language WLW posts on Douyin, TikTok and '
-        "YouTube, watched daily for removal. A snapshot, not a live view: "
-        f"everything below was read out of the collection at {_e(stamp)} "
-        "and will not change.</p></header>",
-        _lead(page),
-        _tiles(page),
-        _horizons(page),
-        _raw(page),
-        _ages(page),
+        '<p class="sub">Chinese-language WLW posts, watched daily for '
+        f"removal. Read out of the collection at {_e(stamp)}.</p></header>",
+        _douyin(session, page),
         _daily(session, page),
         _comebacks(page),
+        _context(page),
+        _method(),
     ])
-    footer = (
-        "<footer>"
-        "<p><strong>How to read a removal here.</strong> The study checks each "
-        "post about once a day. A removal is therefore known as a bracket — "
-        "alive at one check, gone at the next — and every figure on this page "
-        "carries that bracket rather than hiding it in a timestamp. There is "
-        "no median time to removal anywhere on the page: a median needs half "
-        "the sample removed, and below that it is undefined rather than "
-        "long.</p>"
-        "<p><strong>What is missing is on purpose.</strong> No captions, no "
-        "account names, and video ids are shown as their last four digits. "
-        "These are posts by identifiable people on a sensitive topic; the "
-        "page is aggregate so that it can be shared without carrying them "
-        "along. The per-post detail stays in the admin dashboard and the "
-        "local CSV export.</p>"
-        f"<p>Generated by <code>app.report</code> from the collection "
-        f"database at {_e(stamp)} "
-        f"({_e(clock_today().isoformat())} local). Methods, and every "
-        "caveat behind these charts, in <code>docs/METHODOLOGY.md</code>.</p>"
-        "</footer>"
-    )
     return (
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Takedown observatory</title>"
         f"<style>{_CSS}</style></head><body>"
-        f"<main>{body}</main>{footer}"
+        f"<main>{body}</main>"
         '<div id="tip" role="status" aria-live="polite"></div>'
         f"<script>{_JS}</script>"
         "</body></html>\n"

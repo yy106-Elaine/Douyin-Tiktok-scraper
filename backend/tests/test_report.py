@@ -93,9 +93,10 @@ def test_every_chart_has_a_table_under_it(db: None) -> None:
         _collection(session)
         page = build(session, generated=datetime(2026, 10, 1, 2, 30))
 
-    assert page.count("<svg") >= 4
-    assert page.count("<table>") >= 4
-    assert page.count("<svg") <= page.count("<table>") * 4
+    assert page.count("<svg") >= 2
+    # One per chart-bearing section, plus the context platforms' own.
+    assert page.count("<table>") >= 3
+    assert "Table —" in page
 
 
 def test_the_stamp_is_the_researchers_clock(db: None) -> None:
@@ -145,4 +146,5 @@ def test_the_page_renders_when_nothing_has_been_collected(db: None) -> None:
         page = build(session, generated=datetime(2026, 10, 1, 2, 30))
 
     assert page.startswith("<!doctype html>")
-    assert "Removals observed" in page
+    assert "Takedown observatory" in page
+    assert "not reached" in page

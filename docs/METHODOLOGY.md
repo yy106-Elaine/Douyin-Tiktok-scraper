@@ -1195,8 +1195,32 @@ dashboard shows them merged under Douyin, because the question of
 whether the two formats are moderated differently is exactly the one
 the merge erases.
 
-`app/report.py` draws the same figures as one self-contained HTML
-file. Two properties of that file are deliberate. It is a **dated
+The page `app/report.py` draws is **built around Douyin**, and the
+other two platforms appear on it only as a table. That is a
+methodological choice, not a layout one: TikTok and YouTube were found
+by searching phrases that return posts already weeks old, so a bar of
+theirs beside Douyin's invites exactly the comparison the sampling
+cannot support. Keeping them off the charts is cheaper than captioning
+the mistake under every one.
+
+Douyin's own figure is a **Kaplan-Meier estimate with delayed entry**
+(`survival.kaplan_meier`). Each post enters the risk set at the age it
+was collected rather than at publication, because a removal before the
+first sighting was never observable; without that correction any
+sample of older posts reads as unkillable, since it contains only
+posts that lasted long enough to be found. Each removal is placed at
+the midpoint of its bracket -- dating it to the check that found it
+would shift the whole curve later by about half a checking cycle --
+and the median bracket width is printed beside the curve as its
+resolution. The curve is drawn as a step function and stops at the end
+of follow-up: flat to the last observation, and nothing beyond it.
+
+The median is read off that curve, and reads `not reached` whenever the
+curve has not crossed a half, which at roughly a fifth removed is where
+it still stands. The quarter point is reported instead once it has been
+crossed.
+
+`app/report.py` writes all of this as one self-contained HTML file. Two properties of that file are deliberate. It is a **dated
 snapshot**, not a live view: a finding has to stay quotable, and a
 page whose numbers change between the day it is read and the day it is
 cited is not evidence of anything, so every run stamps itself and two

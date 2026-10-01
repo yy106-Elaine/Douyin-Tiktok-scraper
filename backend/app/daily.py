@@ -342,6 +342,12 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--profile", type=Path, default=None)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="rewrite this HTML page from the collection when the pass ends",
+    )
+    parser.add_argument(
         "--pause", type=float, default=0.0,
         help="extra seconds between videos; the browser already paces itself",
     )
@@ -513,6 +519,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             + (f"; {back} came back today" if back else "")
             + f"\nfiles in {directory}\nmanifest {manifest}"
         )
+
+        if args.report:
+            # The page is a snapshot, so it is rewritten at the end of
+            # a pass rather than served live: what it shows is exactly
+            # what this run left behind.
+            from .report import build
+
+            args.report.write_text(build(session), encoding="utf-8")
+            print(f"page {args.report}")
 
 
 if __name__ == "__main__":  # pragma: no cover
