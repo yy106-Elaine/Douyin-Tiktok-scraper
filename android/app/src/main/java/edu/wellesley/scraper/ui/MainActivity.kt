@@ -61,6 +61,11 @@ class MainActivity : AppCompatActivity() {
         binding.gridDryRun.setOnClickListener {
             startAssisted(AutoCapture.Mode.GRID_DRY_RUN, MINUTES, VIDEOS)
         }
+        // The first live run on a new surface is three posts, not
+        // three hundred: whatever it does wrong, it does three times.
+        binding.gridTry.setOnClickListener {
+            startAssisted(AutoCapture.Mode.GRID, GRID_TRY_MINUTES, GRID_TRY_POSTS)
+        }
         binding.gridStart.setOnClickListener {
             startAssisted(AutoCapture.Mode.GRID, MINUTES, VIDEOS)
         }
@@ -378,6 +383,13 @@ class MainActivity : AppCompatActivity() {
          */
         const val TRY_MINUTES = 1
         const val TRY_VIDEOS = 30
+
+        // A post on the grid costs a page load in and a BACK out, so
+        // the minute that bounds a feed try would stop a grid try
+        // mid-post and leave it wherever it was. The post count is
+        // what bounds this one; the clock is only the backstop.
+        const val GRID_TRY_MINUTES = 3
+        const val GRID_TRY_POSTS = 3
 
         /** Only redraws four views; a second is unnoticeable and enough. */
         const val STATE_TICK_MILLIS = 1_000L
