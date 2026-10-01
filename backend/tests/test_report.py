@@ -182,27 +182,55 @@ def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
     assert '<nav class="tab-strip">' not in page
 
 
-def test_the_counted_curve_stops_where_most_fates_are_unknown() -> None:
+def test_the_counted_curve_thins_rather_than_stopping() -> None:
     """Counting is honest at every age but not unbiased at every age.
 
     A post removed on day two is known at every later age; a surviving
     post has to be watched that long to count at all. So the known set
-    fills up with removals and the share climbs to 100% -- on two
-    weeks of collection it gets there by day fourteen, because the
-    only posts whose fate at day fourteen is known are the ones taken
-    down. The chart has to stop before that, or it reports a
-    collection schedule as a platform behaviour.
+    fills up with removals and the share drifts towards 100%. Dropping
+    those ages outright cut 图文, collected in one recent burst, back
+    to a single day -- a format watched for a week reading as if it had
+    been watched for a day. So the thin ages are drawn dashed and
+    marked thin instead, and only a denominator too small to mean
+    anything leaves the chart.
     """
     from app.report import Counted
 
     line = Counted(name="video", slot=1, points=[
-        (1.0, 5, 100, 10),    # most fates known -- drawn
-        (7.0, 20, 60, 40),    # still more known than not -- drawn
-        (14.0, 19, 19, 80),   # only the removed ones are known -- dropped
+        (1.0, 5, 100, 10),    # most fates known -- solid
+        (7.0, 20, 60, 40),    # still more known than not -- solid
+        (14.0, 19, 19, 80),   # only the removed ones are known -- dashed
+        (30.0, 2, 2, 90),     # two posts cannot carry a point -- gone
     ])
 
-    assert [age for age, _, _, _ in line.shown] == [1.0, 7.0]
-    assert line.reach == 7.0
-    # The point still exists and can still be read; it is not drawn.
-    assert line.share(14.0) == 1.0
-    assert line.answerable(14.0) == 19
+    assert [age for age, _, _, _ in line.shown] == [1.0, 7.0, 14.0]
+    assert [line.firm(age) for age, _, _, _ in line.shown] == [
+        True, True, False]
+    assert line.reach == 14.0
+    # The dropped point still exists and can still be read.
+    assert line.share(30.0) == 1.0
+    assert line.answerable(30.0) == 2
+
+
+def test_a_thin_stretch_is_drawn_dashed_and_hollow() -> None:
+    """The reader has to be able to see where the support runs out.
+
+    Colour alone would not carry it and a footnote would not be read
+    at the point of looking, so the line itself changes: dashed from
+    the last well-supported age onwards, with hollow dots.
+    """
+    from app.report import Counted, removal_chart
+
+    svg = removal_chart([Counted(name="图文 (note)", slot=2, points=[
+        (1.0, 10, 90, 20),
+        (3.0, 14, 50, 45),
+        (7.0, 18, 30, 70),
+        (10.0, 20, 21, 95),
+    ])], ident="t")
+
+    assert 'class="line c2"' in svg       # the firm stretch
+    assert 'class="line thin c2"' in svg  # and the thin one
+    assert "hollow" in svg
+    # Nothing was dropped: every age still prints its denominator.
+    for count in ("90", "50", "30", "21"):
+        assert f">{count}</text>" in svg

@@ -436,18 +436,22 @@ class Counted:
     a survivor of it. `unknown` is the rest -- still up, but not
     watched long enough to answer.
 
-    **Only ages where `answerable >= unknown` are drawn**, and that
-    cut is not cosmetic. Counting this way is honest at every age but
-    not unbiased at every age: a post removed on day two is known at
-    every later age, while a surviving post has to be watched that
-    long to count at all. So as the age grows the known set fills up
-    with removals and the share climbs towards 100% -- on this corpus
-    it reaches it by day fourteen, because the only posts whose fate
-    at day fourteen is known are the ones that were taken down. That
-    is an artefact of two weeks of collection, not a property of
-    Douyin, and it is why the chart stops where more than half the
-    eligible posts have an answer.
+    Counting this way is honest at every age but not unbiased at every
+    age: a post removed on day two is known at every later age, while
+    a surviving post has to be watched that long to count at all. So
+    as the age grows the known set fills up with removals and the
+    share climbs towards 100%. That is an artefact of how long
+    collection has been running, not a property of the platform.
+
+    So a point is drawn whenever its denominator reaches `FLOOR`
+    posts, and `firm` says whether most of the eligible posts have an
+    answer yet (`answerable >= unknown`). The chart draws the firm
+    stretch solid and the rest dashed: dropping the thin points
+    altogether cut a format collected in one recent burst back to a
+    single day, which said less than showing it thin.
     """
+
+    FLOOR = 8
 
     name: str
     slot: int
@@ -455,8 +459,15 @@ class Counted:
 
     @property
     def shown(self) -> list[tuple[float, int, int, int]]:
-        """The points solid enough to draw: most fates known."""
-        return [p for p in self.points if p[2] and p[2] >= p[3]]
+        """The points with a denominator worth printing."""
+        return [p for p in self.points if p[2] >= self.FLOOR]
+
+    def firm(self, age: float) -> bool:
+        """Do most of the eligible posts have an answer at this age?"""
+        for at, _, answerable, unknown in self.points:
+            if at == age:
+                return bool(answerable) and answerable >= unknown
+        return False
 
     @property
     def reach(self) -> float:
@@ -557,21 +568,40 @@ def removal_chart(lines: list[Counted], *, ident: str,
                  if (share := line.share(age)) is not None]
         if not drawn:
             continue
-        path = " ".join(
-            f"{'M' if index == 0 else 'L'}{x_of(age):.1f} {y_of(share):.1f}"
-            for index, (age, share) in enumerate(drawn))
-        out.append(f'<path class="line c{line.slot}" d="{path}" />')
+        # The leading run where most eligible posts have an answer is
+        # drawn solid; the thin tail carries on dashed from the last
+        # firm point, so the line is continuous but says where it
+        # stops being well supported.
+        firm = 0
+        while firm < len(drawn) and line.firm(drawn[firm][0]):
+            firm += 1
+
+        def trace(part: list[tuple[float, float]], klass: str) -> None:
+            if len(part) < 2:
+                return
+            path = " ".join(
+                f"{'M' if index == 0 else 'L'}"
+                f"{x_of(age):.1f} {y_of(share):.1f}"
+                for index, (age, share) in enumerate(part))
+            out.append(f'<path class="{klass} c{line.slot}" d="{path}" />')
+
+        trace(drawn[:firm], "line")
+        trace(drawn[max(firm - 1, 0):], "line thin")
         for age, share in drawn:
             removed = next(r for at, r, _, _ in line.points if at == age)
             answerable = line.answerable(age)
+            solid = line.firm(age)
             hover = (f"{line.name}\nby day {age:g}: {removed} of "
                      f"{answerable} removed ({share * 100:.0f}%)\n"
-                     f"counted, not estimated")
+                     + ("counted, not estimated" if solid else
+                        "counted, but most posts this old are not "
+                        "watched long enough yet"))
             out.append(
                 f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
                 f'<circle class="hit" cx="{x_of(age):.1f}" '
                 f'cy="{y_of(share):.1f}" r="12" />'
-                f'<circle class="dot c{line.slot}" cx="{x_of(age):.1f}" '
+                f'<circle class="dot{"" if solid else " hollow"} '
+                f'c{line.slot}" cx="{x_of(age):.1f}" '
                 f'cy="{y_of(share):.1f}" r="3.5" /></g>')
         last_age, last_share = drawn[-1]
         y = y_of(last_share) + 4
@@ -638,12 +668,15 @@ def _douyin(session: Session, page: Page) -> str:
     # The table is the chart's own numbers, with the denominator
     # beside each one rather than under the axis.
     rows = []
-    for days in (1, 3, 7, 14, 30):
+    for days in ages:
         row = [f"{days}d"]
         for line in curves:
             share = line.share(days)
             answerable = line.answerable(days)
-            row.append("—" if share is None else f"{share * 100:.0f}%")
+            # A dagger where the chart goes dashed, so the table twin
+            # carries the same warning the line does.
+            thin = "" if line.firm(days) else " †"
+            row.append("—" if share is None else f"{share * 100:.0f}%{thin}")
             row.append("—" if share is None else str(answerable))
         rows.append(row)
 
@@ -652,7 +685,9 @@ def _douyin(session: Session, page: Page) -> str:
         f'<div class="tiles">{tiles}</div>'
         '<div class="scale">'
         '<span class="key"><i class="rule c1"></i>视频 (video)</span>'
-        '<span class="key"><i class="rule c2"></i>图文 (note)</span></div>'
+        '<span class="key"><i class="rule c2"></i>图文 (note)</span>'
+        '<span class="key"><i class="rule dash"></i>'
+        '虚线 (dashed) = 多数帖子还没到这个年龄</span></div>'
         f'{removal_chart(curves, ident="km")}'
         '<p class="note"><strong>Counted, not estimated.</strong> Each '
         'point is "of the posts this question can be asked of, how many were '
@@ -660,13 +695,20 @@ def _douyin(session: Session, page: Page) -> str:
         'that was. A post collected two days ago cannot say anything about '
         'what happens by day seven, so it is left out of that denominator '
         'rather than counted as having survived it. Where the number under a '
-        'point is small, the point is a handful of posts. The chart stops '
-        'where more than half the eligible posts no longer have an answer: '
-        'past there, the only posts whose fate is known are the ones that '
-        'were taken down, and the line climbs to 100% for that reason '
-        'rather than any other.</p>'
+        'point is small, the point is a handful of posts. '
+        '<strong>Dashed means thin:</strong> past that point most posts that '
+        'old are still up but have not been watched long enough to answer, '
+        'so the posts that do answer are mostly the ones already taken down '
+        'and the line drifts up for that reason rather than any other. Read '
+        'the solid stretch as the measurement and the dashed stretch as the '
+        'most that can be said so far. Each line ends where fewer than '
+        f'{Counted.FLOOR} posts can answer at all.</p>'
         + table(["Age", "视频 removed", "视频 watched", "图文 removed",
                  "图文 watched"], rows, "share removed by age")
+        + '<p class="note">† the dashed part of the chart: fewer than half '
+          'the eligible posts have reached this age yet, so the share is the '
+          'most that can be said so far rather than a measurement.</p>'
+
         + "</section>"
     )
 
@@ -1102,6 +1144,8 @@ figcaption {
 .line.c2, .dot.c2 { stroke: var(--series-2); }
 .dot.c2 { fill: var(--series-2); }
 .dot { stroke: var(--surface-1); stroke-width: 2; }
+.line.thin { stroke-dasharray: 5 4; }
+.dot.hollow { fill: var(--surface-1); }
 .pie .slice { stroke: none; }
 .slice.c1 { fill: var(--cat-1); } .slice.c2 { fill: var(--cat-2); }
 .slice.c3 { fill: var(--cat-3); } .slice.c4 { fill: var(--cat-4); }
@@ -1158,6 +1202,8 @@ text { font: 12px system-ui, -apple-system, sans-serif; }
 .rule { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
 .rule.c1 { background: var(--series-1); }
 .rule.c2 { background: var(--series-2); }
+.rule.dash { background: none; height: 0;
+             border-top: 2px dashed var(--text-secondary); }
 .sw.s0 { background: var(--s0); } .sw.s1 { background: var(--s1); }
 .sw.s2 { background: var(--s2); } .sw.s3 { background: var(--s3); }
 .sw.s4 { background: var(--s4); }

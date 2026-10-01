@@ -56,11 +56,11 @@ from .survival import (
 
 #: The questions the horizon table asks. Short ones first: removals
 #: cluster early, and a day is the resolution the daily pass supports.
-HORIZONS: tuple[timedelta, ...] = (
-    timedelta(days=1),
-    timedelta(days=3),
-    timedelta(days=7),
-)
+#: The same ages the dashboard chart plots, so a line on the chart can
+#: be checked against the counts here -- including the ones the chart
+#: draws thin, where 'too early' outweighs what has been answered.
+HORIZONS: tuple[timedelta, ...] = tuple(
+    timedelta(days=days) for days in (1, 2, 3, 5, 7, 10, 14, 21, 30))
 
 PLATFORMS: tuple[str, ...] = ("douyin", "douyin_note", "tiktok", "youtube")
 
@@ -518,7 +518,10 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
               "  watching them that early, so for them the question has no answer.\n"
               "  'too early' is still alive but not yet old enough to say.\n"
               "  This is the number that compares across platforms; the raw rate\n"
-              "  above is not.")
+              "  above is not. 'removed + survived' is the denominator the\n"
+              "  dashboard prints under each point; where 'too early' is larger\n"
+              "  than it, the chart draws that age dashed, because by then the\n"
+              "  posts that can answer are mostly the ones already taken down.")
 
         print("\n=== New removals per day observed ===\n")
         for platform, items in held.items():
