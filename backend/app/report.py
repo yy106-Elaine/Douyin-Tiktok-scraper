@@ -427,8 +427,12 @@ def _douyin(session: Session, page: Page) -> str:
              _span(median) if median else "not reached",
              f"视频 + 图文; a quarter gone by {_span(quarter)}" if quarter
              else "视频 + 图文; a quarter has not gone either"),
-        tile("Checking bracket", _span(whole.resolution),
-             "no removal time is sharper than this"),
+        # Named for what it does to the reader's reading, not for
+        # what it is in the data: "checking bracket" is this study's
+        # own vocabulary and told the first reader nothing.
+        tile("Removal times known to within", _span(whole.resolution),
+             "the gap between the check that saw it up and the one "
+             "that saw it gone"),
     ])
 
     rows = []
