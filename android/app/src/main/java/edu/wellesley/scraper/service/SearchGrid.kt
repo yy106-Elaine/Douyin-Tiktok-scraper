@@ -74,15 +74,79 @@ object SearchGrid {
     )
 
     /**
-     * Whether the results grid is the screen in front.
-     *
-     * The same test [ShareSheet.isSearchResults] makes, and
-     * deliberately the same one: there the grid means a video run has
-     * wandered off its surface and must stop, here it means the run is
-     * home. One definition, two readings.
+     * The results page's own tab strip. One of these is pinned at the
+     * top of the grid and none of them is on a post.
      */
-    fun isGrid(roots: List<AccessibilityNodeInfo>): Boolean =
-        ShareSheet.isSearchResults(roots)
+    private val RESULT_TABS = listOf(
+        Regex("""^(综合|綜合)$"""),
+        Regex("""^(视频|視頻)$"""),
+        Regex("""^(用户|用戶)$"""),
+        Regex("""^(图文|圖文)$"""),
+        Regex("""^(筛选|篩選)"""),
+        Regex("""^(清空|最多点赞|最新发布|综合排序)$"""),
+    )
+
+    /**
+     * Whether the results grid is the screen in front -- on positive
+     * evidence, not on the absence of anything.
+     *
+     * This asked [ShareSheet.isSearchResults], which looks for the
+     * search box. That is the right question for a feed run, where
+     * the search box means "you have wandered off the feed, stop".
+     * It is the wrong one here, and the difference did damage: a post
+     * opened out of the results keeps the search box in its window
+     * tree, so the post read as the grid. A run that had failed to
+     * find the share control went back, believed it was home, and
+     * tapped the largest labelled thing on the post -- which on a 图文
+     * is the like area. It liked somebody's post, which is the one
+     * class of action this app must never take.
+     *
+     * So: the page's own tab strip has to be there, AND at least two
+     * cards, which a post page does not have. Being wrong the other
+     * way costs a stopped run and a line in the log.
+     */
+    fun isGrid(
+        roots: List<AccessibilityNodeInfo>,
+        screenWidth: Int,
+        screenHeight: Int,
+    ): Boolean {
+        if (!ShareSheet.isSearchResults(roots)) return false
+        if (!hasTabStrip(roots)) return false
+        return isGridEvidence(
+            searchBox = true,
+            tabStrip = true,
+            cards = tiles(roots, screenWidth, screenHeight).size,
+        )
+    }
+
+    /**
+     * The rule itself, apart from the screen, so it can be tested.
+     *
+     * All three, every time. Each one alone is true of a post opened
+     * out of the results: it carries the search box, it can carry a
+     * strip, and it has large labelled regions. Only the grid has two
+     * cards side by side.
+     */
+    fun isGridEvidence(searchBox: Boolean, tabStrip: Boolean, cards: Int): Boolean =
+        searchBox && tabStrip && cards >= MIN_CARDS
+
+    /** Whether the results page's tab strip is on screen. */
+    fun hasTabStrip(roots: List<AccessibilityNodeInfo>): Boolean {
+        for (root in roots) {
+            var seen = false
+            walk(root) { node ->
+                val text = labelOf(node)?.trim()
+                if (text != null && RESULT_TABS.any { it.containsMatchIn(text) }) {
+                    seen = true
+                    false
+                } else {
+                    true
+                }
+            }
+            if (seen) return true
+        }
+        return false
+    }
 
     /**
      * The cells that can be opened, in reading order.
@@ -291,6 +355,13 @@ object SearchGrid {
      */
     private const val MIN_TILE_WIDTH = 0.22
     private const val MIN_TILE_HEIGHT = 0.12
+
+    /**
+     * Cards that have to be on screen before this is a grid. Two,
+     * because a post page can offer one large labelled region -- the
+     * image, the caption -- and never offers two side by side.
+     */
+    private const val MIN_CARDS = 2
 
     /** Cells within this many pixels of each other are one row. */
     private const val ROW_TOLERANCE = 80

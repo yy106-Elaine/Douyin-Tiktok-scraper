@@ -70,6 +70,25 @@ class SearchGridTest {
     }
 
     @Test
+    fun `a search box alone does not make a page the grid`() {
+        // This is the bug that liked somebody's post. A post opened
+        // out of the results keeps the search box in its window tree,
+        // so a run that had failed to find the share control went
+        // back, read the search box, believed it was home, and tapped
+        // the largest labelled region on the post -- the like area.
+        assertFalse(SearchGrid.isGridEvidence(
+            searchBox = true, tabStrip = false, cards = 1))
+        assertFalse(SearchGrid.isGridEvidence(
+            searchBox = true, tabStrip = true, cards = 1))
+        assertFalse(SearchGrid.isGridEvidence(
+            searchBox = false, tabStrip = true, cards = 4))
+
+        // The results page: all three at once.
+        assertTrue(SearchGrid.isGridEvidence(
+            searchBox = true, tabStrip = true, cards = 4))
+    }
+
+    @Test
     fun `size is the rule that does not need to have seen the label`() {
         // 1080x2400 phone. A card is a column of the grid; the like
         // button and the timestamp under it are not, whatever they

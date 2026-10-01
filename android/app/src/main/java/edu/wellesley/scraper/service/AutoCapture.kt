@@ -202,12 +202,12 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun inspectGrid() {
         if (!running) return
 
-        val roots = roots()
-        if (!SearchGrid.isGrid(roots)) {
+        if (!onTheGrid()) {
             CaptureStats.onAutoFailure(
-                "this is not the search results page -- open a search " +
-                    "first; below is what was on screen instead",
-                SearchGrid.describe(roots),
+                "this is not the search results page (the tab strip and " +
+                    "two cards have to be on it) -- below is what was on " +
+                    "screen instead",
+                SearchGrid.describe(activeRoots()),
             )
             stop("dry run finished, not on the grid")
             return
@@ -220,7 +220,7 @@ class AutoCapture(private val service: AccessibilityService) {
         val refused = mutableListOf<String>()
         val metrics = service.resources.displayMetrics
         val tiles = SearchGrid.tiles(
-            roots, metrics.widthPixels, metrics.heightPixels,
+            activeRoots(), metrics.widthPixels, metrics.heightPixels,
         ) { refused.add(it) }
         CaptureStats.onAutoStep("grid: ${tiles.size} cell(s) readable")
         tiles.take(DRY_TILES).forEach {
@@ -250,13 +250,16 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun openTile() {
         if (!keepGoing()) return
 
-        val roots = roots()
-        if (!SearchGrid.isGrid(roots)) {
+        if (!onTheGrid()) {
             backToGrid(0)
             return
         }
 
-        val tiles = gridTiles(roots)
+        // The window on top, not every window the app has open. The
+        // results page stays listed behind an opened post, so cells
+        // read off `roots()` can belong to a page nobody is looking
+        // at -- and a tap then lands on whatever is in front of it.
+        val tiles = gridTiles(activeRoots())
         val index = SearchGrid.pick(tiles.map { it.label }, opened)
         if (index == null) {
             // Everything on screen has been done. Scrolling is the
@@ -286,6 +289,21 @@ class AutoCapture(private val service: AccessibilityService) {
         handler.postDelayed({ waitForCaption(0) }, POST_OPEN_MILLIS)
     }
 
+    /**
+     * The results page, on its own evidence; see [SearchGrid.isGrid].
+     *
+     * Asked of the window on top rather than of every window the app
+     * has open. A post opened out of the results keeps the results
+     * page listed behind it, and answering this off that background
+     * window is how a run came to tap a post believing it was a grid.
+     */
+    private fun onTheGrid(): Boolean {
+        val metrics = service.resources.displayMetrics
+        return SearchGrid.isGrid(
+            activeRoots(), metrics.widthPixels, metrics.heightPixels,
+        )
+    }
+
     private fun gridTiles(
         roots: List<AccessibilityNodeInfo>,
     ): List<SearchGrid.Tile> {
@@ -307,7 +325,7 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun backToGrid(attempt: Int) {
         if (!keepGoing()) return
 
-        if (SearchGrid.isGrid(roots())) {
+        if (onTheGrid()) {
             handler.postDelayed(::openTile, SETTLE_MILLIS)
             return
         }
@@ -363,7 +381,7 @@ class AutoCapture(private val service: AccessibilityService) {
         // On a grid run the results page is home, not a wrong turn:
         // the post was closed earlier than expected, so take the next
         // cell rather than stopping.
-        if (onGrid && SearchGrid.isGrid(roots())) {
+        if (onGrid && onTheGrid()) {
             CaptureStats.onAutoStep("back on the grid already")
             openTile()
             return
