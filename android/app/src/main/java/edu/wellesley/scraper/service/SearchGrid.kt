@@ -173,6 +173,49 @@ object SearchGrid {
         // labels the longest wins, which is the title -- an author
         // name is the same on every post they have.
         val byCard = LinkedHashMap<String, Triple<Int, Int, Tile>>()
+        for (root in roots) {
+            walk(root) { node ->
+                val raw = labelOf(node) ?: return@walk true
+                val text = fingerprint(raw)
+                if (text.isEmpty()) return@walk true
+                if (!isPostLabel(text)) {
+                    onReject?.invoke("not a post: $text")
+                    return@walk true
+                }
+                val target = clickableSelfOrAncestor(node) ?: run {
+                    onReject?.invoke("nothing tappable around: $text")
+                    null
+                } ?: return@walk true
+                target.getBoundsInScreen(bounds)
+                val belowChrome = bounds.top > screenHeight * TOP_BAND
+                val onScreen = bounds.bottom <= screenHeight && bounds.top >= 0
+                if (!belowChrome || !onScreen) {
+                    onReject?.invoke("off the grid area: $text")
+                    return@walk true
+                }
+                if (!isCardSized(
+                        bounds.width(), bounds.height(), screenWidth, screenHeight,
+                    )
+                ) {
+                    onReject?.invoke(
+                        "too small (${bounds.width()}x${bounds.height()} " +
+                            "of ${screenWidth}x$screenHeight): $text",
+                    )
+                    return@walk true
+                }
+                val card = "${bounds.left},${bounds.top}," +
+                    "${bounds.right},${bounds.bottom}"
+                val already = byCard[card]
+                if (already == null || text.length > already.third.label.length) {
+                    byCard[card] = Triple(
+                        bounds.top,
+                        bounds.left,
+                        Tile(target, text, bounds.width(), bounds.height()),
+                    )
+                }
+                true
+            }
+        }
         return byCard.values
             .sortedWith(compareBy({ it.first / ROW_TOLERANCE }, { it.second }))
             .map { it.third }
