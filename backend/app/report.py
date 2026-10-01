@@ -653,17 +653,30 @@ def _content(session: Session, page: Page) -> str:
             marks.setdefault(kind, set()).add(video_id)
     renamed = len({v for ids in marks.values() for v in ids})
 
-    untagged = sum(
-        1 for _, _, text in with_text if labels.wlw_tags(text) == ["none"]
-    )
+    # How many people this corpus is, rather than how many posts. A
+    # sampling fact first -- 400 posts from 40 accounts is a different
+    # object from 400 posts by 400 people -- and an interview fact
+    # second, since the interview frame is accounts, not posts.
+    named = author_names(session)
+    accounts = {named[v] for _, v, _ in corpus if named.get(v)}
+    busiest = 0
+    if accounts:
+        per: dict[str, int] = {}
+        for _, video_id, _ in corpus:
+            who = named.get(video_id)
+            if who:
+                per[who] = per.get(who, 0) + 1
+        busiest = max(per.values())
+
     tiles = "".join([
         tile("Posts in the corpus", str(total),
              f"{blank} carry no caption at all"),
         tile("Caption speaks to the moderator", str(flagged),
              "#无不良倾向 (no bad influence), 被屏了重发 (blocked, "
              "reposted), 解封 (unbanned)"),
-        tile("Carry no community tag", str(untagged),
-             "the caption is on topic but nothing in it is searchable"),
+        tile("Accounts behind them", str(len(accounts)),
+             f"at most {busiest} post(s) from any one account"
+             if accounts else "no author name recorded yet"),
     ])
 
     def per_tag(rows: list[list[str]], kind) -> str:

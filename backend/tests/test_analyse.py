@@ -371,3 +371,35 @@ def test_a_pasted_blob_is_the_only_copy_of_its_own_caption(db: None) -> None:
 
         assert "就算你对我说谎" in captions(session, "douyin_note")["7003"]
         assert author_names(session)["7003"].startswith("qianxxxx")
+
+
+def test_a_hand_copied_link_is_not_excluded_on_its_truncated_caption(
+    db: None,
+) -> None:
+    """The share blob cuts the caption off, usually right at the tags.
+
+    These posts were found by searching a community tag, so by
+    construction they carry one. Reading the truncated copy and
+    concluding there is no tag drops the rows that cost the most to
+    collect -- 48 of them at once, the first time the blob's caption
+    was read at all.
+    """
+    from app.analyse import corpus_captions
+    from app.models import SharedLink
+
+    blob = (
+        "3.84 复制打开抖音，看看【qianxxxx的图文作品】"
+        "就算你对我说谎我也会爱着你呀。# 古早 # 韩流 ... "
+        "https://v.douyin.com/v559YY3leFg/ UYM:/ :8pm"
+    )
+    with SessionLocal() as session:
+        session.add(SharedLink(
+            participant_id="P001", platform="douyin_note", raw_text=blob,
+            video_id="7003", shared_at=datetime(2026, 10, 1, 2, 0),
+            source="pasted",
+        ))
+        session.commit()
+
+        # The caption that survives the copy carries no community tag
+        # at all, and the post stays in the corpus regardless.
+        assert [row[1] for row in corpus_captions(session)] == ["7003"]

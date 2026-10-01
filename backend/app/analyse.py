@@ -301,6 +301,22 @@ def corpus_captions(session: Session) -> list[tuple[str, str, str]]:
     """
     kind = douyin_format(session)
     out_of_scope = excluded(session, "douyin") | excluded(session, "douyin_note")
+    # A link copied by hand is never excluded on its text. The same
+    # carve-out `views.py` makes, and for the same reason: the share
+    # blob truncates the caption, usually right where the tags are,
+    # so the text is no evidence about the post. These were found by
+    # searching a community tag, so by construction they carry one --
+    # excluding them because the copy was cut short would drop the
+    # rows that cost the most to collect.
+    by_hand = {
+        video_id
+        for video_id, in session.execute(
+            select(SharedLink.video_id).where(
+                SharedLink.video_id.isnot(None),
+                SharedLink.source == "pasted",
+            )
+        )
+    }
 
     merged: dict[str, str] = {}
     for platform in ("douyin", "douyin_note"):
@@ -314,7 +330,12 @@ def corpus_captions(session: Session) -> list[tuple[str, str, str]]:
         if video_id in out_of_scope:
             continue
         platform = kind.get(video_id, "douyin")
-        if flat and classify(flat, policy=filter_policy(platform)):
+        if (
+            flat
+            and video_id not in by_hand
+            and not labels.truncated(flat)
+            and classify(flat, policy=filter_policy(platform))
+        ):
             continue
         found.append((platform, video_id, flat))
     return found
