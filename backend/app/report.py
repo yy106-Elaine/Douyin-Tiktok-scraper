@@ -77,7 +77,7 @@ CONTEXT: tuple[str, ...] = ("tiktok", "youtube")
 
 PRETTY = {
     "douyin": "Douyin video",
-    "douyin_note": "Douyin 图文",
+    "douyin_note": "Douyin 图文 (note)",
     "tiktok": "TikTok",
     "youtube": "YouTube",
 }
@@ -371,8 +371,8 @@ def _groups(rows: list[list[str]], cap: int = 6) -> list[Slice]:
     if tail:
         rest = sum(n for _, n in tail)
         out.append(Slice(
-            f"其他 ({len(tail)})", rest,
-            "其他\n" + "\n".join(f"{name}: {n}" for name, n in tail)))
+            f"其他 (other, {len(tail)})", rest,
+            "其他 (other)\n" + "\n".join(f"{name}: {n}" for name, n in tail)))
     return out
 
 
@@ -521,15 +521,15 @@ def _douyin(session: Session, page: Page) -> str:
     both = video + notes
     whole = kaplan_meier(both)
     curves = [
-        ("视频 video", 1, kaplan_meier(video)),
-        ("图文 note", 2, kaplan_meier(notes)),
+        ("视频 (video)", 1, kaplan_meier(video)),
+        ("图文 (note)", 2, kaplan_meier(notes)),
     ]
 
     lasted = removal_ages(both)
     spread = quartiles(lasted)
     tiles = "".join([
-        _rate_tile("视频 video", video),
-        _rate_tile("图文 note", notes),
+        _rate_tile("视频 (video)", video),
+        _rate_tile("图文 (note)", notes),
         tile("The removed posts lasted",
              _span(spread[1]) if spread else "—",
              f"median of {len(lasted)} removals; middle half "
@@ -556,11 +556,11 @@ def _douyin(session: Session, page: Page) -> str:
         rows.append(row)
 
     return (
-        '<section class="core"><h2>抖音 Douyin — removal by age of post</h2>'
+        '<section class="core"><h2>抖音 (Douyin) — removal by age of post</h2>'
         f'<div class="tiles">{tiles}</div>'
         '<div class="scale">'
-        '<span class="key"><i class="rule c1"></i>视频 video</span>'
-        '<span class="key"><i class="rule c2"></i>图文 note</span></div>'
+        '<span class="key"><i class="rule c1"></i>视频 (video)</span>'
+        '<span class="key"><i class="rule c2"></i>图文 (note)</span></div>'
         f'{survival_chart(curves, ident="km")}'
         f'<p class="note">Kaplan–Meier, counting each post only from the day '
         f'this study first saw it. Each removal is placed in the middle of '
@@ -632,7 +632,8 @@ def _content(session: Session, page: Page) -> str:
         tile("Posts in the corpus", str(total),
              f"{blank} carry no caption at all"),
         tile("Addressed to the moderator", str(flagged),
-             "#无不良倾向, 被屏了重发, 解封"),
+             "#无不良倾向 (no bad influence), 被屏了重发 (blocked, "
+             "reposted), 解封 (unbanned)"),
         tile("Cut off at the fold", str(cut),
              "the screen showed only this much"),
     ])
@@ -654,14 +655,14 @@ def _content(session: Session, page: Page) -> str:
         )
 
     return (
-        '<section><h2>抖音 Douyin — what the posts call themselves</h2>'
+        '<section><h2>抖音 (Douyin) — what the posts call themselves</h2>'
         f'<div class="tiles">{tiles}</div>'
         '<div class="panels">'
-        '<figure class="panel"><figcaption>女同标记 community tags'
+        '<figure class="panel"><figcaption>女同标记 (community tags)'
         '</figcaption>'
         f'{pie(_groups(wlw_rows), ident="pw", title="Community tags")}'
         "</figure>"
-        '<figure class="panel"><figcaption>角色词 role vocabulary'
+        '<figure class="panel"><figcaption>角色词 (role vocabulary)'
         '</figcaption>'
         f'{pie(_groups(tph_rows), ident="pt", title="Role vocabulary")}'
         "</figure></div>"
@@ -889,6 +890,34 @@ section {
   padding: 22px;
   margin: 18px 0;
 }
+/* Tabs. The radio lives off-screen rather than display:none, so it
+   keeps keyboard focus and the arrow keys still move between tabs. */
+.tab-radio { position: absolute; opacity: 0; pointer-events: none; }
+.tab-strip {
+  display: flex; gap: 4px; margin: 20px 0 0; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  cursor: pointer; padding: 9px 14px; font-size: 13.5px; font-weight: 600;
+  color: var(--text-secondary); border-radius: 8px 8px 0 0;
+  border: 1px solid transparent; border-bottom: none;
+  margin-bottom: -1px; white-space: nowrap;
+}
+.tab:hover { color: var(--text-primary); background: var(--surface-1); }
+.tabs > div[class^="panel-"] { display: none; }
+#tab-overview:checked ~ .panel-overview,
+#tab-analysis:checked ~ .panel-analysis { display: block; }
+#tab-overview:checked ~ .tab-strip [for="tab-overview"],
+#tab-analysis:checked ~ .tab-strip [for="tab-analysis"] {
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border-color: var(--border);
+}
+.tab-radio:focus-visible + .tab-strip .tab,
+#tab-overview:focus-visible ~ .tab-strip [for="tab-overview"],
+#tab-analysis:focus-visible ~ .tab-strip [for="tab-analysis"] {
+  outline: 2px solid var(--series-1); outline-offset: 2px;
+}
 .core { border-color: var(--axis); }
 .method { max-width: 900px; margin: 18px auto 0; color: var(--text-secondary);
           font-size: 13px; }
@@ -1030,6 +1059,9 @@ footer p { max-width: 74ch; }
 }
 @media print {
   body { background: #fff; }
+  /* A print-out has no tabs to click, so it carries every panel. */
+  .tabs > div[class^="panel-"] { display: block !important; }
+  .tab-strip { display: none; }
   .twin[open] summary { display: none; }
   section { break-inside: avoid; }
 }
@@ -1074,6 +1106,35 @@ _JS = """
 """
 
 
+def tabs(panels: list[tuple[str, str, str]]) -> str:
+    """A tab strip built out of radio buttons, so it needs no script.
+
+    The page's only JavaScript is the hover readout, and everything it
+    shows is also in a table; switching tabs is navigation, which is a
+    worse thing to lose. A radio input and a sibling selector do it in
+    CSS, keep keyboard focus and arrow keys for free, and leave the
+    page working in a print-out, in a text browser, and with scripting
+    switched off -- where every panel simply shows at once.
+
+    Panels with nothing in them are left out rather than rendered as
+    an empty tab a reader can click into and find nothing.
+    """
+    filled = [(key, label, html) for key, label, html in panels if html]
+    if len(filled) < 2:
+        return "".join(html for _, _, html in filled)
+
+    inputs, strip, blocks = [], [], []
+    for index, (key, label, html) in enumerate(filled):
+        inputs.append(
+            f'<input class="tab-radio" type="radio" name="view" '
+            f'id="tab-{key}"{" checked" if not index else ""}>')
+        strip.append(f'<label class="tab" for="tab-{key}">{_e(label)}</label>')
+        blocks.append(f'<div class="panel-{key}">{html}</div>')
+    return (f'<div class="tabs">{"".join(inputs)}'
+            f'<nav class="tab-strip">{"".join(strip)}</nav>'
+            f'{"".join(blocks)}</div>')
+
+
 def build(session: Session, *, reveal: bool = False,
           generated: datetime | None = None) -> str:
     """The whole page, as one string."""
@@ -1083,15 +1144,21 @@ def build(session: Session, *, reveal: bool = False,
         reveal=reveal,
     )
     stamp = page.generated.strftime("%Y-%m-%d %H:%M") if page.generated else "—"
+    overview = "".join([
+        _douyin(session, page),
+        _daily(session, page),
+        _comebacks(page),
+        _context(page),
+    ])
+    analysis = _content(session, page)
     body = "".join([
         "<header><h1>Takedown observatory</h1>",
         '<p class="sub">Chinese-language WLW posts, watched daily for '
         f"removal. Read out of the collection at {_e(stamp)}.</p></header>",
-        _douyin(session, page),
-        _content(session, page),
-        _daily(session, page),
-        _comebacks(page),
-        _context(page),
+        tabs([
+            ("overview", "Overview 总览", overview),
+            ("analysis", "抖音内容分析 (Douyin content)", analysis),
+        ]),
         _method(),
     ])
     return (

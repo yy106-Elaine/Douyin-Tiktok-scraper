@@ -12,7 +12,7 @@ from app.db import SessionLocal
 from app.models import LinkCheck, WebVideo
 from app.report import Column, build, columns, mask
 
-CAPTION = "姐妹 情侣 日常 这个人的脸"
+CAPTION = "姐妹 情侣 日常 这个人的脸 #wlw #长发t"
 VIDEO_ID = "7512345678901234567"
 
 
@@ -148,3 +148,35 @@ def test_the_page_renders_when_nothing_has_been_collected(db: None) -> None:
     assert page.startswith("<!doctype html>")
     assert "Takedown observatory" in page
     assert "not reached" in page
+
+
+def test_the_tabs_work_without_javascript(db: None) -> None:
+    """Switching view is navigation, and navigation should not need a script.
+
+    The page's only script is the hover readout, and everything it
+    shows is also in a table. Losing a tab strip is a worse failure,
+    so it is a radio input and a sibling selector: keyboard focus and
+    arrow keys for free, and with scripting off every panel simply
+    shows at once.
+    """
+    with SessionLocal() as session:
+        _collection(session)
+        page = build(session, generated=datetime(2026, 10, 1, 2, 30))
+
+    assert 'class="tab-radio" type="radio"' in page
+    assert 'id="tab-overview"' in page
+    assert "#tab-overview:checked ~ .panel-overview" in page
+    # The tab strip is markup, not something the script assembles.
+    assert "tab-strip" in page.split("<script>")[0]
+
+
+def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
+    """An empty tab is a click that leads nowhere.
+
+    On a database with no captions the content analysis has nothing to
+    say, so there is one view and no strip at all.
+    """
+    with SessionLocal() as session:
+        page = build(session, generated=datetime(2026, 10, 1, 2, 30))
+
+    assert '<nav class="tab-strip">' not in page
