@@ -181,8 +181,10 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!haveBoth) {
             CaptureStats.onAutoFailure(
                 "open the share sheet by hand while a dry run is watching; " +
-                    "below is the last screen seen",
-                ShareSheet.describe(roots),
+                    "below is the last screen seen, with what carries " +
+                    "text first and what can be tapped after it",
+                ShareSheet.describe(roots, limit = 20) +
+                    ShareSheet.describeControls(roots, limit = 30),
             )
         }
         stop(if (haveBoth) "dry run finished, both found" else "dry run finished")
@@ -382,9 +384,14 @@ class AutoCapture(private val service: AccessibilityService) {
 
         val found = ShareSheet.findShare(roots())
         if (found == null) {
+            // Both lists: what carries text, and what can be tapped.
+            // On a 图文 the share control is an icon with no label, so
+            // the text-only dump said nothing about the one thing
+            // that was missing.
             CaptureStats.onAutoFailure(
                 "no share control",
-                ShareSheet.describe(roots()),
+                ShareSheet.describe(roots(), limit = 20) +
+                    ShareSheet.describeControls(roots(), limit = 30),
             )
             recover("share control not found")
             return
@@ -424,7 +431,8 @@ class AutoCapture(private val service: AccessibilityService) {
             }
             CaptureStats.onAutoFailure(
                 "no copy-link entry",
-                ShareSheet.describe(roots()),
+                ShareSheet.describe(roots(), limit = 20) +
+                    ShareSheet.describeControls(roots(), limit = 30),
             )
             recover("copy-link entry not found")
             return

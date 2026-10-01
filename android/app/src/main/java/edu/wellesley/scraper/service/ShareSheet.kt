@@ -287,6 +287,48 @@ object ShareSheet {
         return out
     }
 
+    /**
+     * Every control on screen, labelled or not.
+     *
+     * [describe] lists what carries text, which is enough when the
+     * control that was missed has a label. On a 图文 opened from the
+     * search results the share control is an icon -- an arrow, by
+     * eye -- and an icon with no contentDescription is invisible to
+     * [describe]: the failure dump came back full of captions and
+     * said nothing about the thing that was not found.
+     *
+     * So this lists what can be tapped instead, with its view id and
+     * its place on screen. A control identified by id is a selector
+     * that holds; one identified by "it was at the bottom right" is a
+     * guess, and a wrong guess in that corner likes somebody's post.
+     */
+    fun describeControls(
+        roots: List<AccessibilityNodeInfo>,
+        limit: Int = 40,
+    ): List<String> {
+        val bounds = android.graphics.Rect()
+        val out = mutableListOf<String>()
+        for ((index, root) in roots.withIndex()) {
+            if (out.size >= limit) break
+            out.add("-- window ${index + 1} of ${roots.size} --")
+            walk(root) { node ->
+                if (node.isClickable) {
+                    node.getBoundsInScreen(bounds)
+                    val id = node.viewIdResourceName?.substringAfterLast("/") ?: "-"
+                    val said = label(node)?.take(24) ?: "-"
+                    val klass = node.className?.toString()?.substringAfterLast(".") ?: "-"
+                    out.add(
+                        "[tap] id=$id  text=$said  $klass  " +
+                            "${bounds.width()}x${bounds.height()} " +
+                            "@${bounds.centerX()},${bounds.centerY()}",
+                    )
+                }
+                out.size < limit
+            }
+        }
+        return out
+    }
+
     private fun find(
         roots: List<AccessibilityNodeInfo>,
         role: Role,
