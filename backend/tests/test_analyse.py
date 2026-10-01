@@ -206,3 +206,78 @@ def test_the_caption_dump_carries_no_outcome(db: None) -> None:
     assert "gone" not in written
     # The captionless posts are counted, not silently dropped.
     assert "1 post(s) carry none" in written
+
+
+def test_a_removed_posts_caption_survives_the_wipe(db: None) -> None:
+    """The captions that matter most are the ones the fetch destroys.
+
+    When Douyin answers with another video's record the post is gone,
+    and `fetch_videos.wipe` empties the fetched row -- rightly, since
+    none of it belonged to that id. The caption goes with it. Reading
+    captions off the fetched rows alone therefore returns text for the
+    survivors and blanks for the removed, which is the one bias that
+    makes "does content predict removal" unanswerable.
+
+    The phone's capture is never wiped, and for a removed post it is
+    the only copy of what the post said.
+    """
+    from app.analyse import captions
+    from app.models import CaptureEvent, DouyinPost
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-25",
+            captured_at=datetime(2026, 9, 25, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add(DouyinPost(
+            capture_event_id=event.id, participant_id="P001",
+            captured_at=datetime(2026, 9, 25, 18, 0),
+            video_id="7001", caption="和老婆的第三年 #wlw #长发t",
+        ))
+        # What the fetch left behind after the post was found gone.
+        session.add(WebVideo(platform="douyin", video_id="7001", caption=None,
+                             fetched_at=datetime(2026, 9, 26, 18, 0)))
+        session.commit()
+
+        assert captions(session, "douyin")["7001"] == "和老婆的第三年 #wlw #长发t"
+
+
+def test_an_out_of_scope_row_is_not_in_the_caption_dump(db: None) -> None:
+    """A cookery video in the sample produces a category for cookery.
+
+    The topic filter marks rather than deletes, which is right -- a
+    row a filter drops is a disappearance nothing can observe later.
+    It does mean the dump has to do the excluding itself.
+    """
+    from app.analyse import caption_dump
+    from app.models import CaptureEvent, DouyinPost
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-25",
+            captured_at=datetime(2026, 9, 25, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add_all([
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       captured_at=datetime(2026, 9, 25, 18, 0),
+                       video_id="7001", caption="和老婆的第三年 #wlw",
+                       relevance=None),
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       captured_at=datetime(2026, 9, 25, 18, 0),
+                       video_id="7002", caption="师傅教做菜！",
+                       relevance="no topic term"),
+        ])
+        session.commit()
+
+        path = str(__import__("tempfile").mkdtemp()) + "/captions.txt"
+        assert caption_dump(session, path) == 1
+        written = open(path, encoding="utf-8").read()
+
+    assert "和老婆的第三年" in written
+    assert "师傅教做菜" not in written

@@ -40,6 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .clock import local, local_date
+from .platforms import PLATFORM_FAMILY
 from .models import LinkCheck, SharedLink, WebVideo
 from .survival import (
     Finding,
@@ -131,20 +132,47 @@ def daily_hazard(
     return out
 
 
-def captions(session: Session, platform: str) -> dict[str, str]:
-    """The caption per video, for the export.
+def _capture_table(platform: str):
+    """The table the phone writes into for this platform, if any."""
+    from .parsers import PLATFORM_TABLES
 
-    Fetched pages first, because that is the caption as the platform
-    served it. A link that was never fetched still gets a key, so the
-    export can tell "no caption" from "not in this table" -- the 62
-    captionless rows are a category, not a gap.
+    registered = PLATFORM_TABLES.get(PLATFORM_FAMILY.get(platform, platform))
+    return registered[0] if registered else None
+
+
+def captions(session: Session, platform: str) -> dict[str, str]:
+    """The caption per video, the capture first and the fetch second.
+
+    **The order matters and is not a preference.** When a Douyin
+    request comes back carrying a different video's record, the post
+    is gone, and `fetch_videos.wipe` empties the fetched row --
+    correctly, since nothing in it belonged to that id any more. The
+    caption goes with it. So reading captions off the fetched rows
+    alone returns captions for the posts that survived and blanks for
+    the posts that were removed: a corpus of survivors, and the exact
+    bias that would make "content predicts removal" unanswerable.
+
+    The capture the phone made is the caption as it stood on screen
+    when the post was collected. It is never wiped, it is what the
+    post actually said, and for a removed post it is the only copy
+    left. It is read first for every video, and the fetched row only
+    fills in the ids the phone never saw.
     """
     said: dict[str, str] = {}
+    model = _capture_table(platform)
+    if model is not None:
+        for video_id, caption in session.execute(
+            select(model.video_id, model.caption).where(
+                model.video_id.isnot(None), model.caption.isnot(None)
+            )
+        ):
+            said.setdefault(video_id, caption or "")
+
     for row in session.scalars(
         select(WebVideo).where(WebVideo.platform == platform)
     ):
         if row.video_id:
-            said[row.video_id] = (row.caption or "").replace("\n", " ")
+            said.setdefault(row.video_id, (row.caption or "").replace("\n", " "))
     for link in session.scalars(
         select(SharedLink).where(SharedLink.platform == platform)
     ):
@@ -153,8 +181,30 @@ def captions(session: Session, platform: str) -> dict[str, str]:
     return said
 
 
+def excluded(session: Session, platform: str) -> set[str]:
+    """Videos the topic filter marked out of scope, by video id.
+
+    Marked, never deleted -- see `relevance` -- so they are still in
+    the tables and still turn up in a caption dump unless something
+    takes them out. A classification scheme designed over a sample
+    that includes cookery videos and a shooter-game stream is a
+    scheme with categories for cookery and shooter games.
+    """
+    model = _capture_table(platform)
+    if model is None:
+        return set()
+    return {
+        video_id
+        for video_id, in session.execute(
+            select(model.video_id).where(
+                model.video_id.isnot(None), model.relevance.isnot(None)
+            )
+        )
+    }
+
+
 def caption_dump(session: Session, path: str) -> int:
-    """Every distinct Douyin caption, one per line, and nothing else.
+    """Every distinct in-scope Douyin caption, one per line, nothing else.
 
     For designing a classification scheme against the corpus that
     exists rather than the one imagined. Deliberately carries no id,
@@ -163,13 +213,17 @@ def caption_dump(session: Session, path: str) -> int:
     fitted to the answer, and every later claim that content predicts
     removal would be circular.
 
-    Captionless posts are counted rather than written. They are a
-    third of nothing to classify, and the count is the finding.
+    Rows the topic filter excluded are left out. They are still in the
+    database, as they must be, but a cookery video in the sample
+    produces a category for cookery.
     """
     seen: set[str] = set()
     empty = 0
     for platform in ("douyin", "douyin_note"):
-        for text in captions(session, platform).values():
+        out_of_scope = excluded(session, platform)
+        for video_id, text in captions(session, platform).items():
+            if video_id in out_of_scope:
+                continue
             cleaned = " ".join(text.split())
             if not cleaned:
                 empty += 1
