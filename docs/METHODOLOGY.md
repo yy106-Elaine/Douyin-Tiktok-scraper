@@ -1245,6 +1245,33 @@ to be shared, the removed posts belong to identifiable people on a
 sensitive topic, and the per-post detail stays where it is already
 protected: the key-gated dashboard and the local CSV.
 
+### 14b. The visual coding never asks anyone's gender
+
+`presentation_distance` measures how far a presentation sits from
+mainstream short video's conventional feminine styling. It does not
+ask whether the subject is a woman, and no field does.
+
+That is partly a correction -- an earlier draft gated the scale on a
+`subject_appears_female` judgement, which filled it with nulls on
+exactly the most masculine-presenting people, who are the subject of
+the study -- and partly a fact about the sampling frame. The corpus is
+drawn from community hashtags and filtered for Chinese WLW content, so
+men are rare in it, and a subject whose gender a viewer cannot settle
+is, in this corpus, almost always an androgynous or tomboy
+presentation. **That unreadability is the deviation being measured,
+not an obstacle to measuring it.** The codebook therefore says
+explicitly that `null` is for what cannot be seen, never for what
+cannot be categorised.
+
+One thing this costs, and it should be stated when the figures are
+written up. `two_people_together` records that two people are in
+frame, not that two women are. Reading those rows as couples of women
+is an inference carried by the sampling frame, not by the photograph:
+a post tagged `#lwl` can still contain a brother, a father, or a male
+classmate. Where the pairing itself matters to a claim, the
+`presented_as_couple` field and the caption are the evidence, not the
+head count.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school
