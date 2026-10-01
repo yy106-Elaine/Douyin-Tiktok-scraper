@@ -182,34 +182,44 @@ def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
     assert '<nav class="tab-strip">' not in page
 
 
-def test_the_counted_curve_thins_rather_than_stopping() -> None:
-    """Counting is honest at every age but not unbiased at every age.
+def test_the_counted_curve_needs_survivors_not_just_a_denominator() -> None:
+    """A share with no survivors in it is 100% by construction.
 
-    A post removed on day two is known at every later age; a surviving
-    post has to be watched that long to count at all. So the known set
-    fills up with removals and the share drifts towards 100%. Dropping
-    those ages outright cut 图文, collected in one recent burst, back
-    to a single day -- a format watched for a week reading as if it had
-    been watched for a day. So the thin ages are drawn dashed and
-    marked thin instead, and only a denominator too small to mean
-    anything leaves the chart.
+    These are the real 图文 counts. At fourteen days the format reads
+    100% off fifteen removals and no survivors -- not because notes
+    are always removed, but because nothing has been watched that long
+    yet, so the only posts that can answer are the ones taken down. A
+    floor on the denominator let those through; the floor belongs on
+    the posts that outlived the age.
     """
     from app.report import Counted
 
-    line = Counted(name="video", slot=1, points=[
-        (1.0, 5, 100, 10),    # most fates known -- solid
-        (7.0, 20, 60, 40),    # still more known than not -- solid
-        (14.0, 19, 19, 80),   # only the removed ones are known -- dashed
-        (30.0, 2, 2, 90),     # two posts cannot carry a point -- gone
+    # (age, removed, answerable, unknown)
+    note = Counted(name="图文 (note)", slot=2, points=[
+        (1.0, 10, 213, 118),   # 203 survivors -- solid
+        (2.0, 13, 110, 238),   # 97 survivors, but most posts too new
+        (3.0, 14, 40, 316),    # 26 survivors
+        (5.0, 15, 25, 335),    # 10 survivors
+        (7.0, 15, 23, 343),    # 8 survivors -- the floor
+        (10.0, 15, 16, 350),   # 1 survivor -- gone
+        (14.0, 15, 15, 351),   # none -- 100% by construction, gone
     ])
 
-    assert [age for age, _, _, _ in line.shown] == [1.0, 7.0, 14.0]
-    assert [line.firm(age) for age, _, _, _ in line.shown] == [
-        True, True, False]
-    assert line.reach == 14.0
-    # The dropped point still exists and can still be read.
-    assert line.share(30.0) == 1.0
-    assert line.answerable(30.0) == 2
+    assert [age for age, _, _, _ in note.shown] == [1.0, 2.0, 3.0, 5.0, 7.0]
+    assert [note.firm(age) for age, _, _, _ in note.shown] == [
+        True, False, False, False, False]
+    assert note.reach == 7.0
+    # The dropped ages still exist and can still be read.
+    assert note.share(14.0) == 1.0
+
+    # The video line, same data, is well supported for ten days.
+    video = Counted(name="视频 (video)", slot=1, points=[
+        (7.0, 40, 194, 46),
+        (10.0, 46, 145, 95),
+        (14.0, 47, 47, 193),
+    ])
+    assert [age for age, _, _, _ in video.shown] == [7.0, 10.0]
+    assert all(video.firm(age) for age, _, _, _ in video.shown)
 
 
 def test_a_thin_stretch_is_drawn_dashed_and_hollow() -> None:
@@ -217,20 +227,32 @@ def test_a_thin_stretch_is_drawn_dashed_and_hollow() -> None:
 
     Colour alone would not carry it and a footnote would not be read
     at the point of looking, so the line itself changes: dashed from
-    the last well-supported age onwards, with hollow dots.
+    the last well-supported age onwards, with hollow dots. These are
+    the real lines -- 视频 is solid for ten days, while 图文, collected
+    in one burst, is well supported at a day and dashed from there.
     """
     from app.report import Counted, removal_chart
 
-    svg = removal_chart([Counted(name="图文 (note)", slot=2, points=[
-        (1.0, 10, 90, 20),
-        (3.0, 14, 50, 45),
-        (7.0, 18, 30, 70),
-        (10.0, 20, 21, 95),
-    ])], ident="t")
+    svg = removal_chart([
+        Counted(name="视频 (video)", slot=1, points=[
+            (1.0, 12, 128, 0),
+            (7.0, 40, 194, 46),
+            (10.0, 46, 145, 95),
+        ]),
+        Counted(name="图文 (note)", slot=2, points=[
+            (1.0, 10, 213, 118),
+            (3.0, 14, 40, 316),
+            (7.0, 15, 23, 343),
+        ]),
+    ], ident="t")
 
-    assert 'class="line c2"' in svg       # the firm stretch
-    assert 'class="line thin c2"' in svg  # and the thin one
-    assert "hollow" in svg
-    # Nothing was dropped: every age still prints its denominator.
-    for count in ("90", "50", "30", "21"):
+    assert 'class="line c1"' in svg        # 视频, solid throughout
+    assert 'class="line thin c1"' not in svg
+    assert 'class="line thin c2"' in svg   # 图文, thin from day one
+    # The well-supported point keeps a filled dot even when the line
+    # leaving it is dashed; the thin ones are hollow.
+    assert svg.count("hollow") == 2
+    # Nothing above the floor was dropped: every age prints its own
+    # denominator under the axis.
+    for count in ("128", "194", "145", "213", "40", "23"):
         assert f">{count}</text>" in svg

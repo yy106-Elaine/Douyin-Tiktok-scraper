@@ -443,14 +443,24 @@ class Counted:
     share climbs towards 100%. That is an artefact of how long
     collection has been running, not a property of the platform.
 
-    So a point is drawn whenever its denominator reaches `FLOOR`
-    posts, and `firm` says whether most of the eligible posts have an
-    answer yet (`answerable >= unknown`). The chart draws the firm
-    stretch solid and the rest dashed: dropping the thin points
-    altogether cut a format collected in one recent burst back to a
+    So the floor sits on the survivors, not on the denominator: a
+    point is drawn only once `FLOOR` posts have actually been watched
+    past that age. Where none have, the only posts that can answer
+    are the ones already taken down and the share is 100% by
+    construction -- on this corpus 图文 reads 100% at fourteen days
+    off fifteen removals and no survivors, which is a statement about
+    how long collection has run and nothing else. A floor on the
+    denominator instead of the survivors let exactly those points
+    through.
+
+    Above the floor, `firm` says whether most of the eligible posts
+    have an answer yet (`answerable >= unknown`). The chart draws the
+    firm stretch solid and the rest dashed: dropping the thin ages
+    altogether cut 图文, collected in one recent burst, back to a
     single day, which said less than showing it thin.
     """
 
+    #: Posts that have to have outlived an age before it is drawn.
     FLOOR = 8
 
     name: str
@@ -459,8 +469,8 @@ class Counted:
 
     @property
     def shown(self) -> list[tuple[float, int, int, int]]:
-        """The points with a denominator worth printing."""
-        return [p for p in self.points if p[2] >= self.FLOOR]
+        """The points with enough survivors to be able to come out low."""
+        return [p for p in self.points if p[2] - p[1] >= self.FLOOR]
 
     def firm(self, age: float) -> bool:
         """Do most of the eligible posts have an answer at this age?"""
@@ -667,17 +677,24 @@ def _douyin(session: Session, page: Page) -> str:
 
     # The table is the chart's own numbers, with the denominator
     # beside each one rather than under the axis.
+    # The table is the chart's twin, so it holds the same ages and
+    # drops the same ones: a cell for an age with no survivors would
+    # read 100% and mean only that collection has not run that long.
+    drawable = {age for line in curves for age, _, _, _ in line.shown}
     rows = []
     for days in ages:
+        if days not in drawable:
+            continue
         row = [f"{days}d"]
         for line in curves:
             share = line.share(days)
-            answerable = line.answerable(days)
+            if days not in {age for age, _, _, _ in line.shown}:
+                share = None
             # A dagger where the chart goes dashed, so the table twin
             # carries the same warning the line does.
             thin = "" if line.firm(days) else " †"
             row.append("—" if share is None else f"{share * 100:.0f}%{thin}")
-            row.append("—" if share is None else str(answerable))
+            row.append("—" if share is None else str(line.answerable(days)))
         rows.append(row)
 
     return (
@@ -702,7 +719,10 @@ def _douyin(session: Session, page: Page) -> str:
         'and the line drifts up for that reason rather than any other. Read '
         'the solid stretch as the measurement and the dashed stretch as the '
         'most that can be said so far. Each line ends where fewer than '
-        f'{Counted.FLOOR} posts can answer at all.</p>'
+        f'{Counted.FLOOR} posts have been watched past that age at all: '
+        'past there the only posts that can answer are the ones already '
+        'taken down, so the share would read 100% however rarely posts are '
+        'actually removed.</p>'
         + table(["Age", "视频 removed", "视频 watched", "图文 removed",
                  "图文 watched"], rows, "share removed by age")
         + '<p class="note">† the dashed part of the chart: fewer than half '
