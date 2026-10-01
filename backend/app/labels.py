@@ -74,9 +74,13 @@ TPH_RELATIONAL = (
 #: Statements aimed at the moderation system rather than at a reader.
 #: Small in number and large in meaning: the author is pre-emptively
 #: declaring compliance, or reporting having been actioned.
+#: `重发` is not on its own evidence of anything -- `老图重发` is
+#: someone reposting an old photo -- so it counts only next to a word
+#: about being actioned.
 COMPLIANCE = (
-    r"#无不良|#正常穿搭无诱导|#无诱导|#不违规|"
-    r"被屏|限流|解封|重发|打码|违规|审核"
+    r"无不良|无诱导|无引导|#不违规|正常穿搭无诱导|"
+    r"被屏|限流|解封|打码|违规|审核|"
+    r"[屏删限封][^。！？]{0,8}重发"
 )
 
 _WLW = tuple((name, re.compile(pattern, re.IGNORECASE))
@@ -87,23 +91,44 @@ _PAIRING = re.compile(TPH_PAIRING, re.IGNORECASE)
 _RELATIONAL = re.compile(TPH_RELATIONAL)
 _COMPLIANCE = re.compile(COMPLIANCE)
 
+#: Douyin's share text puts a space after every hash: a caption that
+#: reads `#wlw #lwl` on screen arrives as `# wlw # lwl` when it is
+#: copied out of the app. Every pattern here is written against the
+#: on-screen form, so the text is normalised once before matching
+#: rather than every pattern learning about it. Without this, every
+#: hand-pasted post read as carrying no tags at all -- and hand-pasted
+#: posts are most of the 图文.
+_HASH_SPACE = re.compile(r"#\s+")
+
+
+def normalise(text: str) -> str:
+    """Close up the space Douyin's share text puts after each hash."""
+    return _HASH_SPACE.sub("#", text)
+
+
 #: A caption cut off by the interface's "more" fold. The screen only
 #: ever showed this much, so the rest was never collected -- and the
 #: truncated string is a different string from the full one, so it
 #: survives de-duplication as a second row. Marked rather than
 #: dropped: it is a real observation of a real post, and what it is
 #: not is a complete caption to classify.
-TRUNCATED = re.compile(r"\.\.\.\s*展开\s*$|…\s*展开\s*$")
+#: Two ways a caption arrives incomplete. On screen the fold leaves a
+#: visible "展开"; in copied share text it leaves a bare ellipsis and
+#: nothing else, so the only evidence that anything is missing is the
+#: three dots at the end.
+TRUNCATED = re.compile(r"(?:\.\.\.|…)\s*(?:展开)?\s*$")
 
 
-def wlw_tags(text: str) -> list[str]:
+def wlw_tags(raw: str) -> list[str]:
     """Which community tags this caption carries. `none` if it has none."""
+    text = normalise(raw)
     found = [name for name, pattern in _WLW if pattern.search(text)]
     return found or ["none"]
 
 
-def tph_tags(text: str) -> list[str]:
+def tph_tags(raw: str) -> list[str]:
     """Which layers of role vocabulary appear. `absent` if none do."""
+    text = normalise(raw)
     found = []
     if _DIRECT.search(text):
         found.append("direct")
@@ -116,22 +141,23 @@ def tph_tags(text: str) -> list[str]:
     return found or ["absent"]
 
 
-def tph_terms(text: str) -> list[str]:
+def tph_terms(raw: str) -> list[str]:
     """The role words themselves, for growing the vocabulary.
 
     Case-folded, because `#长发t` and `#长发T` are one tag written
     twice and counting them apart splits the largest role term in the
     corpus into two smaller ones.
     """
+    text = normalise(raw)
     found = [m.group(0).lower()
              for pattern in (_COMPOUND, _PAIRING, _DIRECT, _RELATIONAL)
              for m in pattern.finditer(text)]
     return sorted(set(found))
 
 
-def compliance(text: str) -> bool:
+def compliance(raw: str) -> bool:
     """Whether the caption addresses the moderation system."""
-    return bool(_COMPLIANCE.search(text))
+    return bool(_COMPLIANCE.search(normalise(raw)))
 
 
 def truncated(text: str) -> bool:

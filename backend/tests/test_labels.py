@@ -117,3 +117,37 @@ def test_a_caption_cut_off_at_the_fold_is_marked() -> None:
 def test_a_caption_with_no_community_tag_at_all() -> None:
     assert wlw_tags("出海打鱼") == ["none"]
     assert wlw_tags("抓紧你的手 走过我的朝朝暮暮") == ["none"]
+
+
+def test_share_text_puts_a_space_after_every_hash() -> None:
+    """`#wlw` on screen arrives as `# wlw` when copied out of the app.
+
+    Every pattern here is written against the on-screen form, so a
+    hand-pasted post read as carrying no tags at all -- and the 图文
+    are mostly hand-pasted, so the format that matters most was the
+    one being scored blank.
+    """
+    assert set(wlw_tags("等会删# gl # wlw")) == {"wlw", "gl"}
+    assert set(wlw_tags("太帅了 邢大人 # 老图重发# lwl# wlw")) == {"wlw", "lwl"}
+    assert tph_tags("和你生疏到这个地步 真不容易 # wlw# T") == ["direct"]
+    assert tph_terms("姐姐 你想要的我都能满足# wlw# 年下# 小狗") == [
+        "#小狗", "#年下"
+    ]
+
+
+def test_copied_share_text_is_truncated_without_saying_so() -> None:
+    """On screen the fold leaves 展开; copied out it leaves three dots.
+
+    Nothing else marks it, so the ellipsis is the only evidence that
+    the caption continues past what was collected.
+    """
+    assert truncated("就算你对我说谎我也会爱着你呀。# 古早 # 韩流 ...")
+    assert truncated("# le # wlw # 无不良影响 远距离的欣赏...")
+    assert not truncated("撒旦退位我登基# wlw")
+
+
+def test_reposting_an_old_photo_is_not_a_moderation_event() -> None:
+    """`老图重发` is someone reposting a picture, and says nothing."""
+    assert not compliance("太帅了 邢大人 # 老图重发# lwl# wlw")
+    assert compliance("该叫我什么？被屏了重发。#长发t #wlw")
+    assert compliance("# 已成年无不良引导 # 兔女郎")
