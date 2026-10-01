@@ -6,6 +6,9 @@ prompt asked the model for an identity, and got one.
 
 ---
 
+**Field-by-field definitions, decision rules, edge cases and the runnable prompt are in `docs/prompts/video-codebook.zh.md`.** This file is the reasoning only.
+
+
 ## What was wrong with the old prompt
 
 ```

@@ -7,6 +7,9 @@
 英文版：`docs/prompts/video-coding.md`。字段名保持英文，因为它们会
 直接变成代码里的列名。
 
+**逐字段的详细定义、判定规则、边界情况，以及可直接使用的 prompt 全文，在 `docs/prompts/video-codebook.zh.md`。** 本文件只讲为什么这样设计。
+
+
 ---
 
 ## 旧 prompt 的问题
