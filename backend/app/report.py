@@ -634,8 +634,13 @@ def _content(session: Session, page: Page) -> str:
         tile("Addressed to the moderator", str(flagged),
              "#无不良倾向 (no bad influence), 被屏了重发 (blocked, "
              "reposted), 解封 (unbanned)"),
-        tile("Cut off at the fold", str(cut),
-             "the screen showed only this much"),
+        # "Cut off at the fold" was this study's own vocabulary, and
+        # the first reader asked what it meant. The tile exists to
+        # stop these posts being read as having fewer tags than they
+        # do, so it has to say what is missing, not where.
+        tile("Captions we only got part of", str(cut),
+             "the post says more; 展开 (more) or a trailing … is all "
+             "that was collected"),
     ])
 
     def per_tag(rows: list[list[str]], kind) -> str:
