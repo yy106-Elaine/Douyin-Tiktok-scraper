@@ -1195,6 +1195,18 @@ dashboard shows them merged under Douyin, because the question of
 whether the two formats are moderated differently is exactly the one
 the merge erases.
 
+`app/report.py` draws the same figures as one self-contained HTML
+file. Two properties of that file are deliberate. It is a **dated
+snapshot**, not a live view: a finding has to stay quotable, and a
+page whose numbers change between the day it is read and the day it is
+cited is not evidence of anything, so every run stamps itself and two
+runs on different days are two documents. And it is **aggregate
+only** -- no captions, no account names, video ids reduced to their
+last six digits unless the researcher asks otherwise. The page exists
+to be shared, the removed posts belong to identifiable people on a
+sensitive topic, and the per-post detail stays where it is already
+protected: the key-gated dashboard and the local CSV.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
