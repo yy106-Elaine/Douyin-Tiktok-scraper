@@ -246,6 +246,28 @@ def caption_dump(session: Session, path: str) -> int:
     return len(seen)
 
 
+def corpus_captions(session: Session) -> list[tuple[str, str, str]]:
+    """(platform, video_id, caption) for every in-scope Douyin post.
+
+    One definition of "the corpus", used by the label export and by
+    the page, so the two can never disagree about what was counted.
+    Two exclusions, for two different reasons: the topic filter's own
+    mark, and -- for a hand-pasted link, which has no capture row for
+    `relevance` to have marked -- the filter run over the text here.
+    """
+    found: list[tuple[str, str, str]] = []
+    for platform in ("douyin", "douyin_note"):
+        out_of_scope = excluded(session, platform)
+        for video_id, text in sorted(captions(session, platform).items()):
+            if video_id in out_of_scope:
+                continue
+            flat = " ".join(text.split())
+            if flat and classify(flat, policy=filter_policy(platform)):
+                continue
+            found.append((platform, video_id, flat))
+    return found
+
+
 def label_dump(session: Session, path: str) -> int:
     """One row per in-scope Douyin post, with the tag columns filled in.
 
@@ -272,15 +294,8 @@ def label_dump(session: Session, path: str) -> int:
             "wlw_tags", "tph_tags", "tph_terms", "compliance",
             "content", "is_gone", "first_gone_at", "collected_at",
         ])
-        for platform in ("douyin", "douyin_note"):
-            out_of_scope = excluded(session, platform)
-            for video_id, text in sorted(captions(session, platform).items()):
-                if video_id in out_of_scope:
-                    continue
-                if text and classify(text, policy=filter_policy(platform)):
-                    continue
+        for platform, video_id, flat in corpus_captions(session):
                 found = verdicts.get(video_id)
-                flat = " ".join(text.split())
                 out.writerow([
                     platform, video_id, flat,
                     int(labels.truncated(flat)),

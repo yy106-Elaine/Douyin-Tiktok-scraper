@@ -1220,6 +1220,20 @@ curve has not crossed a half, which at roughly a fifth removed is where
 it still stands. The quarter point is reported instead once it has been
 crossed.
 
+The page also carries the corpus's own tag vocabulary, counted rather
+than judged. Whether a caption says `#wlw`, `#长发t` or `#无不良倾向`
+is string matching (`app/labels.py`), so it is exact, free and needs
+no agreement statistic; only the content category -- what a post is
+about -- needs a reader, and it is not on the page until it has been
+coded. Two things the charts are careful about. A post can carry
+several tags at once, so each slice of a pie is a whole *combination*
+of tags and holds each post exactly once; the overlapping per-tag
+totals stay in the table beneath it. And hairstyle, outfit and
+prettiness tags are not counted as role vocabulary at all: reading
+`#短发` as T and `#甜妹` as P is a stereotype rather than an
+observation, and it would put a guess about people into a column the
+analysis then treats as data.
+
 `app/report.py` writes all of this as one self-contained HTML file. Two properties of that file are deliberate. It is a **dated
 snapshot**, not a live view: a finding has to stay quotable, and a
 page whose numbers change between the day it is read and the day it is

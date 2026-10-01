@@ -42,7 +42,8 @@ from html import escape
 
 from sqlalchemy.orm import Session
 
-from .analyse import PLATFORMS, daily_hazard, own
+from . import labels
+from .analyse import PLATFORMS, corpus_captions, daily_hazard, own
 from .clock import local, now as clock_now, today as clock_today
 from .survival import (
     Curve,
@@ -269,6 +270,110 @@ def intervals(spells: list[Spell], *, ident: str, width: int = 720) -> str:
 
 
 # -- the page ---------------------------------------------------------
+
+
+@dataclass
+class Slice:
+    label: str
+    count: int
+    hover: str
+
+
+def pie(slices: list[Slice], *, ident: str, title: str,
+        width: int = 400) -> str:
+    """Part-to-whole, for categories that really do partition the whole.
+
+    The slices here are **combinations**, not tags. A caption can
+    carry `#wlw` and `#lwl` at once, and a pie of per-tag counts would
+    sum past 100% while looking as though it did not. So each post
+    lands in exactly one slice, named for the whole set of tags it
+    carries, and the per-tag totals -- which do overlap -- stay in the
+    table underneath where overlapping is legible.
+
+    Six slices at most: past that adjacent wedges blur and the colour
+    order stops being the safety mechanism it is. The tail folds into
+    one named slice rather than becoming a seventh hue.
+    """
+    total = sum(s.count for s in slices) or 1
+    radius, cx, cy = 78.0, 92.0, 96.0
+    height = 200
+
+    out = [f'<svg class="chart pie" viewBox="0 0 {width} {height}" role="img" '
+           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
+    out.append(f'<title id="{ident}-t">{_e(title)}</title>')
+
+    angle = -90.0
+    for index, piece in enumerate(slices):
+        share = piece.count / total
+        sweep = share * 360
+        if sweep <= 0:
+            continue
+        if share >= 0.999:
+            out.append(f'<circle class="slice c{index + 1}" cx="{cx}" '
+                       f'cy="{cy}" r="{radius}" />')
+        else:
+            out.append(f'<path class="slice c{index + 1}" '
+                       f'd="{_wedge(cx, cy, radius, angle, angle + sweep)}" />')
+        angle += sweep
+
+    # The legend carries identity; the labels carry the numbers. A
+    # percentage written on a 2% wedge does not fit inside it, so none
+    # of them are written inside.
+    y = 26.0
+    for index, piece in enumerate(slices):
+        share = piece.count / total
+        out.append(
+            f'<g class="mark" tabindex="0" data-tip="{_e(piece.hover)}">'
+            f'<rect class="hit" x="{cx + radius + 8}" y="{y - 13:.0f}" '
+            f'width="{width - cx - radius - 16}" height="22" />'
+            f'<rect class="key-swatch c{index + 1}" x="{cx + radius + 14}" '
+            f'y="{y - 9:.0f}" width="11" height="11" rx="2" />'
+            f'<text class="cat" x="{cx + radius + 32}" y="{y:.0f}">'
+            f'{_e(piece.label)}</text>'
+            f'<text class="value" x="{width - 8}" y="{y:.0f}" '
+            f'text-anchor="end">{share * 100:.0f}%</text></g>')
+        y += 24
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _wedge(cx: float, cy: float, r: float, start: float, end: float) -> str:
+    """One slice, inset by a hairline so the surface does the separating."""
+    import math
+
+    # A 1.2 degree inset on each side leaves a surface-coloured gap of
+    # about 2px at this radius -- the spacer, rather than a stroke
+    # drawn around every wedge.
+    start, end = start + 1.2, end - 1.2
+    if end <= start:
+        end = start + 0.2
+    x1 = cx + r * math.cos(math.radians(start))
+    y1 = cy + r * math.sin(math.radians(start))
+    x2 = cx + r * math.cos(math.radians(end))
+    y2 = cy + r * math.sin(math.radians(end))
+    large = 1 if end - start > 180 else 0
+    return (f"M{cx:.1f} {cy:.1f} L{x1:.1f} {y1:.1f} "
+            f"A{r} {r} 0 {large} 1 {x2:.1f} {y2:.1f} Z")
+
+
+def _groups(rows: list[list[str]], cap: int = 6) -> list[Slice]:
+    """Exact tag-set combinations, commonest first, tail folded into one."""
+    counted: dict[str, int] = {}
+    for tags in rows:
+        counted[" + ".join(tags)] = counted.get(" + ".join(tags), 0) + 1
+    order = sorted(counted.items(), key=lambda pair: -pair[1])
+    head, tail = order[:cap - 1], order[cap - 1:]
+    total = sum(counted.values()) or 1
+    out = [
+        Slice(name, n, f"{name}\n{n} post(s)\n{n / total * 100:.1f}%")
+        for name, n in head
+    ]
+    if tail:
+        rest = sum(n for _, n in tail)
+        out.append(Slice(
+            f"其他 ({len(tail)})", rest,
+            "其他\n" + "\n".join(f"{name}: {n}" for name, n in tail)))
+    return out
 
 
 def table(headers: list[str], rows: list[list[str]], caption: str) -> str:
@@ -498,6 +603,84 @@ def _at_risk(curve: Curve, age: timedelta) -> int:
     return held
 
 
+def _content(session: Session, page: Page) -> str:
+    """What the corpus says about itself, in the words its authors used.
+
+    Only the tag axes are here. They are string matching (see
+    `app/labels.py`), so they are exact, free and reproducible. The
+    content category -- what a post is *about* -- needs a reader, is
+    not coded yet, and will arrive as its own block rather than as a
+    guess dressed up as a chart.
+    """
+    corpus = corpus_captions(session)
+    if not corpus:
+        return ""
+
+    gone = {
+        f.video_id for p in DOUYIN for f in page.held.get(p, []) if f.is_gone
+    }
+    total = len(corpus)
+    with_text = [row for row in corpus if row[2]]
+    blank = total - len(with_text)
+
+    wlw_rows = [labels.wlw_tags(text) for _, _, text in with_text]
+    tph_rows = [labels.tph_tags(text) for _, _, text in with_text]
+    flagged = sum(1 for _, _, text in with_text if labels.compliance(text))
+    cut = sum(1 for _, _, text in with_text if labels.truncated(text))
+
+    tiles = "".join([
+        tile("Posts in the corpus", str(total),
+             f"{blank} carry no caption at all"),
+        tile("Addressed to the moderator", str(flagged),
+             "#无不良倾向, 被屏了重发, 解封"),
+        tile("Cut off at the fold", str(cut),
+             "the screen showed only this much"),
+    ])
+
+    def per_tag(rows: list[list[str]], kind) -> str:
+        counted: dict[str, int] = {}
+        removed: dict[str, int] = {}
+        for (platform, video_id, text), tags in zip(with_text, rows):
+            for tag in tags:
+                counted[tag] = counted.get(tag, 0) + 1
+                removed[tag] = removed.get(tag, 0) + (video_id in gone)
+        return table(
+            ["Tag", "Posts", "Share", "Removed", "Of those"],
+            [[name, str(n), f"{n / len(with_text) * 100:.1f}%",
+              str(removed[name]),
+              f"{removed[name] / n * 100:.0f}%" if n else "—"]
+             for name, n in sorted(counted.items(), key=lambda p: -p[1])],
+            kind,
+        )
+
+    return (
+        '<section><h2>抖音 Douyin — what the posts call themselves</h2>'
+        f'<div class="tiles">{tiles}</div>'
+        '<div class="panels">'
+        '<figure class="panel"><figcaption>女同标记 community tags'
+        '</figcaption>'
+        f'{pie(_groups(wlw_rows), ident="pw", title="Community tags")}'
+        "</figure>"
+        '<figure class="panel"><figcaption>角色词 role vocabulary'
+        '</figcaption>'
+        f'{pie(_groups(tph_rows), ident="pt", title="Role vocabulary")}'
+        "</figure></div>"
+        '<p class="note">Each post sits in exactly one slice, named for '
+        'the whole set of tags it carries — a post tagged both <code>#wlw</code> '
+        'and <code>#lwl</code> is in the “wlw + lwl” slice, not counted twice. '
+        'The tables below give the per-tag totals, which do overlap. '
+        '<strong>Hairstyle and prettiness tags are not role vocabulary</strong> '
+        'and are in none of these counts: <code>#短发</code> is a haircut, and '
+        'reading it as a role is a stereotype rather than an observation.</p>'
+        + per_tag(wlw_rows, "community tags")
+        + per_tag(tph_rows, "role vocabulary")
+        + '<p class="note">The removal columns are descriptive. Several of '
+        'these groups hold a handful of posts, nothing here is a test, and '
+        'no difference between them should be read as one yet.</p>'
+        "</section>"
+    )
+
+
 def _daily(session: Session, page: Page) -> str:
     """New removals per day, Douyin only -- the other two are too thin."""
     panels, flat = [], []
@@ -647,6 +830,8 @@ _CSS = """
   --border: rgba(11, 11, 11, 0.10);
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a;
+  --cat-4: #eda100; --cat-5: #e87ba4; --cat-6: #008300;
   --s0: #86b6ef; --s1: #5598e7; --s2: #2a78d6; --s3: #1c5cab; --s4: #0d366b;
   --warn: #fab219;
 }
@@ -663,6 +848,8 @@ _CSS = """
     --border: rgba(255, 255, 255, 0.10);
     --series-1: #3987e5;
     --series-2: #d95926;
+    --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70;
+    --cat-4: #c98500; --cat-5: #d55181; --cat-6: #008300;
     --s0: #184f95; --s1: #256abf; --s2: #3987e5; --s3: #86b6ef; --s4: #cde2fb;
   }
 }
@@ -677,6 +864,8 @@ _CSS = """
   --border: rgba(255, 255, 255, 0.10);
   --series-1: #3987e5;
   --series-2: #d95926;
+  --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70;
+  --cat-4: #c98500; --cat-5: #d55181; --cat-6: #008300;
   --s0: #184f95; --s1: #256abf; --s2: #3987e5; --s3: #86b6ef; --s4: #cde2fb;
 }
 * { box-sizing: border-box; }
@@ -750,6 +939,14 @@ figcaption {
 .line.c2, .dot.c2 { stroke: var(--series-2); }
 .dot.c2 { fill: var(--series-2); }
 .dot { stroke: var(--surface-1); stroke-width: 2; }
+.pie .slice { stroke: none; }
+.slice.c1 { fill: var(--cat-1); } .slice.c2 { fill: var(--cat-2); }
+.slice.c3 { fill: var(--cat-3); } .slice.c4 { fill: var(--cat-4); }
+.slice.c5 { fill: var(--cat-5); } .slice.c6 { fill: var(--cat-6); }
+.key-swatch.c1 { fill: var(--cat-1); } .key-swatch.c2 { fill: var(--cat-2); }
+.key-swatch.c3 { fill: var(--cat-3); } .key-swatch.c4 { fill: var(--cat-4); }
+.key-swatch.c5 { fill: var(--cat-5); } .key-swatch.c6 { fill: var(--cat-6); }
+.mark:hover .slice, .mark:focus .slice { fill-opacity: 0.85; }
 .end-label { font-size: 12px; font-weight: 600; fill: var(--text-secondary); }
 .mark:hover .dot, .mark:focus .dot { r: 5; }
 .zero { stroke: var(--axis); stroke-width: 2; }
@@ -891,6 +1088,7 @@ def build(session: Session, *, reveal: bool = False,
         '<p class="sub">Chinese-language WLW posts, watched daily for '
         f"removal. Read out of the collection at {_e(stamp)}.</p></header>",
         _douyin(session, page),
+        _content(session, page),
         _daily(session, page),
         _comebacks(page),
         _context(page),
