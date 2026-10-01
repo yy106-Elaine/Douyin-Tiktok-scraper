@@ -544,7 +544,7 @@ def remark(session) -> dict[str, int]:
 
     from sqlalchemy import select
 
-    from .models import CaptureEvent, WebVideo
+    from .models import CaptureEvent, SharedLink, WebVideo
     from .parsers import PLATFORM_TABLES
     from .platforms import filter_policy
 
@@ -573,8 +573,26 @@ def remark(session) -> dict[str, int]:
         except (TypeError, ValueError):
             payloads[event.id] = {}
 
+    # Links copied one at a time from the phone. The corpus keeps
+    # these whatever their text says -- the share blob truncates the
+    # caption, usually right where the tags are, so the text is no
+    # evidence about the post -- and `analyse.py` and `views.py` both
+    # carve them out. The tally did not, so `python -m app.relevance`
+    # reported them as exclusions and disagreed with the dashboard
+    # and the corpus about how large the corpus was.
+    pasted = {
+        video_id
+        for video_id, in session.execute(
+            select(SharedLink.video_id).where(
+                SharedLink.video_id.isnot(None),
+                SharedLink.source == "pasted",
+            )
+        )
+    }
+
     tally: dict[str, int] = {}
     changed = 0
+    counted: set[str] = set()
     for platform, (model, _) in PLATFORM_TABLES.items():
         policy = filter_policy(platform)
         for post in session.scalars(select(model)):
@@ -589,11 +607,29 @@ def remark(session) -> dict[str, int]:
                 payload.get("description"),
                 policy=policy,
             )
+            # The column still stores what the rule said: the
+            # carve-out belongs to whoever reads the corpus, and
+            # `?show=all` has to be able to show the reason. Only the
+            # tally -- which is read as "this is the corpus" -- counts
+            # a hand-pasted row as kept.
             if post.relevance != reason:
                 post.relevance = reason
                 changed += 1
-            key = reason or "in scope"
+            if post.video_id:
+                counted.add(post.video_id)
+            if reason and post.video_id in pasted:
+                key = "kept: pasted by hand"
+            else:
+                key = reason or "in scope"
             tally[key] = tally.get(key, 0) + 1
+
+    # A pasted link with nothing downloaded for it yet has no row in
+    # any platform table, so the loop above never saw it. Left out, a
+    # paste of a hundred links could land and the tally would not move.
+    waiting = len(pasted - counted)
+    if waiting:
+        tally["pasted, nothing downloaded yet"] = waiting
+
     if changed:
         session.commit()
     tally["changed"] = changed

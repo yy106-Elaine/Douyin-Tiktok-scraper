@@ -1203,3 +1203,71 @@ class TestTwoWomenAndARelationship:
         assert self.out("出海打鱼") == "no community tag in the caption"
         assert self.out("LWL6666668888") == "no community tag in the caption"
         assert self.out("#lwl 出游") is None
+
+
+def test_the_tally_counts_a_hand_pasted_row_as_kept(db: None) -> None:
+    """The tally is read as "this is the corpus", so it has to agree.
+
+    `analyse.py` and `views.py` both keep a link copied by hand
+    whatever its text says -- the share blob truncates the caption,
+    usually right where the tags are. `remark` stored that reason and
+    then counted the row under it, so the tally reported exclusions
+    the corpus does not make and the two disagreed about how large the
+    corpus was.
+    """
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import CaptureEvent, DouyinPost, SharedLink
+    from app.relevance import remark
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-25",
+            captured_at=datetime(2026, 9, 25, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add(DouyinPost(
+            capture_event_id=event.id, participant_id="P001",
+            captured_at=datetime(2026, 9, 25, 18, 0),
+            video_id="7001", caption="就算你对我说谎我也会爱着你呀。# 古早 ...",
+        ))
+        session.add(SharedLink(
+            participant_id="P001", platform="douyin", raw_text="blob",
+            video_id="7001", shared_at=datetime(2026, 9, 25, 18, 0),
+            source="pasted",
+        ))
+        session.commit()
+
+        tally = remark(session)
+        post = session.scalars(select(DouyinPost)).one()
+
+    assert tally["kept: pasted by hand"] == 1
+    assert "no topic term" not in tally
+    # The reason is still stored: ?show=all has to be able to show it.
+    assert post.relevance is not None
+
+
+def test_the_tally_sees_a_paste_with_nothing_downloaded_for_it(
+    db: None,
+) -> None:
+    """A hundred links can land and the tally must not read as zero."""
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.models import SharedLink
+    from app.relevance import remark
+
+    with SessionLocal() as session:
+        session.add(SharedLink(
+            participant_id="P001", platform="douyin_note", raw_text="blob",
+            video_id="7003", shared_at=datetime(2026, 10, 1, 2, 0),
+            source="pasted",
+        ))
+        session.commit()
+
+        assert remark(session)["pasted, nothing downloaded yet"] == 1
