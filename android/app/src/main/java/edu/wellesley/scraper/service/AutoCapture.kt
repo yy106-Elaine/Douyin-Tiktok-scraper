@@ -232,7 +232,7 @@ class AutoCapture(private val service: AccessibilityService) {
         if (tiles.isEmpty()) {
             CaptureStats.onAutoFailure(
                 "no cells found on the grid",
-                SearchGrid.describe(roots),
+                SearchGrid.describe(activeRoots()),
             )
         }
         stop("dry run finished, ${tiles.size} cell(s)")
