@@ -38,11 +38,27 @@ from .models import SharedLink
 #: contains a blank line, so this splits exactly where a person's
 #: pasting does.
 def blocks(text: str) -> list[str]:
+    """The blobs in this text, each one once.
+
+    A paste that landed twice -- the ordinary terminal accident, and
+    one that has happened -- would otherwise be reported as twice as
+    many posts as were collected, and the dry run's count is the only
+    check a person has before storing them. Identity is the link:
+    two blobs pointing at the same URL are one sighting, however
+    their surrounding junk differs.
+    """
     out: list[str] = []
+    seen: set[str] = set()
     for chunk in (text or "").replace("\r\n", "\n").split("\n\n"):
         cleaned = chunk.strip()
-        if cleaned:
-            out.append(cleaned)
+        if not cleaned:
+            continue
+        link = extract(cleaned)
+        key = link.video_id or link.raw_url or cleaned
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(cleaned)
     return out
 
 
@@ -54,9 +70,16 @@ def store(
 ) -> tuple[SharedLink | None, str]:
     """One blob in, one row (or a reason there is none).
 
-    Already-known ids are skipped rather than duplicated: pasting the
-    same session twice is the ordinary accident here, and a second row
-    would be a second sighting that never happened.
+    Already-known links are skipped rather than duplicated: pasting
+    the same session twice is the ordinary accident here, and a second
+    row would be a second sighting that never happened.
+
+    **Both forms of "already known" are checked.** Matching on the
+    video id alone left the guard switched off for exactly the links
+    that need it: a Douyin share blob carries a `v.douyin.com` short
+    link and no id until `app.resolve` has followed it, so a batch
+    pasted twice produced two rows for every post in it. The short
+    link is the identity until the id exists, so it is matched too.
     """
     link = extract(text)
     if not link.video_id and not link.raw_url:
@@ -68,6 +91,12 @@ def store(
         )
         if seen is not None:
             return None, f"{link.video_id} already known"
+    elif link.raw_url:
+        seen = session.scalar(
+            select(SharedLink).where(SharedLink.raw_text.contains(link.raw_url))
+        )
+        if seen is not None:
+            return None, f"{link.raw_url} already known"
 
     said = describe(text)
     row = SharedLink(

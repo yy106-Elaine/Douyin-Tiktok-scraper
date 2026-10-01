@@ -421,3 +421,52 @@ def test_the_address_handle_is_restored_over_the_screen_reading(db):
         assert session.query(SharedLink).one().author_handle == "atlanticcoastpearl"
         # Nothing left to correct, so a second pass is a no-op.
         assert pairing.restore_url_handles(session) == 0
+
+
+def test_a_paste_that_landed_twice_is_one_sighting() -> None:
+    """The ordinary terminal accident, and one that has happened.
+
+    A heredoc that received the same batch twice reported 237 posts
+    where 119 had been collected. The dry run's count is the only
+    check a person has before storing, so it has to be the number of
+    posts, not the number of paragraphs.
+    """
+    from app.paste import blocks
+
+    one = (
+        "7.15 复制打开抖音，看看【Merlin的图文作品】太帅了 邢大人 "
+        "# lwl# wlw  https://v.douyin.com/SdtzTjz3lyg/ :6pm b@N.Wz"
+    )
+    two = (
+        "3.84 复制打开抖音，看看【qianxxxx的图文作品】就算你对我说谎 "
+        "# 古早 ... https://v.douyin.com/v559YY3leFg/ UYM:/ :8pm"
+    )
+
+    assert len(blocks(f"{one}\n\n{two}")) == 2
+    assert len(blocks(f"{one}\n\n{two}\n\n{one}\n\n{two}")) == 2
+    # The junk around the link differs between copies; the link does not.
+    again = one.replace(":6pm b@N.Wz", "09/14 f@B.go :9pm")
+    assert len(blocks(f"{one}\n\n{again}")) == 1
+
+
+def test_an_unresolved_short_link_is_not_stored_twice(db: None) -> None:
+    """Matching on the video id left the guard off where it was needed.
+
+    A Douyin share blob carries a v.douyin.com short link and no id
+    until app.resolve has followed it, so every Douyin paste bypassed
+    the duplicate check entirely.
+    """
+    from app.db import SessionLocal
+    from app.paste import store
+
+    blob = (
+        "7.15 复制打开抖音，看看【Merlin的图文作品】太帅了 邢大人 "
+        "# lwl# wlw  https://v.douyin.com/SdtzTjz3lyg/ :6pm b@N.Wz"
+    )
+    with SessionLocal() as session:
+        row, said = store(session, blob, "P001")
+        assert row is not None
+
+        again, why = store(session, blob, "P001")
+        assert again is None
+        assert "already known" in why
