@@ -55,6 +55,7 @@ from .survival import (
     Curve,
     Finding,
     by_collection_age,
+    horizon,
     kaplan_meier,
     quartiles,
     removal_ages,
@@ -423,34 +424,93 @@ class Page:
     reveal: bool = False
 
 
-def survival_chart(lines: list[tuple[str, int, Curve]], *, ident: str,
-                   width: int = 820, height: int = 300) -> str:
-    """Cumulative share removed, against age since publication.
+@dataclass
+class Counted:
+    """Share removed by each age, counted rather than estimated.
 
-    Drawn as removals rising from zero rather than survival falling
-    from one. The two are the same estimate; this way the baseline on
-    the page is a real zero and the axis can stop at the top of the
-    data without truncating anything. A survival curve sitting in the
-    top fifth of a 0-100% axis says the same thing and says it
-    invisibly.
+    `points` is (age in days, removed, answerable, unknown).
+    `answerable` is the posts whose fate at that age is known: watched
+    from before it, and either already gone or watched past it. A post
+    collected two days ago cannot say anything about what happens by
+    day seven, so it is out of that denominator rather than counted as
+    a survivor of it. `unknown` is the rest -- still up, but not
+    watched long enough to answer.
 
-    It is a step function, so it is drawn as one. A smoothed line
-    would put removals at times the estimator never claimed.
+    **Only ages where `answerable >= unknown` are drawn**, and that
+    cut is not cosmetic. Counting this way is honest at every age but
+    not unbiased at every age: a post removed on day two is known at
+    every later age, while a surviving post has to be watched that
+    long to count at all. So as the age grows the known set fills up
+    with removals and the share climbs towards 100% -- on this corpus
+    it reaches it by day fourteen, because the only posts whose fate
+    at day fourteen is known are the ones that were taken down. That
+    is an artefact of two weeks of collection, not a property of
+    Douyin, and it is why the chart stops where more than half the
+    eligible posts have an answer.
     """
-    # The bottom band carries a "numbers at risk" row per series --
-    # standard under a survival curve, and the only thing that tells a
-    # reader whether the tail rests on two posts or two hundred.
+
+    name: str
+    slot: int
+    points: list[tuple[float, int, int]] = field(default_factory=list)
+
+    @property
+    def shown(self) -> list[tuple[float, int, int, int]]:
+        """The points solid enough to draw: most fates known."""
+        return [p for p in self.points if p[2] and p[2] >= p[3]]
+
+    @property
+    def reach(self) -> float:
+        return max((age for age, _, _, _ in self.shown), default=1.0)
+
+    def share(self, age: float) -> float | None:
+        for at, removed, answerable, _ in self.points:
+            if at == age and answerable:
+                return removed / answerable
+        return None
+
+    def answerable(self, age: float) -> int:
+        return next((n for at, _, n, _ in self.points if at == age), 0)
+
+
+def counted(name: str, slot: int, items: list[Finding],
+            ages: list[float]) -> Counted:
+    """Observed share removed at each age, via `horizon`.
+
+    No estimator and no extrapolation: at every age this is a count
+    over a denominator that is stated on the chart. It is the same
+    question the horizon table asked, asked at more ages.
+    """
+    out = Counted(name=name, slot=slot)
+    for age in ages:
+        window = horizon(items, timedelta(days=age))
+        out.points.append((age, window.removed,
+                           window.removed + window.survived, window.censored))
+    return out
+
+
+def removal_chart(lines: list[Counted], *, ident: str,
+                  width: int = 820, height: int = 300) -> str:
+    """Share removed by age since publication, counted at each age.
+
+    Rising from zero rather than falling from one, so the baseline is
+    a real zero and the axis can stop at the top of the data without
+    truncating anything.
+
+    **Nothing here is estimated.** Each point is removed over
+    answerable, and the answerable counts are printed under the axis.
+    Where that number is small the point is a handful of posts, which
+    is why it is on the chart rather than in a footnote.
+    """
     pad_left, pad_right, pad_top = 46, 108, 14
     pad_bottom = 46 + 18 * len(lines)
     plot_w = width - pad_left - pad_right
     plot_h = height - pad_top - pad_bottom
 
     peak = max(
-        [1 - step.survival for _, _, c in lines for step in c.steps] or [0.1])
+        [share for line in lines for age, _, _, _ in line.shown
+         if (share := line.share(age)) is not None] or [0.1])
     top = max(0.1, min(1.0, (int(peak * 10) + 1) / 10))
-    reach = max(
-        [(c.watched_to or c.steps[-1].age).total_seconds() / 86400
-         for _, _, c in lines if c.steps] or [1.0])
+    reach = max([line.reach for line in lines] or [1.0])
 
     def x_of(days: float) -> float:
         return pad_left + plot_w * min(days / reach, 1.0)
@@ -471,57 +531,57 @@ def survival_chart(lines: list[tuple[str, int, Curve]], *, ident: str,
                    f'x2="{pad_left + plot_w}" y2="{y:.1f}" />')
         out.append(f'<text class="tick" x="{pad_left - 6}" y="{y + 4:.1f}" '
                    f'text-anchor="end">{share * 100:.0f}%</text>')
-    for day in _day_ticks(reach):
-        x = x_of(day)
-        out.append(f'<text class="tick" x="{x:.1f}" '
+    for age in sorted({age for line in lines for age, _, _, _ in line.shown}):
+        out.append(f'<text class="tick" x="{x_of(age):.1f}" '
                    f'y="{pad_top + plot_h + 18:.0f}" '
-                   f'text-anchor="middle">{day:g}d</text>')
+                   f'text-anchor="middle">{age:g}d</text>')
     out.append(f'<line class="axis" x1="{pad_left}" y1="{pad_top + plot_h}" '
                f'x2="{pad_left + plot_w}" y2="{pad_top + plot_h}" />')
 
     row = pad_top + plot_h + 48
     out.append(f'<text class="tick" x="{pad_left - 6}" y="{row - 14:.0f}" '
-               f'text-anchor="end">at risk</text>')
-    for name, slot, curve in lines:
-        for day in _day_ticks(reach):
+               f'text-anchor="end">posts</text>')
+    for line in lines:
+        for age, _, answerable, _ in line.shown:
             out.append(
-                f'<text class="tick risk" x="{x_of(day):.1f}" '
-                f'y="{row:.0f}" text-anchor="middle">'
-                f'{curve.at_risk(timedelta(days=day))}</text>')
-        out.append(f'<rect class="key-swatch c{slot}" x="{pad_left - 15}" '
-                   f'y="{row - 9:.0f}" width="9" height="9" rx="2" />')
+                f'<text class="tick risk" x="{x_of(age):.1f}" '
+                f'y="{row:.0f}" text-anchor="middle">{answerable}</text>')
+        out.append(f'<rect class="key-swatch c{line.slot}" '
+                   f'x="{pad_left - 15}" y="{row - 9:.0f}" '
+                   f'width="9" height="9" rx="2" />')
         row += 18
 
-    for name, slot, curve in lines:
-        if not curve.steps:
+    labelled: list[float] = []
+    for line in lines:
+        drawn = [(age, share) for age, _, _, _ in line.shown
+                 if (share := line.share(age)) is not None]
+        if not drawn:
             continue
-        path = [f"M{x_of(0):.1f} {y_of(0):.1f}"]
-        share = 0.0
-        for step in curve.steps:
-            days = step.age.total_seconds() / 86400
-            path.append(f"H{x_of(days):.1f}")
-            share = 1 - step.survival
-            path.append(f"V{y_of(share):.1f}")
-        # Flat from the last removal to the end of follow-up, and no
-        # further: past there nothing was being watched, so the line
-        # stops rather than implying the share held.
-        ends = (curve.watched_to or curve.steps[-1].age).total_seconds() / 86400
-        path.append(f"H{x_of(ends):.1f}")
-        out.append(f'<path class="line c{slot}" d="{" ".join(path)}" />')
-        for step in curve.steps:
-            days = step.age.total_seconds() / 86400
-            x, y = x_of(days), y_of(1 - step.survival)
-            hover = (f"{name}\n{(1 - step.survival) * 100:.0f}% removed by "
-                     f"day {days:.1f}\n{step.at_risk} still being watched\n"
-                     f"{step.events} removed here")
+        path = " ".join(
+            f"{'M' if index == 0 else 'L'}{x_of(age):.1f} {y_of(share):.1f}"
+            for index, (age, share) in enumerate(drawn))
+        out.append(f'<path class="line c{line.slot}" d="{path}" />')
+        for age, share in drawn:
+            removed = next(r for at, r, _, _ in line.points if at == age)
+            answerable = line.answerable(age)
+            hover = (f"{line.name}\nby day {age:g}: {removed} of "
+                     f"{answerable} removed ({share * 100:.0f}%)\n"
+                     f"counted, not estimated")
             out.append(
                 f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
-                f'<circle class="hit" cx="{x:.1f}" cy="{y:.1f}" r="12" />'
-                f'<circle class="dot c{slot}" cx="{x:.1f}" cy="{y:.1f}" '
-                f'r="3.5" /></g>')
-        out.append(f'<text class="end-label c{slot}" '
-                   f'x="{x_of(ends) + 8:.1f}" y="{y_of(share) + 4:.1f}">'
-                   f'{_e(name)} {share * 100:.0f}%</text>')
+                f'<circle class="hit" cx="{x_of(age):.1f}" '
+                f'cy="{y_of(share):.1f}" r="12" />'
+                f'<circle class="dot c{line.slot}" cx="{x_of(age):.1f}" '
+                f'cy="{y_of(share):.1f}" r="3.5" /></g>')
+        last_age, last_share = drawn[-1]
+        y = y_of(last_share) + 4
+        while any(abs(y - taken) < 15 for taken in labelled):
+            y += 15
+        labelled.append(y)
+        out.append(f'<text class="end-label c{line.slot}" '
+                   f'x="{x_of(last_age) + 8:.1f}" y="{y:.1f}">'
+                   f'{_e(line.name)} {last_share * 100:.0f}%</text>')
+
     out.append("</svg>")
     return "".join(out)
 
@@ -551,9 +611,10 @@ def _douyin(session: Session, page: Page) -> str:
     notes = page.held.get("douyin_note", [])
     both = video + notes
     whole = kaplan_meier(both)
+    ages = [1, 2, 3, 5, 7, 10, 14, 21, 30]
     curves = [
-        ("视频 (video)", 1, kaplan_meier(video)),
-        ("图文 (note)", 2, kaplan_meier(notes)),
+        counted("视频 (video)", 1, video, ages),
+        counted("图文 (note)", 2, notes, ages),
     ]
 
     lasted = removal_ages(both)
@@ -574,16 +635,16 @@ def _douyin(session: Session, page: Page) -> str:
              "that saw it gone"),
     ])
 
+    # The table is the chart's own numbers, with the denominator
+    # beside each one rather than under the axis.
     rows = []
     for days in (1, 3, 7, 14, 30):
-        age = timedelta(days=days)
         row = [f"{days}d"]
-        for name, _, curve in curves:
-            survival = curve.survival_at(age)
-            at_risk = _at_risk(curve, age)
-            row.append("—" if survival is None
-                       else f"{(1 - survival) * 100:.0f}%")
-            row.append("—" if survival is None else str(at_risk))
+        for line in curves:
+            share = line.share(days)
+            answerable = line.answerable(days)
+            row.append("—" if share is None else f"{share * 100:.0f}%")
+            row.append("—" if share is None else str(answerable))
         rows.append(row)
 
     return (
@@ -592,18 +653,18 @@ def _douyin(session: Session, page: Page) -> str:
         '<div class="scale">'
         '<span class="key"><i class="rule c1"></i>视频 (video)</span>'
         '<span class="key"><i class="rule c2"></i>图文 (note)</span></div>'
-        f'{survival_chart(curves, ident="km")}'
-        f'<p class="note">Kaplan–Meier, counting each post only from the day '
-        f'this study first saw it. Each removal is placed in the middle of '
-        f'the bracket that contains it. <strong>The curve and the tiles '
-        f'answer different questions</strong> \u2014 a tile is the share of '
-        f'the posts collected so far that has gone; the curve estimates the '
-        f'share that would be gone by a given age if every post were followed '
-        f'that long. The curve is therefore higher, and the gap is the '
-        f'censoring: most of these posts are only days old. The row under the '
-        f'axis is how many posts each point rests on \u2014 where that number '
-        f'is small, the curve there is two or three events, not a finding. '
-        f'{_e(_median_line(whole, lasted))}</p>'
+        f'{removal_chart(curves, ident="km")}'
+        '<p class="note"><strong>Counted, not estimated.</strong> Each '
+        'point is "of the posts this question can be asked of, how many were '
+        'gone by this age" — and the row under the axis is how many posts '
+        'that was. A post collected two days ago cannot say anything about '
+        'what happens by day seven, so it is left out of that denominator '
+        'rather than counted as having survived it. Where the number under a '
+        'point is small, the point is a handful of posts. The chart stops '
+        'where more than half the eligible posts no longer have an answer: '
+        'past there, the only posts whose fate is known are the ones that '
+        'were taken down, and the line climbs to 100% for that reason '
+        'rather than any other.</p>'
         + table(["Age", "视频 removed", "视频 watched", "图文 removed",
                  "图文 watched"], rows, "share removed by age")
         + "</section>"

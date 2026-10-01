@@ -180,3 +180,29 @@ def test_a_tab_with_nothing_in_it_is_not_rendered(db: None) -> None:
         page = build(session, generated=datetime(2026, 10, 1, 2, 30))
 
     assert '<nav class="tab-strip">' not in page
+
+
+def test_the_counted_curve_stops_where_most_fates_are_unknown() -> None:
+    """Counting is honest at every age but not unbiased at every age.
+
+    A post removed on day two is known at every later age; a surviving
+    post has to be watched that long to count at all. So the known set
+    fills up with removals and the share climbs to 100% -- on two
+    weeks of collection it gets there by day fourteen, because the
+    only posts whose fate at day fourteen is known are the ones taken
+    down. The chart has to stop before that, or it reports a
+    collection schedule as a platform behaviour.
+    """
+    from app.report import Counted
+
+    line = Counted(name="video", slot=1, points=[
+        (1.0, 5, 100, 10),    # most fates known -- drawn
+        (7.0, 20, 60, 40),    # still more known than not -- drawn
+        (14.0, 19, 19, 80),   # only the removed ones are known -- dropped
+    ])
+
+    assert [age for age, _, _, _ in line.shown] == [1.0, 7.0]
+    assert line.reach == 7.0
+    # The point still exists and can still be read; it is not drawn.
+    assert line.share(14.0) == 1.0
+    assert line.answerable(14.0) == 19
