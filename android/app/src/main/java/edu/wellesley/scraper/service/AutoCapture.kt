@@ -93,6 +93,21 @@ class AutoCapture(private val service: AccessibilityService) {
     /** Consecutive scrolls of the grid that turned up nothing new. */
     private var barrenScrolls = 0
 
+    /**
+     * BACK presses this run has made, counted for the whole run.
+     *
+     * The way back to the grid gives up after six tries, but the
+     * counter it used was per call -- and the step that waits for the
+     * app to come back schedules a fresh attempt, which starts at
+     * zero. So a run that could not find its way home pressed BACK
+     * for as long as it was allowed: out of the post, out of the
+     * search, through the recommended feed and finally out of Douyin
+     * onto the home screen. Two dozen presses, none of them chosen.
+     *
+     * A run that is lost does not become less lost by pressing more.
+     */
+    private var backPresses = 0
+
     /** Whether this run reads the results grid rather than a feed. */
     private val onGrid: Boolean
         get() = mode == Mode.GRID || mode == Mode.GRID_DRY_RUN
@@ -125,6 +140,7 @@ class AutoCapture(private val service: AccessibilityService) {
         this.awayReadings = 0
         this.opened.clear()
         this.barrenScrolls = 0
+        this.backPresses = 0
         running = true
         CaptureStats.onAutoStart(mode.name, minutes, videos, inPackage)
         handler.postDelayed(
@@ -375,10 +391,20 @@ class AutoCapture(private val service: AccessibilityService) {
             stop("lost the search results")
             return
         }
+        backPresses++
+        if (backPresses > MAX_BACK_PRESSES) {
+            CaptureStats.onAutoFailure(
+                "pressed back $backPresses times without reaching the search " +
+                    "results -- stopping rather than pressing on",
+                SearchGrid.describe(activeRoots()),
+            )
+            stop("too many back presses")
+            return
+        }
         // A sheet or a profile is dismissed by its own control; a post
         // has none of ours on it, so BACK is what leaves it.
         if (!dismissWhatIsOnTop()) {
-            CaptureStats.onAutoStep("leaving the post with back")
+            CaptureStats.onAutoStep("leaving the post with back ($backPresses)")
             service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         }
         handler.postDelayed({ backToGrid(attempt + 1) }, BACK_MILLIS)
@@ -1148,6 +1174,14 @@ class AutoCapture(private val service: AccessibilityService) {
 
         /** One BACK per try, waiting for the results to come back. */
         const val BACK_TO_GRID_TRIES = 6
+
+        /**
+         * BACK presses allowed in a whole run, however many times the
+         * way home is attempted. Three per post is generous for a
+         * post that needs two; past that the run is lost, and a lost
+         * run presses nothing.
+         */
+        const val MAX_BACK_PRESSES = 8
 
         /**
          * Scrolls of the grid that turn up nothing new before the run

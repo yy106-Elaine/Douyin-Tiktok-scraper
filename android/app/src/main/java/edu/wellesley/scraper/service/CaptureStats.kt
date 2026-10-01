@@ -164,6 +164,11 @@ object CaptureStats {
     @Volatile var autoFailure: String? = null
     @Volatile var autoScreenAtFailure: List<String> = emptyList()
     private val autoSteps = ArrayDeque<String>()
+    private val autoTail = ArrayDeque<String>()
+
+    /** How many of a run's first and last steps are kept. */
+    private const val HEAD_STEPS = 12
+    private const val TAIL_STEPS = 18
 
     fun onAutoStart(mode: String, minutes: Int, videos: Int, inPackage: String) {
         autoMode = "$mode, up to $minutes min / $videos videos, in $inPackage"
@@ -172,14 +177,32 @@ object CaptureStats {
         autoFailure = null
         autoScreenAtFailure = emptyList()
         autoStepsDone = 0
-        synchronized(autoSteps) { autoSteps.clear() }
+        synchronized(autoSteps) {
+            autoSteps.clear()
+            autoTail.clear()
+        }
     }
 
+    /**
+     * Record a step, keeping the start of the run as well as the end.
+     *
+     * The list used to keep the last twenty, and a run that failed
+     * early and then spent twenty steps recovering lost exactly the
+     * lines that said what had failed: a 图文 run's `open`, `waiting
+     * for the caption` and `looking for the share control` were all
+     * trimmed, leaving a log of nothing but the recovery. The first
+     * steps are where a run goes wrong; the last are where it ends
+     * up. Both are kept, and the gap between them is marked.
+     */
     fun onAutoStep(what: String) {
         autoStepsDone++
         synchronized(autoSteps) {
-            autoSteps.addLast("${time(System.currentTimeMillis())}  $what")
-            while (autoSteps.size > 20) autoSteps.removeFirst()
+            if (autoSteps.size < HEAD_STEPS) {
+                autoSteps.addLast("${time(System.currentTimeMillis())}  $what")
+                return
+            }
+            autoTail.addLast("${time(System.currentTimeMillis())}  $what")
+            while (autoTail.size > TAIL_STEPS) autoTail.removeFirst()
         }
     }
 
@@ -292,10 +315,15 @@ object CaptureStats {
             lines += "  started ${time(autoStartedAt)}, $autoStepsDone step(s)"
             lines += "  " + (autoStoppedBecause?.let { "stopped: $it" } ?: "still running")
             autoFailure?.let { lines += "  FAILED: $it" }
-            val recent = synchronized(autoSteps) { autoSteps.toList() }
-            if (recent.isNotEmpty()) {
+            val (head, tail) = synchronized(autoSteps) {
+                autoSteps.toList() to autoTail.toList()
+            }
+            if (head.isNotEmpty()) {
                 lines += "  steps:"
-                recent.forEach { lines += "    $it" }
+                head.forEach { lines += "    $it" }
+                val skipped = autoStepsDone - head.size - tail.size
+                if (skipped > 0) lines += "    ... $skipped more ..."
+                tail.forEach { lines += "    $it" }
             }
             if (autoScreenAtFailure.isNotEmpty()) {
                 lines += "  what was on screen when it failed:"
