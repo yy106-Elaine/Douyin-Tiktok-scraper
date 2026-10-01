@@ -417,3 +417,75 @@ class TestTheDouyinIdReadOffAProfile:
             headers={"X-API-Key": "nope"},
         )
         assert response.status_code == 401
+
+
+class TestTheProfileIsTheOneThatWasAskedFor:
+    """Douyin answers with somebody else's profile, and it was believed.
+
+    The video pass has checked the id it got back ever since the site
+    started serving the next recommended video for a removed one --
+    that check is where this study's removals come from. The profile
+    pass had none, and a run of 45 accounts filed one stranger's
+    抖音号 under nine of them. A wrong handle is worse than no handle:
+    an empty field is visibly empty, and the interviews are addressed
+    to this one.
+    """
+
+    def test_a_profile_for_another_account_is_not_stored(self, db: None) -> None:
+        from app.db import SessionLocal
+        from app.fetch_authors import SERVED_ANOTHER_PROFILE, run
+        from app.models import WebAuthor
+        from app.pagedata import Fetched
+
+        def served_someone_else(sec_uid):
+            return Fetched(
+                url="x", html="", http_status=200,
+                payloads=[{
+                    "sec_uid": "MS4wLjABAAAA-stranger",
+                    "nickname": "天乖乖地乖乖",
+                    "unique_id": "31951321249",
+                }],
+            )
+
+        with SessionLocal() as session:
+            report = run(
+                session,
+                ["MS4wLjABAAAA-her"],
+                fetcher=served_someone_else,
+                pause_seconds=0,
+            )
+            row = session.query(WebAuthor).one()
+
+        assert report["mismatched"] == 1
+        assert row.sec_uid == "MS4wLjABAAAA-her"
+        assert row.author_handle is None
+        assert row.error == SERVED_ANOTHER_PROFILE
+
+    def test_a_handle_under_two_accounts_is_cleared_from_both(
+        self, db: None
+    ) -> None:
+        """Not all but one: nothing says which account it belongs to."""
+        from app.db import SessionLocal
+        from app.fetch_authors import clear_shared_handles, shared_handles, wanted
+        from app.models import WebAuthor
+
+        with SessionLocal() as session:
+            for sec_uid in ("a", "b"):
+                session.add(WebAuthor(
+                    sec_uid=sec_uid, platform="douyin",
+                    author_handle="31951321249", author_name="天乖乖地乖乖",
+                    kept_for_video_id="7001",
+                ))
+            session.add(WebAuthor(
+                sec_uid="c", platform="douyin", author_handle="hers",
+                kept_for_video_id="7002",
+            ))
+            session.commit()
+
+            assert list(shared_handles(session)) == ["31951321249"]
+            assert clear_shared_handles(session) == 2
+            # Emptied, and back in the list to be read again.
+            assert {r.author_handle for r in session.query(WebAuthor)} == {
+                None, "hers",
+            }
+            assert set(wanted(session)) >= {"a", "b"}

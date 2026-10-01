@@ -32,6 +32,11 @@ from .models import WebAuthor, WebVideo
 
 PAUSE_SECONDS = 2.0
 
+#: Recorded when the profile that answered was somebody else's. Kept
+#: as an error rather than silently skipped, so the account stays in
+#: the list to be read again rather than looking read.
+SERVED_ANOTHER_PROFILE = "served another profile"
+
 
 def forget_orphans(session: Session) -> int:
     """Drop profiles that no video in the corpus points at any more.
@@ -96,6 +101,49 @@ def wanted(session: Session, refresh: bool = False) -> list[str]:
     return sorted((set(known) | set(held)) - already)
 
 
+def shared_handles(session: Session) -> dict[str, list[str]]:
+    """抖音号 that are on file under more than one account.
+
+    One handle belongs to one account, so a handle under two sec_uids
+    means at least one of them is wrong -- and, before the profile
+    pass checked what it had been served, the wrong ones came in runs:
+    one stranger's handle written against nine accounts.
+    """
+    out: dict[str, list[str]] = {}
+    for handle, sec_uid in session.execute(
+        select(WebAuthor.author_handle, WebAuthor.sec_uid).where(
+            WebAuthor.author_handle.isnot(None)
+        )
+    ):
+        out.setdefault(handle, []).append(sec_uid)
+    return {handle: ids for handle, ids in out.items() if len(ids) > 1}
+
+
+def clear_shared_handles(session: Session) -> int:
+    """Empty every account in a shared-handle group, and say how many.
+
+    All of them, not all but one: nothing on file says which account
+    the handle really belongs to, and keeping one at random would be
+    guessing at the field the interviews are addressed to. They go
+    back into the list and are read again, this time with the check
+    that the profile is the one that was asked for.
+    """
+    cleared = 0
+    for handle, ids in shared_handles(session).items():
+        for row in session.scalars(
+            select(WebAuthor).where(WebAuthor.author_handle == handle)
+        ):
+            row.author_handle = None
+            row.author_name = None
+            row.signature = None
+            row.ip_location = None
+            row.error = SERVED_ANOTHER_PROFILE
+            cleared += 1
+    if cleared:
+        session.commit()
+    return cleared
+
+
 def store(session: Session, sec_uid: str, page, facts) -> WebAuthor:
     row = session.scalars(
         select(WebAuthor).where(WebAuthor.sec_uid == sec_uid)
@@ -152,7 +200,7 @@ def run(
     fetcher=anonymous,
     on_progress=None,
 ) -> dict[str, int]:
-    report = {"read": 0, "with_handle": 0, "unreadable": 0}
+    report = {"read": 0, "with_handle": 0, "unreadable": 0, "mismatched": 0}
     total = len(sec_uids)
 
     for index, sec_uid in enumerate(sec_uids):
@@ -165,6 +213,28 @@ def run(
             if (page.html or page.payloads)
             else None
         )
+
+        # The page has to be the one that was asked for.
+        #
+        # Douyin answers a request for a removed video with the next
+        # recommended one, and the video pass has checked the id it
+        # got back ever since -- that check is where this study's
+        # removals come from. The profile pass had no such check, and
+        # the site does the same thing here: a run of 45 accounts came
+        # back with one stranger's 抖音号 filed under nine different
+        # accounts. A wrong handle is worse than none, because an
+        # empty field is visibly empty and a wrong one is not.
+        if (
+            facts is not None
+            and facts.sec_uid
+            and facts.sec_uid != sec_uid
+        ):
+            report["mismatched"] = report.get("mismatched", 0) + 1
+            page.error = SERVED_ANOTHER_PROFILE
+            store(session, sec_uid, page, None)
+            if on_progress:
+                on_progress(index + 1, total, "served another profile")
+            continue
 
         if facts is None or facts.is_empty():
             report["unreadable"] += 1
@@ -191,6 +261,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="fetch; otherwise count and stop")
+    parser.add_argument(
+        "--repair",
+        action="store_true",
+        help=(
+            "empty every account whose 抖音号 is on file under more than "
+            "one account, and stop. One handle belongs to one account, "
+            "so a shared one means the site served somebody else's "
+            "profile and it was believed. They are read again afterwards"
+        ),
+    )
     parser.add_argument("--limit", type=int, default=None, help="stop after N accounts")
     parser.add_argument("--refresh", action="store_true", help="re-read profiles already read")
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS)
@@ -213,6 +293,18 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
+        if args.repair:
+            groups = shared_handles(session)
+            cleared = clear_shared_handles(session)
+            print(
+                f"{len(groups)} 抖音号 were on file under more than one "
+                f"account; {cleared} account(s) emptied and queued to be "
+                "read again.\nRun  python -m app.fetch_authors --apply"
+            )
+            for handle, ids in list(groups.items())[:10]:
+                print(f"  {handle}: {len(ids)} accounts")
+            return
+
         forgotten = forget_orphans(session)
         if forgotten:
             print(f"forgot {forgotten} profile(s) no video points at any more")
@@ -278,7 +370,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 )
         print(
             f"read {report['read']} profile(s), {report['with_handle']} with a "
-            f"抖音号; {report['unreadable']} unreadable"
+            f"抖音号; {report['unreadable']} unreadable; "
+            f"{report.get('mismatched', 0)} served somebody else's profile"
         )
 
 
