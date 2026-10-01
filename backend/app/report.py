@@ -437,7 +437,11 @@ def survival_chart(lines: list[tuple[str, int, Curve]], *, ident: str,
     It is a step function, so it is drawn as one. A smoothed line
     would put removals at times the estimator never claimed.
     """
-    pad_left, pad_right, pad_top, pad_bottom = 46, 108, 14, 34
+    # The bottom band carries a "numbers at risk" row per series --
+    # standard under a survival curve, and the only thing that tells a
+    # reader whether the tail rests on two posts or two hundred.
+    pad_left, pad_right, pad_top = 46, 108, 14
+    pad_bottom = 46 + 18 * len(lines)
     plot_w = width - pad_left - pad_right
     plot_h = height - pad_top - pad_bottom
 
@@ -474,6 +478,19 @@ def survival_chart(lines: list[tuple[str, int, Curve]], *, ident: str,
                    f'text-anchor="middle">{day:g}d</text>')
     out.append(f'<line class="axis" x1="{pad_left}" y1="{pad_top + plot_h}" '
                f'x2="{pad_left + plot_w}" y2="{pad_top + plot_h}" />')
+
+    row = pad_top + plot_h + 48
+    out.append(f'<text class="tick" x="{pad_left - 6}" y="{row - 14:.0f}" '
+               f'text-anchor="end">at risk</text>')
+    for name, slot, curve in lines:
+        for day in _day_ticks(reach):
+            out.append(
+                f'<text class="tick risk" x="{x_of(day):.1f}" '
+                f'y="{row:.0f}" text-anchor="middle">'
+                f'{curve.at_risk(timedelta(days=day))}</text>')
+        out.append(f'<rect class="key-swatch c{slot}" x="{pad_left - 15}" '
+                   f'y="{row - 9:.0f}" width="9" height="9" rx="2" />')
+        row += 18
 
     for name, slot, curve in lines:
         if not curve.steps:
@@ -578,7 +595,15 @@ def _douyin(session: Session, page: Page) -> str:
         f'{survival_chart(curves, ident="km")}'
         f'<p class="note">Kaplan–Meier, counting each post only from the day '
         f'this study first saw it. Each removal is placed in the middle of '
-        f'the bracket that contains it. {_e(_median_line(whole, lasted))}</p>'
+        f'the bracket that contains it. <strong>The curve and the tiles '
+        f'answer different questions</strong> \u2014 a tile is the share of '
+        f'the posts collected so far that has gone; the curve estimates the '
+        f'share that would be gone by a given age if every post were followed '
+        f'that long. The curve is therefore higher, and the gap is the '
+        f'censoring: most of these posts are only days old. The row under the '
+        f'axis is how many posts each point rests on \u2014 where that number '
+        f'is small, the curve there is two or three events, not a finding. '
+        f'{_e(_median_line(whole, lasted))}</p>'
         + table(["Age", "视频 removed", "视频 watched", "图文 removed",
                  "图文 watched"], rows, "share removed by age")
         + "</section>"
@@ -1025,6 +1050,7 @@ figcaption {
 .key-swatch.c5 { fill: var(--cat-5); } .key-swatch.c6 { fill: var(--cat-6); }
 .mark:hover .slice, .mark:focus .slice { fill-opacity: 0.85; }
 .end-label { font-size: 12px; font-weight: 600; fill: var(--text-secondary); }
+.risk { font-size: 10px; }
 .mark:hover .dot, .mark:focus .dot { r: 5; }
 .zero { stroke: var(--axis); stroke-width: 2; }
 .spell { stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; }

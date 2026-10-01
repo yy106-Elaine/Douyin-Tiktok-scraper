@@ -186,3 +186,25 @@ def test_a_survivor_contributes_no_duration() -> None:
         _finding("up", timedelta(0), last_alive_after=5 * DAY,
                  watched_until=5 * DAY)
     ]) == []
+
+
+def test_the_risk_set_can_be_counted_at_any_age() -> None:
+    """A curve has to say what each of its points rests on.
+
+    The steps only exist where something happened, so without the
+    observation windows there is no way to answer "how many posts were
+    still being watched at day 14" -- and that is the number that
+    separates a finding from two events at the end of a thin tail.
+    """
+    curve = kaplan_meier([
+        _finding("a", timedelta(0), last_alive_after=DAY, gone_after=3 * DAY),
+        _finding("b", timedelta(0), last_alive_after=20 * DAY,
+                 watched_until=20 * DAY),
+        _finding("late", 10 * DAY, last_alive_after=30 * DAY,
+                 watched_until=30 * DAY),
+    ])
+
+    assert curve.at_risk(DAY) == 2          # the latecomer has not entered
+    assert curve.at_risk(12 * DAY) == 2     # "a" is gone, "late" has entered
+    assert curve.at_risk(25 * DAY) == 1     # only the latecomer is left
+    assert curve.at_risk(40 * DAY) == 0     # nothing was watched that long

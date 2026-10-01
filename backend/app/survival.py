@@ -621,6 +621,12 @@ class Curve:
     #: is flat from its last step to here and undefined beyond it, so
     #: this is where it has to stop being drawn.
     watched_to: timedelta | None = None
+    #: (entered, left) per video, in age since publication. Kept so
+    #: the risk set can be counted at any age, not only at the ages
+    #: where something happened -- which is what a "numbers at risk"
+    #: row under the curve needs, and what tells a reader whether the
+    #: tail rests on two posts or two hundred.
+    windows: list[tuple[timedelta, timedelta]] = field(default_factory=list)
 
     def survival_at(self, age: timedelta) -> float | None:
         """Share still up at `age`, or None past the end of the curve."""
@@ -636,6 +642,13 @@ class Curve:
                 break
             current = step.survival
         return current
+
+    def at_risk(self, age: timedelta) -> int:
+        """How many videos were under observation at this age."""
+        # Inclusive at both ends, so the column at age 0 reports the
+        # whole sample rather than a zero -- a "numbers at risk" row
+        # that starts at nothing reads as a bug.
+        return sum(1 for start, end in self.windows if start <= age <= end)
 
     def quantile(self, share: float) -> timedelta | None:
         """Age by which `share` of videos are gone, or None if unreached.
@@ -720,6 +733,7 @@ def kaplan_meier(items: list["Finding"]) -> Curve:
         entries.append((start, end, event))
 
     curve = Curve(sample=len(entries))
+    curve.windows = [(start, end) for start, end, _ in entries]
     if entries:
         curve.watched_to = max(end for _, end, _ in entries)
     moments = sorted({end for _, end, event in entries if event})
