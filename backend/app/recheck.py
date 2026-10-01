@@ -770,6 +770,10 @@ def freshness(
             "tracked": 0, "today": 0, "never": 0, "due": 0,
             "oldest": None,
             "browser_only": target.platform in BROWSER_ONLY,
+            # A batched platform has no cadence -- fifty ids per
+            # request, so every video is due every run. Reported, or
+            # "due now 121" reads as 121 videos the job missed.
+            "always_due": target.platform in BATCHED,
         })
         row["tracked"] += 1
         if target.video_id in due:
@@ -792,14 +796,19 @@ def _print_freshness(session: Session) -> None:  # pragma: no cover - CLI
     for row in freshness(session, now=moment):
         oldest = row["oldest"]
         age = "—" if oldest is None else f"{(moment - oldest).days}d ago"
-        mark = " (browser only)" if row["browser_only"] else ""
+        mark = ""
+        if row["browser_only"]:
+            mark = " (browser only)"
+        elif row["always_due"]:
+            mark = " (batched: always due, not missed)"
         print(f"{row['platform']:14} {row['tracked']:8} {row['today']:12} "
               f"{row['never']:6} {row['due']:8}  {age}{mark}")
     print("\n  The scheduled 09:00 job runs app.recheck, which cannot read\n"
           "  douyin.com without a session -- those rows are only as fresh\n"
           "  as the last hand-run of  python -m app.daily --platform douyin\n"
-          "  --apply. For the rest, 'due now' should be near zero just\n"
-          "  after the morning run.")
+          "  --apply. YouTube is checked fifty ids to a request, so it has\n"
+          "  no cadence and every video reads as due. The number to watch\n"
+          "  is TikTok's, which should be near zero after the morning run.")
 
 
 def main() -> None:  # pragma: no cover - thin CLI wrapper

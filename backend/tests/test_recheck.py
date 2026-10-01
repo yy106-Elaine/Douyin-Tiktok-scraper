@@ -567,6 +567,26 @@ class TestFreshness:
         assert rows["douyin"]["browser_only"] is True
         assert rows["tiktok"]["browser_only"] is False
 
+    def test_a_batched_platform_is_marked_as_always_due(self, client):
+        """Or "due now 121" reads as 121 videos the job missed.
+
+        YouTube answers fifty ids to a request, so it has no cadence
+        and every video is due every run -- which is the opposite of
+        a backlog.
+        """
+        from app.db import SessionLocal
+        from app.recheck import freshness
+
+        with SessionLocal() as session:
+            rows = {r["platform"]: r for r in freshness(
+                session, NOW,
+                [self._target("youtube", "abc"),
+                 self._target("tiktok", "7001")])}
+
+        assert rows["youtube"]["always_due"] is True
+        assert rows["youtube"]["due"] == 1
+        assert rows["tiktok"]["always_due"] is False
+
     def test_a_video_checked_this_morning_is_fresh_and_not_due(self, client):
         """And a fortnight-old one is due again the next morning.
 
