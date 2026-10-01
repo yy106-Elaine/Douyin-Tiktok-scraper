@@ -153,6 +153,36 @@ def captions(session: Session, platform: str) -> dict[str, str]:
     return said
 
 
+def caption_dump(session: Session, path: str) -> int:
+    """Every distinct Douyin caption, one per line, and nothing else.
+
+    For designing a classification scheme against the corpus that
+    exists rather than the one imagined. Deliberately carries no id,
+    no handle, no date and -- above all -- no outcome: a taxonomy
+    built while looking at which posts were removed is a taxonomy
+    fitted to the answer, and every later claim that content predicts
+    removal would be circular.
+
+    Captionless posts are counted rather than written. They are a
+    third of nothing to classify, and the count is the finding.
+    """
+    seen: set[str] = set()
+    empty = 0
+    for platform in ("douyin", "douyin_note"):
+        for text in captions(session, platform).values():
+            cleaned = " ".join(text.split())
+            if not cleaned:
+                empty += 1
+                continue
+            seen.add(cleaned)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(f"# {len(seen)} distinct captions; "
+                     f"{empty} post(s) carry none\n")
+        for line in sorted(seen):
+            handle.write(line + "\n")
+    return len(seen)
+
+
 def export(session: Session, path: str) -> int:
     """One row per video, for a survival analysis done properly elsewhere.
 
@@ -194,6 +224,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", help="also write one row per video here")
+    parser.add_argument(
+        "--captions",
+        help="also write every distinct Douyin caption here, one per line, "
+             "with no ids and no removal outcomes",
+    )
     args = parser.parse_args()
 
     init_db()
@@ -274,6 +309,10 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         if args.csv:
             written = export(session, args.csv)
             print(f"\n{written} row(s) written to {args.csv}")
+
+        if args.captions:
+            written = caption_dump(session, args.captions)
+            print(f"{written} distinct caption(s) written to {args.captions}")
 
 
 if __name__ == "__main__":  # pragma: no cover

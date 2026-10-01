@@ -145,3 +145,44 @@ def test_a_video_with_no_publication_time_is_left_out() -> None:
     undated.published_at = None
 
     assert kaplan_meier([undated]).sample == 0
+
+
+def test_the_removed_posts_median_is_not_the_corpus_median() -> None:
+    """Two different questions, and only one of them has an answer yet.
+
+    Four posts are removed quickly, six are still up at twenty days.
+    "The removed ones lasted about two days" is true and computable
+    now. "Half of all posts are gone by two days" is false -- most are
+    still up -- and the curve refuses it.
+    """
+    from app.survival import quartiles, removal_ages
+
+    removed = [
+        _finding(f"gone{n}", timedelta(0), last_alive_after=DAY,
+                 gone_after=3 * DAY)
+        for n in range(4)
+    ]
+    survivors = [
+        _finding(f"up{n}", timedelta(0), last_alive_after=20 * DAY,
+                 watched_until=20 * DAY)
+        for n in range(6)
+    ]
+
+    lasted = removal_ages(removed + survivors)
+    assert len(lasted) == 4
+    low, middle, high = quartiles(lasted)
+    assert middle == 2 * DAY
+    assert (low, high) == (2 * DAY, 2 * DAY)
+
+    # And the corpus median, which is the other question, is unreached.
+    assert kaplan_meier(removed + survivors).quantile(0.5) is None
+
+
+def test_a_survivor_contributes_no_duration() -> None:
+    """It has not been removed, so it has no time-to-removal."""
+    from app.survival import removal_ages
+
+    assert removal_ages([
+        _finding("up", timedelta(0), last_alive_after=5 * DAY,
+                 watched_until=5 * DAY)
+    ]) == []

@@ -740,3 +740,35 @@ def kaplan_meier(items: list["Finding"]) -> Curve:
         widths.sort()
         curve.resolution = widths[len(widths) // 2]
     return curve
+
+
+def removal_ages(items: list["Finding"]) -> list[timedelta]:
+    """How long each removed post lasted, among the removed ones.
+
+    Sorted, one entry per post that has gone, measured from
+    publication to the middle of the bracket it disappeared in.
+
+    This is a description of the removals that have happened, and it
+    is **not** an estimate of how long a post lasts. The posts that
+    will be removed slowly have not been removed yet, so they are
+    absent from this list, and the figure drifts upward the longer
+    the study runs. `kaplan_meier` is the estimate that accounts for
+    them; this is the answer to "the ones that were taken down -- how
+    fast".
+    """
+    ages = [_event_age(f) for f in items if f.is_gone]
+    return sorted(age for age in ages if age is not None)
+
+
+def quartiles(
+    spans: list[timedelta],
+) -> tuple[timedelta, timedelta, timedelta] | None:
+    """Lower quartile, median and upper quartile of a sorted list."""
+    if not spans:
+        return None
+
+    def pick(share: float) -> timedelta:
+        index = min(int(share * len(spans)), len(spans) - 1)
+        return spans[index]
+
+    return pick(0.25), pick(0.5), pick(0.75)

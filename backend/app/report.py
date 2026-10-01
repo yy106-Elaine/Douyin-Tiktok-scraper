@@ -49,6 +49,8 @@ from .survival import (
     Finding,
     by_collection_age,
     kaplan_meier,
+    quartiles,
+    removal_ages,
     summarise,
 )
 
@@ -418,15 +420,16 @@ def _douyin(session: Session, page: Page) -> str:
         ("图文 note", 2, kaplan_meier(notes)),
     ]
 
-    median = whole.quantile(0.5)
-    quarter = whole.quantile(0.25)
+    lasted = removal_ages(both)
+    spread = quartiles(lasted)
     tiles = "".join([
         _rate_tile("视频 video", video),
         _rate_tile("图文 note", notes),
-        tile("Median time to removal",
-             _span(median) if median else "not reached",
-             f"视频 + 图文; a quarter gone by {_span(quarter)}" if quarter
-             else "视频 + 图文; a quarter has not gone either"),
+        tile("The removed posts lasted",
+             _span(spread[1]) if spread else "—",
+             f"median of {len(lasted)} removals; middle half "
+             f"{_span(spread[0])}–{_span(spread[2])}" if spread
+             else "nothing removed yet"),
         # Named for what it does to the reader's reading, not for
         # what it is in the data: "checking bracket" is this study's
         # own vocabulary and told the first reader nothing.
@@ -454,13 +457,36 @@ def _douyin(session: Session, page: Page) -> str:
         '<span class="key"><i class="rule c1"></i>视频 video</span>'
         '<span class="key"><i class="rule c2"></i>图文 note</span></div>'
         f'{survival_chart(curves, ident="km")}'
-        '<p class="note">Kaplan–Meier, counting each post only from the day '
-        'this study first saw it. Each removal is placed in the middle of the '
-        'bracket that contains it.</p>'
+        f'<p class="note">Kaplan–Meier, counting each post only from the day '
+        f'this study first saw it. Each removal is placed in the middle of '
+        f'the bracket that contains it. {_e(_median_line(whole, lasted))}</p>'
         + table(["Age", "视频 removed", "视频 watched", "图文 removed",
                  "图文 watched"], rows, "share removed by age")
         + "</section>"
     )
+
+
+def _median_line(whole: Curve, lasted: list[timedelta]) -> str:
+    """The sentence that keeps the two medians from being confused.
+
+    The tile reports the median of the removals that have happened.
+    That number is not how long a post lasts: the posts destined for
+    a slow removal have not had it yet, so they are missing from it
+    and it drifts upward as the study runs. The curve is the estimate
+    that keeps them in, and what it says about a median is usually
+    that there is not one yet.
+    """
+    reached = whole.quantile(0.5)
+    if reached:
+        return (f"Over the whole corpus, half of all posts are gone by "
+                f"{_span(reached)}.")
+    quarter = whole.quantile(0.25)
+    tail = (f"a quarter of all posts are gone by {_span(quarter)}"
+            if quarter else "not even a quarter of all posts has gone")
+    return (f"The tile above describes the {len(lasted)} removals that have "
+            f"happened, not how long a post lasts — the slow removals have "
+            f"not happened yet. Across the whole corpus, {tail}, and the "
+            f"halfway point has not been reached.")
 
 
 def _at_risk(curve: Curve, age: timedelta) -> int:

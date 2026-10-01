@@ -171,3 +171,38 @@ def test_a_captionless_video_is_an_empty_string_not_a_missing_row(db: None) -> N
         session.commit()
 
         assert captions(session, "douyin") == {"7001": ""}
+
+
+def test_the_caption_dump_carries_no_outcome(db: None) -> None:
+    """A taxonomy built while looking at the answer is fitted to it.
+
+    If the captions handed to a human or a model for category design
+    arrive labelled "this one was removed", every category that
+    emerges is partly a description of removal, and the later finding
+    that content predicts removal is circular. So the dump is text
+    only: no id, no date, no verdict.
+    """
+    from app.analyse import caption_dump
+
+    with SessionLocal() as session:
+        _check(session, "douyin", "7001", datetime(2026, 9, 25, 18, 0))
+        _check(session, "douyin", "7001", datetime(2026, 9, 26, 18, 0), alive=False)
+        session.add_all([
+            WebVideo(platform="douyin", video_id="7001",
+                     caption="和女朋友的\n第三年", author_handle="someone",
+                     fetched_at=datetime(2026, 9, 25, 18, 0)),
+            WebVideo(platform="douyin", video_id="7002", caption=None,
+                     fetched_at=datetime(2026, 9, 25, 18, 0)),
+        ])
+        session.commit()
+
+        path = str(__import__("tempfile").mkdtemp()) + "/captions.txt"
+        assert caption_dump(session, path) == 1
+        written = open(path, encoding="utf-8").read()
+
+    assert "和女朋友的 第三年" in written
+    assert "7001" not in written
+    assert "someone" not in written
+    assert "gone" not in written
+    # The captionless posts are counted, not silently dropped.
+    assert "1 post(s) carry none" in written
