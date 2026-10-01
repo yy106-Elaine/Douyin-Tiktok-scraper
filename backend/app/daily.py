@@ -520,6 +520,24 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             + f"\nfiles in {directory}\nmanifest {manifest}"
         )
 
+        # The 抖音号 is a separate pass, because it is read once per
+        # account rather than once per video. Separate turned out to
+        # mean forgotten: it had never been run, so five hundred
+        # accounts had a display name and no handle -- and a display
+        # name does not find an author again, which is what the
+        # interviews need. A removed post's author can delete the
+        # account at any time, so this says the number out loud at
+        # the end of every pass rather than waiting to be asked.
+        from .fetch_authors import wanted as authors_wanted
+
+        missing = len(authors_wanted(session))
+        if missing:
+            print(
+                f"\n{missing} account(s) still have no 抖音号. The display "
+                "name does not find an author again; the handle is only on "
+                "the profile:\n  python -m app.fetch_authors --apply"
+            )
+
         if args.report:
             # The page is a snapshot, so it is rewritten at the end of
             # a pass rather than served live: what it shows is exactly

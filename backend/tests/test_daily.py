@@ -88,6 +88,66 @@ def test_a_removed_video_is_recorded_gone_and_not_downloaded(session, tmp_path):
     assert check.video_id == "7686773732988082810"
 
 
+def test_the_author_of_a_removed_post_survives_the_wipe(session, tmp_path):
+    """The one field the study cannot lose, lost exactly when it mattered.
+
+    A post found gone has its contents cleared, because the page that
+    answered was another video's record -- and `sec_uid` was in that
+    list. The 抖音号 is only on the profile and the profile is only
+    reachable through the sec_uid, so the moment a post went, its
+    author became unreachable. For a study whose interviews are *with
+    the authors of removed posts*, that is every author it needs.
+
+    The account is not the post's content. It moves to `web_authors`,
+    which is keyed on the account, and `fetch_authors` reads the
+    handle from there afterwards.
+    """
+    from app.fetch_authors import forget_orphans, wanted
+    from app.models import WebAuthor, WebVideo
+
+    # Day one: the post is alive and read, so the account is on file.
+    one(
+        session,
+        read=lambda url: _page("7686773732988082810"),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686773732988082810",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+    )
+    row = session.query(WebVideo).one()
+    row.sec_uid = "MS4wLjABAAAA-whoever"
+    # The common case, and the reason this matters: the video page
+    # gave a display name and no 抖音号. Where it does give one the
+    # author is already reachable and no profile visit is needed.
+    row.author_handle = None
+    session.commit()
+
+    # Day two: it is gone -- the site answers with another video.
+    one(
+        session,
+        read=lambda url: _page("9999999999999999999"),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686773732988082810",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+    )
+
+    # Nothing of the other video's is left on the row ...
+    assert session.query(WebVideo).one().sec_uid is None
+    # ... but the account is still reachable, and says which post it
+    # was kept for.
+    held = session.query(WebAuthor).one()
+    assert held.sec_uid == "MS4wLjABAAAA-whoever"
+    assert held.kept_for_video_id == "7686773732988082810"
+
+    # The housekeeping that drops accounts no video points at any more
+    # must not take it: by construction no video points at this one.
+    assert forget_orphans(session) == 0
+    assert "MS4wLjABAAAA-whoever" in wanted(session)
+
+
 def test_an_error_page_served_as_a_video_is_refused(session, tmp_path):
     """A media URL fetched without the right session answers 200.
 

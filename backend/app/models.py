@@ -430,4 +430,15 @@ class WebAuthor(Base):
     error: Mapped[str | None] = mapped_column(String(255))
     parsed_by: Mapped[str | None] = mapped_column(String(32))
 
+    #: The removed post this account was kept for.
+    #:
+    #: A post found gone has its contents cleared, because the page
+    #: that answered was another video's -- and the account went with
+    #: them, which left the author of every removed post unreachable.
+    #: The account is now moved here instead, and this says which post
+    #: it came from, so the housekeeping that drops accounts no video
+    #: points at any more can tell a deliberate keep from a stranger
+    #: stored by mistake.
+    kept_for_video_id: Mapped[str | None] = mapped_column(String(64), index=True)
+
     fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=_utcnow)

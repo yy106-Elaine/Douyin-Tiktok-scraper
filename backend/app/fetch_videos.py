@@ -228,6 +228,41 @@ _CONTENT = (
 )
 
 
+def _keep_author(session: Session, row: "WebVideo", platform: str) -> None:
+    """Hold on to the account before a row's contents are cleared.
+
+    Recorded under the account's own id, with no handle: the handle
+    is on the profile and `app.fetch_authors` is what reads it. What
+    this preserves is the address -- without the sec_uid there is no
+    profile to visit and the author of a removed post is unreachable.
+    """
+    from .models import WebAuthor
+
+    sec_uid = row.sec_uid
+    if not sec_uid:
+        return
+    known = session.scalars(
+        select(WebAuthor).where(WebAuthor.sec_uid == sec_uid)
+    ).first()
+    if known is None:
+        session.add(WebAuthor(
+            sec_uid=sec_uid,
+            platform=platform,
+            author_handle=row.author_handle,
+            author_name=row.author_name,
+            kept_for_video_id=row.video_id,
+        ))
+        return
+    # A later sighting can only add: a profile already read has the
+    # better answer, and a name seen once is better than none.
+    if known.author_handle is None and row.author_handle:
+        known.author_handle = row.author_handle
+    if known.author_name is None and row.author_name:
+        known.author_name = row.author_name
+    if known.kept_for_video_id is None:
+        known.kept_for_video_id = row.video_id
+
+
 def wipe(session: Session, video_id: str, page, platform: str = "douyin") -> None:
     """Empty a row whose contents turned out to be another video's.
 
@@ -243,6 +278,16 @@ def wipe(session: Session, video_id: str, page, platform: str = "douyin") -> Non
     if row is None:
         row = WebVideo(video_id=video_id, platform=platform)
         session.add(row)
+    # The account is not this video's content, and it is the one thing
+    # the study cannot do without: the author of a removed post is who
+    # the interviews are for. Clearing it here meant that the moment a
+    # post went, the only field that finds its author again went with
+    # it -- and it goes for exactly the posts that matter.
+    #
+    # So the account is moved rather than dropped. `web_authors` is
+    # keyed on the account, not on the video, so the row belongs there
+    # whatever happened to the post.
+    _keep_author(session, row, platform)
     for field in _CONTENT:
         setattr(row, field, None)
     row.http_status = page.http_status
@@ -388,7 +433,6 @@ def run(
                         page.html, encoding="utf-8"
                     )
                     outcome += f" -- wrote {video_id}.surface.html"
-
 
         store(session, video_id, page, facts, site.platform)
         if on_progress:

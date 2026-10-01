@@ -50,6 +50,12 @@ def forget_orphans(session: Session) -> int:
     }
     dropped = 0
     for author in session.scalars(select(WebAuthor)):
+        # A deliberate keep is not an orphan. The author of a removed
+        # post has no video row pointing at them by construction --
+        # the row was cleared when the post went -- and deleting them
+        # here undid the whole point of keeping them.
+        if author.kept_for_video_id is not None:
+            continue
         if author.sec_uid not in live:
             session.delete(author)
             dropped += 1
@@ -68,13 +74,26 @@ def wanted(session: Session, refresh: bool = False) -> list[str]:
     ]
     if refresh:
         return sorted(set(known))
+    # Accounts kept when a post was found gone, which no video row
+    # points at any more. These are the authors of removed posts --
+    # the ones the study exists to reach -- so they belong in the
+    # list whatever happened to the post that found them.
+    held = [
+        sec_uid
+        for (sec_uid,) in session.execute(
+            select(WebAuthor.sec_uid).where(WebAuthor.author_handle.is_(None))
+        )
+    ]
     already = {
         sec_uid
         for (sec_uid,) in session.execute(
-            select(WebAuthor.sec_uid).where(WebAuthor.error.is_(None))
+            select(WebAuthor.sec_uid).where(
+                WebAuthor.error.is_(None),
+                WebAuthor.author_handle.isnot(None),
+            )
         )
     }
-    return sorted(set(known) - already)
+    return sorted((set(known) | set(held)) - already)
 
 
 def store(session: Session, sec_uid: str, page, facts) -> WebAuthor:
