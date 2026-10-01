@@ -190,6 +190,11 @@ object CaptureStats {
 
     fun onAutoStop(why: String) {
         autoStoppedBecause = why
+        // Also a step, because this field is overwritten. A run that
+        // stopped itself halfway and was then stopped by hand showed
+        // only the second reason, and the first -- the one that
+        // explained the silence -- was gone.
+        onAutoStep("stopped: $why")
     }
 
     // ----------------------------------------------------------------

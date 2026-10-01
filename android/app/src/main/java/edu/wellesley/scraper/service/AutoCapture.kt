@@ -401,7 +401,11 @@ class AutoCapture(private val service: AccessibilityService) {
     // enough for the animation, not short enough to race it.
 
     private fun openShare() {
-        if (!keepGoing()) return
+        CaptureStats.onAutoStep("looking for the share control")
+        if (!keepGoing()) {
+            CaptureStats.onAutoStep("share: not going on")
+            return
+        }
 
         // Nothing is pressed while a panel covers the feed. A run
         // ended up in a comment panel -- the share control underneath
@@ -477,7 +481,11 @@ class AutoCapture(private val service: AccessibilityService) {
      * look, and the wait only elapses where the entry never appears.
      */
     private fun pressCopyLink(tries: Int) {
-        if (!keepGoing()) return
+        if (tries == 0) CaptureStats.onAutoStep("looking for the copy entry")
+        if (!keepGoing()) {
+            CaptureStats.onAutoStep("copy: not going on")
+            return
+        }
 
         val found = ShareSheet.findCopyLink(roots())
         if (found == null) {
@@ -811,6 +819,7 @@ class AutoCapture(private val service: AccessibilityService) {
      * the run would be walking backwards out of the app it is reading.
      */
     private fun closeSheet(attempt: Int, then: () -> Unit) {
+        if (attempt == 0) CaptureStats.onAutoStep("waiting for the sheet to clear")
         if (!keepGoing()) return
 
         // Stop on the cover being gone, not on the sheet appearing to
@@ -855,7 +864,11 @@ class AutoCapture(private val service: AccessibilityService) {
      * few seconds because some posts genuinely have no caption.
      */
     private fun waitForCaption(attempt: Int) {
-        if (!keepGoing()) return
+        if (attempt == 0) CaptureStats.onAutoStep("waiting for the caption")
+        if (!keepGoing()) {
+            CaptureStats.onAutoStep("caption wait: not going on")
+            return
+        }
         val screenHeight = service.resources.displayMetrics.heightPixels
         if (attempt >= CAPTION_TRIES ||
             ShareSheet.captionHasDrawn(roots(), screenHeight)
@@ -945,7 +958,15 @@ class AutoCapture(private val service: AccessibilityService) {
 
     /** False, and stops the run, when any bound has been reached. */
     private fun keepGoing(): Boolean {
-        if (!running) return false
+        // Every refusal says why. The one silent return here -- the
+        // run having been stopped -- left a 图文 run looking as though
+        // it had simply decided to stop halfway through a post, with
+        // fifty-six seconds of nothing in the log and no way to tell
+        // which step had given up.
+        if (!running) {
+            CaptureStats.onAutoStep("step reached after the run stopped")
+            return false
+        }
         if (remaining <= 0) {
             stop("video limit reached")
             return false
