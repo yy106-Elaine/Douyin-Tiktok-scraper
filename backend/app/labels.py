@@ -106,6 +106,35 @@ def normalise(text: str) -> str:
     return _HASH_SPACE.sub("#", text)
 
 
+#: What an author writes into their own account name after being
+#: actioned. Not a caption and not a tag: a display name, changed so
+#: that the people looking for the account can find it again.
+#:
+#:   （限流版）  this account is throttled
+#:   （新号版）  this is the new account; the old one went
+#:   小号 / 二号 / 备用号  a spare, kept against the first being lost
+#:
+#: It is the strongest statement of moderation in the corpus, because
+#: it is not a complaint inside one post -- it is a person
+#: restructuring how they are findable, and keeping it there. The
+#: phrase is what gets recorded; the name itself never leaves the
+#: database.
+ACCOUNT_MARKS: tuple[tuple[str, str], ...] = (
+    ("throttled", r"限流|限流版|被限"),
+    ("replacement", r"新号|重开|重注册|回归版"),
+    ("spare", r"小号|二号|备用号|分号"),
+    ("banned", r"被封|封号|炸号|号没了"),
+)
+_ACCOUNT = tuple((name, re.compile(pattern)) for name, pattern in ACCOUNT_MARKS)
+
+
+def account_marks(name: str | None) -> list[str]:
+    """Which moderation events this account name reports, if any."""
+    if not name:
+        return []
+    return [kind for kind, pattern in _ACCOUNT if pattern.search(name)]
+
+
 #: A caption cut off by the interface's "more" fold. The screen only
 #: ever showed this much, so the rest was never collected -- and the
 #: truncated string is a different string from the full one, so it

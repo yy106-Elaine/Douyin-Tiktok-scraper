@@ -43,7 +43,13 @@ from html import escape
 from sqlalchemy.orm import Session
 
 from . import labels
-from .analyse import PLATFORMS, corpus_captions, daily_hazard, own
+from .analyse import (
+    PLATFORMS,
+    author_names,
+    corpus_captions,
+    daily_hazard,
+    own,
+)
 from .clock import local, now as clock_now, today as clock_today
 from .survival import (
     Curve,
@@ -74,6 +80,14 @@ SERIES = "var(--series-1)"
 DOUYIN: tuple[str, ...] = ("douyin", "douyin_note")
 #: Kept, reported, and deliberately not charted beside Douyin.
 CONTEXT: tuple[str, ...] = ("tiktok", "youtube")
+
+#: What each account-name marker says, for a reader without Chinese.
+_MARKS = {
+    "throttled": "限流 (throttled)",
+    "replacement": "新号 (rebuilt account)",
+    "spare": "小号 (spare account)",
+    "banned": "被封 (banned)",
+}
 
 PRETTY = {
     "douyin": "Douyin video",
@@ -626,21 +640,29 @@ def _content(session: Session, page: Page) -> str:
     wlw_rows = [labels.wlw_tags(text) for _, _, text in with_text]
     tph_rows = [labels.tph_tags(text) for _, _, text in with_text]
     flagged = sum(1 for _, _, text in with_text if labels.compliance(text))
-    cut = sum(1 for _, _, text in with_text if labels.truncated(text))
+
+    # Moderation as the authors themselves report it. Two registers:
+    # inside a post, and in the account name -- which is the stronger
+    # of the two, because it is not a complaint in one caption but a
+    # person restructuring how they are findable and leaving it that
+    # way.
+    named = author_names(session)
+    marks: dict[str, set[str]] = {}
+    for _, video_id, _ in corpus:
+        for kind in labels.account_marks(named.get(video_id)):
+            marks.setdefault(kind, set()).add(video_id)
+    renamed = len({v for ids in marks.values() for v in ids})
 
     tiles = "".join([
         tile("Posts in the corpus", str(total),
              f"{blank} carry no caption at all"),
-        tile("Addressed to the moderator", str(flagged),
+        tile("Caption speaks to the moderator", str(flagged),
              "#无不良倾向 (no bad influence), 被屏了重发 (blocked, "
              "reposted), 解封 (unbanned)"),
-        # "Cut off at the fold" was this study's own vocabulary, and
-        # the first reader asked what it meant. The tile exists to
-        # stop these posts being read as having fewer tags than they
-        # do, so it has to say what is missing, not where.
-        tile("Captions we only got part of", str(cut),
-             "the post says more; 展开 (more) or a trailing … is all "
-             "that was collected"),
+        tile("Account name reports being actioned", str(renamed),
+             " · ".join(f"{_MARKS[kind]} {len(ids)}"
+                        for kind, ids in sorted(marks.items()))
+             or "no account in the corpus says so"),
     ])
 
     def per_tag(rows: list[list[str]], kind) -> str:
@@ -683,6 +705,14 @@ def _content(session: Session, page: Page) -> str:
         + '<p class="note">The removal columns are descriptive. Several of '
         'these groups hold a handful of posts, nothing here is a test, and '
         'no difference between them should be read as one yet.</p>'
+        '<p class="note"><strong>The two moderation tiles are what the '
+        'authors say happened to them, not what this study observed.</strong> '
+        'A removal is in the Overview; these are the posts whose own text, '
+        'or whose account name, reports being throttled, blocked, or rebuilt '
+        'after the first account went — 限流版 (throttled edition), 新号 '
+        '(new account), 小号 (spare account). The account names themselves '
+        'are not printed: only how many said it, and which of these things '
+        'they said.</p>'
         "</section>"
     )
 

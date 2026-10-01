@@ -308,6 +308,31 @@ def corpus_captions(session: Session) -> list[tuple[str, str, str]]:
     return found
 
 
+def author_names(session: Session) -> dict[str, str]:
+    """The display name beside each Douyin video id.
+
+    Read from the capture first and the fetched page second, for the
+    same reason captions are: a removed post's fetched row is wiped,
+    and the name the author was using is part of what was lost.
+    """
+    found: dict[str, str] = {}
+    model = _capture_table("douyin")
+    if model is not None:
+        for video_id, name in session.execute(
+            select(model.video_id, model.author_name).where(
+                model.video_id.isnot(None), model.author_name.isnot(None)
+            )
+        ):
+            found.setdefault(video_id, name)
+    for video_id, name in session.execute(
+        select(WebVideo.video_id, WebVideo.author_name).where(
+            WebVideo.video_id.isnot(None), WebVideo.author_name.isnot(None)
+        )
+    ):
+        found.setdefault(video_id, name)
+    return found
+
+
 def label_dump(session: Session, path: str) -> int:
     """One row per in-scope Douyin post, with the tag columns filled in.
 

@@ -151,3 +151,22 @@ def test_reposting_an_old_photo_is_not_a_moderation_event() -> None:
     assert not compliance("太帅了 邢大人 # 老图重发# lwl# wlw")
     assert compliance("该叫我什么？被屏了重发。#长发t #wlw")
     assert compliance("# 已成年无不良引导 # 兔女郎")
+
+
+def test_an_account_name_can_report_its_own_moderation() -> None:
+    """The strongest statement of moderation in the corpus.
+
+    Not a complaint inside one post: a person has changed how they are
+    findable, and left it changed. 限流版 says this account is
+    throttled; 新号 says the last one went and this is the rebuild.
+    """
+    from app.labels import account_marks
+
+    assert account_marks("qianxxxx（限流版") == ["throttled"]
+    assert account_marks("狗尾草（新号版") == ["replacement"]
+    assert account_marks("某人的小号") == ["spare"]
+    # An ordinary parenthetical is not a moderation event.
+    assert account_marks("12_（宠粉版）") == []
+    assert account_marks("La medusa（纹身师版）") == []
+    assert account_marks("Merlin") == []
+    assert account_marks(None) == []
