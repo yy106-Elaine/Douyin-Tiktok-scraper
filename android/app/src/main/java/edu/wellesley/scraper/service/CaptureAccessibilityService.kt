@@ -88,6 +88,40 @@ class CaptureAccessibilityService : AccessibilityService() {
      */
     private val idleFlush = Runnable { flush(force = true) }
 
+    /**
+     * Starts an armed run on a target app that is not sending events.
+     *
+     * A run waits for a frame from Douyin or TikTok, which a feed
+     * supplies constantly because it repaints. A **search results
+     * page does not**: it is a still grid, and with the person's hand
+     * off the screen not one event arrives. A 图文 run armed on the
+     * results and switched to therefore sat there having done
+     * nothing, with no log line to say why, because the code that
+     * writes the log lines had not run.
+     *
+     * So the arming also polls. Reading which app is in front is free
+     * and presses nothing; the poll stops as soon as the run starts,
+     * or when the arming is cleared.
+     */
+    private val armPoll = object : Runnable {
+        override fun run() {
+            if (armed == null) return
+            val front = rootInActiveWindow?.packageName?.toString()
+            if (front != null && front in parsers) {
+                startArmedRun(front)
+                return
+            }
+            idleHandler.postDelayed(this, ARM_POLL_MILLIS)
+        }
+    }
+
+    private fun startArmedRun(activePackage: String) {
+        val request = armed ?: return
+        armed = null
+        idleHandler.removeCallbacks(armPoll)
+        auto.start(request.mode, request.minutes, request.videos, activePackage)
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         CaptureStats.onServiceConnected()
@@ -100,6 +134,13 @@ class CaptureAccessibilityService : AccessibilityService() {
 
         /** Slightly longer than the buffer's own settle window. */
         private const val IDLE_FLUSH_MILLIS = 6_000L
+
+        /**
+         * How often an armed run looks for the app itself, for the
+         * pages that send no events. Long enough to be free, short
+         * enough that switching apps feels answered.
+         */
+        private const val ARM_POLL_MILLIS = 1_000L
 
         /**
          * The live service, so the app can start and stop an assisted
@@ -128,10 +169,14 @@ class CaptureAccessibilityService : AccessibilityService() {
             if (service.auto.isRunning()) return "A run is already going"
             service.armed = Armed(mode, minutes, videos)
             CaptureStats.onAutoStep("armed: ${mode.name}, waiting for the app")
+            // Not only on the next frame: a still page sends none.
+            service.idleHandler.removeCallbacks(service.armPoll)
+            service.idleHandler.postDelayed(service.armPoll, ARM_POLL_MILLIS)
             return null
         }
 
         fun stopAssisted() {
+            instance?.let { it.idleHandler.removeCallbacks(it.armPoll) }
             instance?.armed = null
             instance?.auto?.stop("stopped by hand")
         }
@@ -204,10 +249,7 @@ class CaptureAccessibilityService : AccessibilityService() {
         // A run armed from the app starts here, on the first frame
         // from a target app -- which is also the first moment there is
         // a video on screen to find a share control on.
-        armed?.let { request ->
-            armed = null
-            auto.start(request.mode, request.minutes, request.videos, activePackage)
-        }
+        startArmedRun(activePackage)
 
         val nodes = NodeTools.flatten(root)
         if (nodes.isEmpty()) {
