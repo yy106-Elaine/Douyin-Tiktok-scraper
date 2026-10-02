@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from .clock import now as utc_now
 from .browser import AUTHOR_URL as BROWSER_AUTHOR_URL, DEFAULT_PROFILE, open_browser
 from .douyin_page import AUTHOR_URL, author_facts, fetch
-from .models import WebAuthor, WebVideo
+from .models import SharedLink, WebAuthor, WebVideo
 
 PAUSE_SECONDS = 2.0
 
@@ -39,7 +39,7 @@ SERVED_ANOTHER_PROFILE = "served another profile"
 
 
 def forget_orphans(session: Session) -> int:
-    """Drop profiles that no video in the corpus points at any more.
+    """Drop profiles no post in the corpus points at any more.
 
     A video page that served a different video handed over that
     video's account, and the profile pass then went and read it:
@@ -47,10 +47,18 @@ def forget_orphans(session: Session) -> int:
     study. Once the mis-stored row is emptied nothing refers to him,
     and a person who is not in the corpus should not be on file.
     """
+    # Pointed at by a post *in the corpus*, not merely by a row. An
+    # account whose only posts the topic filter excludes is not a
+    # participant in this study, and a profile reading of them is
+    # personal data this study has no reason to hold.
+    excluded = out_of_corpus_ids(session)
     live = {
         sec_uid
         for (sec_uid,) in session.execute(
-            select(WebVideo.sec_uid).where(WebVideo.sec_uid.isnot(None))
+            select(WebVideo.sec_uid).where(
+                WebVideo.sec_uid.isnot(None),
+                WebVideo.video_id.notin_(excluded),
+            )
         )
     }
     dropped = 0
@@ -69,12 +77,61 @@ def forget_orphans(session: Session) -> int:
     return dropped
 
 
+def out_of_corpus_ids(session: Session) -> set[str]:
+    """Video ids the topic filter has positively excluded.
+
+    Excluded, not "not known to be included". A profile is personal
+    data and dropping one is irreversible, so the rule for leaving an
+    account out has to be evidence that its posts are out -- every
+    post row for the id out of scope, and no hand-copied link for it.
+    An id with no post row at all says nothing either way and is left
+    alone.
+    """
+    from .parsers import PLATFORM_TABLES
+    from .views import in_scope_filter
+
+    kept: set[str] = set()
+    seen: set[str] = set()
+    for platform, (model, _) in PLATFORM_TABLES.items():
+        for video_id, keep in session.execute(
+            select(model.video_id, in_scope_filter(model, platform)).where(
+                model.video_id.isnot(None)
+            )
+        ):
+            seen.add(video_id)
+            if keep:
+                kept.add(video_id)
+    # A link copied by hand is in the corpus by construction: somebody
+    # chose that video, one video at a time.
+    for (video_id,) in session.execute(
+        select(SharedLink.video_id).where(SharedLink.video_id.isnot(None))
+    ):
+        kept.add(video_id)
+    return seen - kept
+
+
 def wanted(session: Session, refresh: bool = False) -> list[str]:
-    """Accounts we have a `sec_uid` for and no profile reading of."""
+    """Accounts the corpus points at, with no profile reading yet."""
+    excluded = out_of_corpus_ids(session)
+    # In scope, not merely read. The video pass visits every page it
+    # has a row for, including the ones the topic filter excludes --
+    # that visit is the takedown check, and it costs nothing to make.
+    # Reading their authors' profiles is a different thing: it stores
+    # a nickname, a 抖音号, a signature, a location and a follower
+    # count for a person whose post is not in this study. A run came
+    # back with 周小闹（纯闹）on it, which is how this was noticed.
+    #
+    # The same filter the dashboard, the CSV export and the re-check
+    # use, so an account follows its posts in and out of the corpus.
     known = [
         sec_uid
         for (sec_uid,) in session.execute(
-            select(WebVideo.sec_uid).where(WebVideo.sec_uid.isnot(None)).distinct()
+            select(WebVideo.sec_uid)
+            .where(
+                WebVideo.sec_uid.isnot(None),
+                WebVideo.video_id.notin_(excluded),
+            )
+            .distinct()
         )
     ]
     if refresh:

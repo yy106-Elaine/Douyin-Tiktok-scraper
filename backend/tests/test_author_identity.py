@@ -489,3 +489,81 @@ class TestTheProfileIsTheOneThatWasAskedFor:
                 None, "hers",
             }
             assert set(wanted(session)) >= {"a", "b"}
+
+
+class TestOnlyTheCorpusHasAuthors:
+    """A profile reading is personal data, so the filter applies to it.
+
+    The video pass visits every page it has a row for, including the
+    ones the topic filter excludes -- that visit is the takedown
+    check. Reading their authors' profiles is a different thing: it
+    stores a nickname, a 抖音号, a signature, a location and a
+    follower count for somebody whose post is not in this study. A
+    run came back with an account plainly outside it, which is how
+    this was noticed.
+    """
+
+    def _post(self, session, video_id: str, caption: str) -> None:
+        """A YouTube row, where the filter decides on the text.
+
+        Douyin keeps every row that has an id, by an older decision
+        about hand-copied links whose captions are truncated -- so the
+        rule this is about is only visible on a platform where the
+        filter actually bites.
+        """
+        from datetime import datetime
+
+        from app.models import CaptureEvent, WebVideo, YouTubePost
+        from app.relevance import classify
+
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="youtube",
+            fingerprint=f"f{video_id}", capture_date="2026-10-02",
+            captured_at=datetime(2026, 10, 2, 12, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        session.add(YouTubePost(
+            capture_event_id=event.id, participant_id="P001",
+            captured_at=datetime(2026, 10, 2, 12, 0),
+            video_id=video_id, caption=caption,
+            relevance=classify(caption),
+        ))
+        session.add(WebVideo(
+            platform="youtube", video_id=video_id,
+            sec_uid=f"MS4-{video_id}", author_name="whoever",
+            fetched_at=datetime(2026, 10, 2, 12, 0),
+        ))
+        session.commit()
+
+    def test_an_excluded_post_s_author_is_not_read(self, db: None) -> None:
+        from app.db import SessionLocal
+        from app.fetch_authors import wanted
+
+        with SessionLocal() as session:
+            self._post(session, "7001", "我是拉拉，和女朋友的第三年")
+            self._post(session, "7002", "成人拉拉裤 护理用品 批发")
+
+            asked = wanted(session)
+
+        assert "MS4-7001" in asked
+        assert "MS4-7002" not in asked
+
+    def test_one_already_on_file_is_dropped(self, db: None) -> None:
+        """Noticing afterwards has to be enough to remove it."""
+        from datetime import datetime
+
+        from app.db import SessionLocal
+        from app.fetch_authors import forget_orphans
+        from app.models import WebAuthor
+
+        with SessionLocal() as session:
+            self._post(session, "7002", "成人拉拉裤 护理用品 批发")
+            session.add(WebAuthor(
+                sec_uid="MS4-7002", platform="douyin",
+                author_handle="whoever123", author_name="周小闹",
+            ))
+            session.commit()
+
+            assert forget_orphans(session) == 1
+            assert session.query(WebAuthor).count() == 0
