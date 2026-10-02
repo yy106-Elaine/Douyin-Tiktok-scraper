@@ -97,17 +97,24 @@ class AutoCapture(private val service: AccessibilityService) {
     private var cardHeight = 0
 
     /**
-     * BACK presses this run has made, counted for the whole run.
+     * BACK presses since the run was last home on the grid.
      *
-     * The way back to the grid gives up after six tries, but the
-     * counter it used was per call -- and the step that waits for the
-     * app to come back schedules a fresh attempt, which starts at
-     * zero. So a run that could not find its way home pressed BACK
-     * for as long as it was allowed: out of the post, out of the
-     * search, through the recommended feed and finally out of Douyin
-     * onto the home screen. Two dozen presses, none of them chosen.
+     * Counted across calls, not per call: the step that waits for the
+     * app to come back schedules a fresh attempt, and a per-call
+     * counter starts at zero each time -- so a run that could not
+     * find its way home pressed BACK for as long as it was allowed,
+     * out of the post, out of the search, through the recommended
+     * feed and finally out of Douyin onto the home screen.
+     *
+     * But *since last home*, not for the whole run. Counting every
+     * press a run ever makes caps the run itself: a healthy post
+     * costs one press on the way out, so a thirty-minute pass over
+     * three hundred posts needs three hundred of them. Counted for
+     * the run, it collected nine posts and stopped on its own
+     * allowance.
      *
      * A run that is lost does not become less lost by pressing more.
+     * A run that keeps arriving is not lost.
      */
     private var backPresses = 0
 
@@ -370,6 +377,9 @@ class AutoCapture(private val service: AccessibilityService) {
         if (!keepGoing()) return
 
         if (onTheGrid()) {
+            // Home. Whatever it took to get here is spent, and the
+            // next post starts with a full allowance.
+            backPresses = 0
             handler.postDelayed(::openTile, SETTLE_MILLIS)
             return
         }
@@ -398,8 +408,8 @@ class AutoCapture(private val service: AccessibilityService) {
         backPresses++
         if (backPresses > MAX_BACK_PRESSES) {
             CaptureStats.onAutoFailure(
-                "pressed back $backPresses times without reaching the search " +
-                    "results -- stopping rather than pressing on",
+                "pressed back $backPresses times in a row without reaching " +
+                    "the search results -- stopping rather than pressing on",
                 SearchGrid.describe(activeRoots()),
             )
             stop("too many back presses")
@@ -1247,12 +1257,12 @@ class AutoCapture(private val service: AccessibilityService) {
         const val BACK_TO_GRID_TRIES = 6
 
         /**
-         * BACK presses allowed in a whole run, however many times the
-         * way home is attempted. Three per post is generous for a
-         * post that needs two; past that the run is lost, and a lost
+         * BACK presses allowed between one arrival on the grid and
+         * the next. A post costs one on the way out and occasionally
+         * two; past this many in a row the run is lost, and a lost
          * run presses nothing.
          */
-        const val MAX_BACK_PRESSES = 8
+        const val MAX_BACK_PRESSES = 6
 
         /**
          * Scrolls of the grid that turn up nothing new before the run
