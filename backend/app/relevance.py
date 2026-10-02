@@ -199,7 +199,15 @@ SOFT: tuple[tuple[str, str], ...] = (
 #: label, so it is evidence, and the loose token is a collision like
 #: 货拉拉 matching 拉拉.
 TAGGED = re.compile(
-    r"[#＃]\s*(?:lwl|wlw|les\b|la\b|百合|拉拉|女同|[萌]?t\b|[纯]?p\b|"
+    # A role word with a Chinese modifier in front of it: 甜T, 长发t,
+    # 纯p, 娘T. The modifier was a one-character list (萌, 纯), so
+    # `#甜T` read as no community tag at all and a post found through
+    # a WLW search was excluded on it. T and P are this community's
+    # own vocabulary whatever adjective is in front, and as a *tag*
+    # the requirement is specific: an ordinary caption does not end a
+    # hashtag in a bare t or p.
+    r"[#＃]\s*(?:lwl|wlw|les\b|la\b|百合|拉拉|女同|"
+    r"[\u4e00-\u9fff]{0,3}t\b|[\u4e00-\u9fff]{0,3}p\b|"
     r"[拉蕾][拉丝]|同性|彩虹|girlslove|gl\b|"
     # An alternative spelling, confirmed against the app by the
     # researcher on 2026-09-23 -- the day `#lwl` filtered to the past

@@ -1024,6 +1024,31 @@ class TestDouyinWantsTheTagWritten:
         ):
             assert self._out(caption) == UNTAGGED, caption
 
+    def test_a_role_word_is_a_community_tag_whatever_adjective_it_wears(self):
+        """T and P are this community's own vocabulary.
+
+        The modifier in front of them was a one-character list, so
+        `#甜T` read as no community tag at all and a post reached
+        through a WLW search was excluded on it -- 甜T is the T of
+        T/P/H, and the adjective is the community's too.
+
+        It stays specific because it is a *tag* requirement: an
+        ordinary caption does not end a hashtag in a bare t or p.
+        """
+        for caption in (
+            "不好意思 迷到你了 #抖音 #甜T",
+            "今天 #长发t #穿搭",
+            "#纯p 日常",
+            "#娘T #lwl",
+            "#短发T",
+        ):
+            assert self._out(caption) is None, caption
+
+        from app.relevance import UNTAGGED
+
+        for caption in ("#ootd 穿搭分享", "今天去打球 #运动", "#出游随拍记录"):
+            assert self._out(caption) == UNTAGGED, caption
+
     def test_the_community_tag_keeps_the_row(self):
         for caption in (
             "#短发 #lwl",
