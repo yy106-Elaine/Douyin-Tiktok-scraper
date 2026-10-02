@@ -329,11 +329,24 @@ class Target:
 #: every morning". A video past a fortnight was being checked every
 #: six days, which both left rows looking stale the morning after a
 #: run and widened the bracket a removal is dated to from a day to
-#: most of a week. Twenty hours keeps a 09:00 job due the next
-#: morning without making a second run that day free.
+#: most of a week.
+#:
+#: Twenty hours was the first correction, and it was still too long.
+#: It kept a 09:00 job due the next morning only if nothing else had
+#: touched the row: a hand-run at 19:34 reset the clock, the row was
+#: thirteen hours old at 09:00 the next day and so not due, and its
+#: next automatic check was the morning after that -- thirty-seven
+#: hours, on a study that reports removals by the day. A run made out
+#: of care cost a day of observation.
+#:
+#: Twelve hours leaves the morning job due whatever happened the
+#: evening before. The platforms this still governs answer an
+#: anonymous request in one call, so the cost of the extra check is
+#: not the reason to space them out; being a polite visitor is, and
+#: twice a day is polite.
 CADENCE: tuple[tuple[timedelta, timedelta], ...] = (
-    (timedelta(hours=48), timedelta(hours=8)),
-    (timedelta(days=90), timedelta(hours=20)),
+    (timedelta(hours=48), timedelta(hours=6)),
+    (timedelta(days=90), timedelta(hours=12)),
 )
 #: Anything older than the last tier.
 CADENCE_FLOOR = timedelta(days=27)

@@ -450,11 +450,13 @@ def test_youtube_is_always_due(client):
 
     assert minimum_gap(timedelta(hours=1), "youtube") == timedelta(0)
     # The page platforms keep it.
-    assert minimum_gap(timedelta(hours=1), "douyin") == timedelta(hours=8)
-    # A fortnight-old video is still due the next morning: the study
-    # is read as "checked every morning", and the six-day tier this
-    # replaced widened a removal's bracket to most of a week.
-    assert minimum_gap(timedelta(days=30), "douyin") == timedelta(hours=20)
+    assert minimum_gap(timedelta(hours=1), "douyin") == timedelta(hours=6)
+    # A fortnight-old video is due again the next morning whatever
+    # happened the evening before. At twenty hours a hand-run at 19:34
+    # left the row not due at 09:00 and its next automatic check
+    # thirty-seven hours later -- a run made out of care cost a day of
+    # observation on a study that reports removals by the day.
+    assert minimum_gap(timedelta(days=30), "douyin") == timedelta(hours=12)
     assert minimum_gap(timedelta(days=200), "douyin") == timedelta(days=27)
 
 
