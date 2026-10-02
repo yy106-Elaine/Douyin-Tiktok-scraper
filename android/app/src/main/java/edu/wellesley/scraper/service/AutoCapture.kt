@@ -176,7 +176,7 @@ class AutoCapture(private val service: AccessibilityService) {
     private fun inspect() {
         if (!running) return
 
-        val roots = roots()
+        val roots = everywhere()
         ShareSheet.findShare(roots)?.let { if (sawShare == null) sawShare = it.label }
         ShareSheet.findCopyLink(roots)?.let { if (sawCopy == null) sawCopy = it.label }
         tries++
@@ -468,7 +468,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
-        val found = ShareSheet.findShare(roots())
+        val found = ShareSheet.findShare(everywhere())
         if (found == null) {
             // Both lists: what carries text, and what can be tapped.
             // On a 图文 the share control is an icon with no label, so
@@ -513,7 +513,7 @@ class AutoCapture(private val service: AccessibilityService) {
             return
         }
 
-        val found = ShareSheet.findCopyLink(roots())
+        val found = ShareSheet.findCopyLink(everywhere())
         if (found == null) {
             if (tries < COPY_LINK_TRIES) {
                 handler.postDelayed({ pressCopyLink(tries + 1) }, SHEET_POLL_MILLIS)
@@ -897,7 +897,7 @@ class AutoCapture(private val service: AccessibilityService) {
         }
         val screenHeight = service.resources.displayMetrics.heightPixels
         if (attempt >= CAPTION_TRIES ||
-            ShareSheet.captionHasDrawn(roots(), screenHeight)
+            ShareSheet.captionHasDrawn(everywhere(), screenHeight)
         ) {
             openShare()
             return
@@ -1066,6 +1066,31 @@ class AutoCapture(private val service: AccessibilityService) {
      * a notification banner or another app's overlay is never a place
      * this looks for something to press.
      */
+    /**
+     * Everywhere a control might be: the window in front, then the
+     * rest of the app's.
+     *
+     * These are not the same list, and on a 图文 they do not overlap.
+     * A dry run standing on a post with nothing pressed reported one
+     * window -- and its contents were the share sheet's entries
+     * (转发到日常, 分享链接, 推荐, 合拍, 帮上热门, 举报), which Douyin
+     * keeps in the tree before anyone opens it. The post itself, with
+     * its share control on it, was not in that list at all; it was in
+     * the active window, where a grid dry run had dumped it in full
+     * at the same moment.
+     *
+     * So the search for the share control, run over `roots()`, was
+     * looking through a hidden panel and never at the page. It found
+     * the copy entry -- that one *is* in the panel -- and no share
+     * control, every time, which is exactly the failure that made the
+     * whole 图文 surface look broken.
+     *
+     * The window in front comes first, because that is where a
+     * person's next tap would land.
+     */
+    private fun everywhere(): List<AccessibilityNodeInfo> =
+        activeRoots() + roots()
+
     private fun roots(): List<AccessibilityNodeInfo> {
         val wanted = startedIn
         val out = service.windows.mapNotNull { window ->
