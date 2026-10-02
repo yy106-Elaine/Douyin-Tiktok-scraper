@@ -45,9 +45,22 @@ object ShareSheet {
         // Whole label, not a prefix. `^分享` matched 分享你此刻的想法 --
         // the comment box's placeholder -- and a run tapped it, which
         // is how it ended up somewhere that has no share sheet and
-        // then on the search results page. Douyin's control reads
-        // 分享，按钮 or 分享8，按钮 with the count folded in.
-        Regex("""^分享\d*(?:[，,]\s*按钮)?$"""),
+        // then on the search results page.
+        //
+        // The count is folded into the label, and it comes in three
+        // shapes, all read off real 图文 pages:
+        //
+        //     分享1960，按钮     a plain count
+        //     分享2.6万，按钮    a rounded one
+        //     分享分享，按钮     none at all -- the word twice
+        //
+        // `\d*` covered only the first, so a post with a rounded
+        // count or no shares at all had no share control as far as
+        // this was concerned. A 图文 run opened its post, failed to
+        // find the control and spent the rest of the run trying to
+        // get back -- the whole surface looked broken, and the bug
+        // was that one post in three happens to have a round number.
+        Regex("""^分享(?:分享)?(?:\s*[\d.]+\s*[万亿億]?)?(?:\s*[，,]\s*按钮)?$"""),
         // TikTok in Chinese, which is a different label from Douyin's:
         // 分享视频。1182 次分享. Anchored to 分享视频 rather than to 分享,
         // which keeps it clear of 建群分享 and 分享你此刻的想法 for the

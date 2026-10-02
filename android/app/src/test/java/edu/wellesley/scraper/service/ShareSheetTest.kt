@@ -30,6 +30,31 @@ class ShareSheetTest {
     }
 
     @Test
+    fun `the share control is recognised however the count is written`() {
+        // All three read off real 图文 pages. The count is folded into
+        // the label, and when a post has no shares at all Douyin
+        // writes the word twice rather than leaving the number out.
+        //
+        // The rule allowed digits only, so a post with a rounded
+        // count or none had no share control as far as the run was
+        // concerned: it opened the post, found nothing to press, and
+        // spent the rest of the run trying to get back out. One post
+        // in three, by how often a share count happens to be round.
+        assertEquals(Role.SHARE, ShareSheet.roleOf("分享1960，按钮"))
+        assertEquals(Role.SHARE, ShareSheet.roleOf("分享2.6万，按钮"))
+        assertEquals(Role.SHARE, ShareSheet.roleOf("分享分享，按钮"))
+        assertEquals(Role.SHARE, ShareSheet.roleOf("分享1.2亿，按钮"))
+
+        // And still not the entries inside the sheet, which is what
+        // the looser pattern has to stay clear of.
+        assertEquals(Role.COPY_LINK, ShareSheet.roleOf("分享链接"))
+        assertEquals(Role.SHEET, ShareSheet.roleOf("分享给"))
+        assertNull(ShareSheet.roleOf("分享到日常"))
+        assertNull(ShareSheet.roleOf("建群分享"))
+        assertNull(ShareSheet.roleOf("分享你此刻的想法"))
+    }
+
+    @Test
     fun `the copy entry is recognised by the word each app actually uses`() {
         assertEquals(Role.COPY_LINK, ShareSheet.roleOf("分享链接"))
         assertEquals(Role.COPY_LINK, ShareSheet.roleOf("Copy link"))
