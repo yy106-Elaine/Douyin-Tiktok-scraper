@@ -93,6 +93,9 @@ class AutoCapture(private val service: AccessibilityService) {
     /** Consecutive scrolls of the grid that turned up nothing new. */
     private var barrenScrolls = 0
 
+    /** How tall a card is here, so a scroll can move by one row. */
+    private var cardHeight = 0
+
     /**
      * BACK presses this run has made, counted for the whole run.
      *
@@ -303,12 +306,13 @@ class AutoCapture(private val service: AccessibilityService) {
             }
             barrenScrolls++
             CaptureStats.onAutoStep("scrolling the grid")
-            swipeUp()
+            scrollGrid()
             handler.postDelayed(::openTile, SETTLE_MILLIS)
             return
         }
 
         barrenScrolls = 0
+        tiles.maxOfOrNull { it.height }?.let { if (it > 0) cardHeight = it }
         val tile = tiles[index]
         // Marked before the tap, not after. A cell that fails to open
         // has to be stepped over, or the run spends the rest of its
@@ -1108,6 +1112,39 @@ class AutoCapture(private val service: AccessibilityService) {
         }
     }
 
+    /**
+     * Move the grid on by about one row.
+     *
+     * Not [swipeUp], which is written for a feed: it covers nearly
+     * half the screen in a quarter of a second, and a grid reads that
+     * as a fling. A run watching four cards at a time scrolled past
+     * several rows in one go, and the posts in between were never
+     * opened -- invisibly, because a skipped card leaves no trace.
+     *
+     * So: the height of a card as last measured, a little over, and
+     * slowly enough that the list stops where it is put rather than
+     * carrying on under its own momentum.
+     */
+    private fun scrollGrid() {
+        val metrics = service.resources.displayMetrics
+        val height = metrics.heightPixels.toFloat()
+        val step = (
+            if (cardHeight > 0) cardHeight * ROW_OVERLAP else height * 0.33f
+            ).coerceAtMost(height * 0.45f)
+        val x = metrics.widthPixels / 2f
+        val from = height * 0.70f
+        val path = Path().apply {
+            moveTo(x, from)
+            lineTo(x, (from - step).coerceAtLeast(height * 0.08f))
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, GRID_SWIPE_MILLIS)
+        service.dispatchGesture(
+            GestureDescription.Builder().addStroke(stroke).build(),
+            null,
+            null,
+        )
+    }
+
     /** A short upward swipe: one video in a vertical feed. */
     private fun swipeUp() {
         val metrics = service.resources.displayMetrics
@@ -1147,6 +1184,15 @@ class AutoCapture(private val service: AccessibilityService) {
         const val BACK_MILLIS = 700L
         const val SETTLE_MILLIS = 1_600L
         const val SWIPE_MILLIS = 250L
+
+        /**
+         * A grid scroll is slow on purpose: the same distance thrown
+         * quickly is a fling, and a fling skips rows.
+         */
+        const val GRID_SWIPE_MILLIS = 700L
+
+        /** A little more than one card, so no row lands half on screen. */
+        const val ROW_OVERLAP = 1.15f
 
         /** ~10s for the clipboard upload to finish and the feed to return. */
         const val RETURN_TRIES = 6
