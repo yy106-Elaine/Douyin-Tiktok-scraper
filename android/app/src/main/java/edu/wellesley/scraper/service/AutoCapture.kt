@@ -473,7 +473,15 @@ class AutoCapture(private val service: AccessibilityService) {
         // and a run that has wandered off the surface it was started
         // on should say so rather than keep going somewhere it was
         // never pointed.
-        if (!onGrid && ShareSheet.isSearchResults(roots())) {
+        //
+        // The grid's own test, not "is there a search box": a video
+        // opened out of the results keeps the search box in its
+        // window tree, so a feed run started on such a video stopped
+        // on its first step with "this is the search results page" --
+        // on a video that was plainly playing. The strict test wants
+        // the tab strip and a row of cards too, and a post has
+        // neither.
+        if (!onGrid && onTheGrid()) {
             CaptureStats.onAutoFailure(
                 "this is the search results page, not a video",
                 ShareSheet.describe(roots()),
@@ -800,7 +808,11 @@ class AutoCapture(private val service: AccessibilityService) {
         // have not drawn yet is still a video, and treating it as not
         // one sent the loop into recovery on a screen that needed
         // nothing done to it.
-        return !ShareSheet.isSearchResults(top)
+        //
+        // And not "is there a search box", for the reason in
+        // `openShare`: a video reached through search carries one.
+        val metrics = service.resources.displayMetrics
+        return !SearchGrid.isGrid(top, metrics.widthPixels, metrics.heightPixels)
     }
 
     /**
