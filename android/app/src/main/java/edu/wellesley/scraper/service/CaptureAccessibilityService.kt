@@ -251,6 +251,29 @@ class CaptureAccessibilityService : AccessibilityService() {
         // a video on screen to find a share control on.
         startArmedRun(activePackage)
 
+        // A run owns the screen, and reading it as well as driving it
+        // is what made the driving fail.
+        //
+        // Flattening a tree costs one call across to the other app
+        // per node, and a 图文 with a hundred comments and their
+        // replies is a tree of that many nodes -- twice a second, on
+        // the same thread the run's own timers are queued on. A post
+        // with twelve comments went through the whole loop in twelve
+        // seconds; the next one, with ninety-eight, left the step
+        // after "waiting for the caption" waiting forty-eight seconds
+        // for its turn, and from outside the app looked frozen on a
+        // playing post.
+        //
+        // Nothing is lost by not reading: a run collects by copying
+        // links, and what the passive path would have stored here is
+        // the post the run has just opened itself -- three of the
+        // last run's stored rows were same-day repeats of exactly
+        // that.
+        if (auto.isRunning()) {
+            CaptureStats.onSkip(activePackage, "assisted run is driving")
+            return
+        }
+
         val nodes = NodeTools.flatten(root)
         if (nodes.isEmpty()) {
             CaptureStats.onSkip(activePackage, "window returned no nodes")
