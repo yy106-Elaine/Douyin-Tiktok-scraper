@@ -57,3 +57,10 @@ echo "  Unschedule:      ./install-daily.sh --remove"
 echo
 echo "The Mac must be awake and online at that time, or within a"
 echo "reasonable window after -- launchd runs a missed job on wake."
+echo
+echo "The Douyin steps open a browser window, so the Mac must also be"
+echo "logged in (not just awake) for them. They are last, after the"
+echo "platforms that need nothing, and each is cut off at a time"
+echo "budget -- so a day the site asks to verify costs that day's"
+echo "Douyin pages and nothing else. Leave them out with:"
+echo "    DOUYIN=0 ./daily.sh"

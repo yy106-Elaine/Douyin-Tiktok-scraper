@@ -12,11 +12,21 @@
 # re-check is the measurement, and a day missed there widens the
 # removal window for every video due that day.
 #
+# Douyin is in here now, at the end. It needs the signed-in browser,
+# which is why it was left out: a window opens, and once in a while
+# the site asks for a verification tap. But the session in
+# .browser-profile survives for weeks, so most days nothing is asked
+# -- and the 图文 re-check had grown to the better part of a
+# thousand pages, which is not something to start by hand at
+# midnight. A run that does get asked to verify cannot wait forever,
+# so each Douyin step has a time budget and is cut off at it; what it
+# did reach is already recorded, and the next day's run carries on
+# from there.
+#
+# Set DOUYIN=0 to leave it out again:  DOUYIN=0 ./daily.sh
+#
 # What this does NOT do, and why:
 #
-#  - Douyin. Reading douyin.com needs the signed-in browser, which
-#    wants a window and sometimes a verification tap, so it is run by
-#    hand:  python -m app.daily --platform douyin --apply
 #  - TikTok pages and files. TikTok is now check-only -- it is kept
 #    as a comparison case for removals, and the content analysis is
 #    Douyin's. The takedown check below still covers it; nothing
@@ -29,6 +39,16 @@ LOG_DIR=logs
 BACKUP_DIR=backups
 KEEP_BACKUPS=30
 WINDOW_HOURS="${WINDOW_HOURS:-72}"
+DOUYIN="${DOUYIN:-1}"
+#: A Douyin step is cut off after this long. Long enough for a
+#: thousand pages at the browser's own pace; short enough that a run
+#: stopped at a verification screen does not sit there until morning
+#: holding the browser profile.
+DOUYIN_BUDGET="${DOUYIN_BUDGET:-14400}"
+#: Pages checked within this many hours are skipped, so a hand-run
+#: earlier in the day is not repeated and an interrupted run resumes.
+DOUYIN_SKIP_RECENT="${DOUYIN_SKIP_RECENT:-12}"
+PROFILE=.browser-profile
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -42,6 +62,44 @@ run() {
     say "   ok"
   else
     say "   FAILED (exit $?) -- see $LOG"
+    FAILURES="${FAILURES}${label} "
+  fi
+}
+
+# A step with a time budget. macOS has no `timeout`, so the watchdog
+# is written out: SIGINT to the step's whole process group, which
+# Python turns into a KeyboardInterrupt and the browser closes with
+# it, then SIGKILL thirty seconds later for whatever ignored that. Every video is committed as it is read, so a step
+# cut off here loses nothing but the pages it had not reached.
+run_limited() {
+  local label="$1" seconds="$2"; shift 2
+  say "-- $label (up to $((seconds / 60)) min)"
+  # `set -m` for the launch: it puts the step in a process group of
+  # its own, so the watchdog can signal the browser along with the
+  # Python that opened it, and so the step is not started with SIGINT
+  # ignored -- which is what a background job in a script otherwise
+  # gets, and which would leave nothing but SIGKILL to stop it.
+  set -m
+  "$@" >>"$LOG" 2>&1 &
+  local pid=$!
+  set +m
+  ( sleep "$seconds"
+    kill -INT -"$pid" 2>/dev/null && sleep 30
+    kill -9 -"$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  local guard=$!
+  local code=0
+  wait "$pid" || code=$?
+  kill "$guard" 2>/dev/null
+  wait "$guard" 2>/dev/null
+  if [[ $code -eq 0 ]]; then
+    say "   ok"
+  elif [[ $code -ge 128 ]]; then
+    say "   STOPPED at the time budget -- what it reached is recorded;"
+    say "   tomorrow's run carries on. If this repeats, the site is"
+    say "   probably asking to verify: open the browser and sign in."
+    FAILURES="${FAILURES}${label}(budget) "
+  else
+    say "   FAILED (exit $code) -- see $LOG"
     FAILURES="${FAILURES}${label} "
   fi
 }
@@ -64,9 +122,35 @@ run "resolve links" "$PY" -m app.resolve
 run "mark relevance" "$PY" -m app.relevance
 run "recheck links" "$PY" -m app.recheck
 
+# Douyin last, and never in the way of the rest. The steps above are
+# cheap, they are the measurement for three platforms, and a Douyin
+# run that sits at a verification screen must not be what stops them
+# from happening.
+if [[ "$DOUYIN" == "1" ]]; then
+  if pgrep -f "user-data-dir=.*$PROFILE" >/dev/null 2>&1; then
+    # Two runs on one browser profile is a lost run and possibly a
+    # lost session. A hand-run in another window wins; this one says
+    # so and stands down.
+    say "-- douyin: skipped, that browser profile is already open"
+    say "   (a run by hand is using it; this is not a failure)"
+  else
+    run_limited "douyin video check" "$DOUYIN_BUDGET" \
+      "$PY" -m app.daily --platform douyin \
+      --skip-recent "$DOUYIN_SKIP_RECENT" --apply
+    run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
+      "$PY" -m app.daily --platform douyin_note \
+      --skip-recent "$DOUYIN_SKIP_RECENT" --apply
+    # The handle is what an interview request is addressed to, and an
+    # account only answers while it is still there. The pass above
+    # reads the profile of every new account it meets; this is the
+    # backlog, and it stops on its own once a round finds nothing.
+    run_limited "douyin 抖音号" 3600 \
+      "$PY" -m app.fetch_authors --apply --pause 8 --rounds 4
+  fi
+fi
+
 # Not a step: the log's own answer to "did this morning's run cover
-# everything?". Douyin is expected to be stale here -- it needs the
-# signed-in browser and is run by hand.
+# everything?".
 say "-- freshness"
 "$PY" -m app.recheck --status >>"$LOG" 2>&1 || true
 
