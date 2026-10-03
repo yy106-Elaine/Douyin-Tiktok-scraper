@@ -168,6 +168,41 @@ fi
 say "-- freshness"
 "$PY" -m app.recheck --status >>"$LOG" 2>&1 || true
 
+# A page small enough to read on a phone, written where the phone can
+# reach it. The laptop runs this before dawn and the person is often
+# not at it for the rest of the day; the question they have from
+# wherever they are is only ever "did it run, and did anything
+# break?". iCloud Drive answers that with no service, no account and
+# nothing of the collection leaving the machine -- counts and step
+# names, never captions, handles or ids.
+#
+# Overwritten each run, so the Files app shows one file and it is
+# always the latest. The dated log stays here in full.
+ICLOUD="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+STATUS_DIR="${STATUS_DIR:-$ICLOUD/douyin-status}"
+if [[ -d "$(dirname "$STATUS_DIR")" ]]; then
+  mkdir -p "$STATUS_DIR"
+  STATUS="$STATUS_DIR/last-run.txt"
+  {
+    if [[ -n "$FAILURES" ]]; then
+      echo "NEEDS A LOOK -- $FAILURES"
+    else
+      echo "OK"
+    fi
+    echo "$ONLY run, finished $(date '+%F %H:%M %Z')"
+    echo
+    # The lines worth seeing: what each step did, and what it says is
+    # still missing. Taken from today's log, which both runs append
+    # to, so the morning page shows the night's Douyin pass as well.
+    # The step lines carry `say`'s timestamp, and the anchors matter:
+    # `-- ` unanchored also matches "gone -- the site served ...",
+    # which is every removed video in the run.
+    grep -E "^[0-9-]{10} [0-9:]{8}  (--|   (ok|FAILED|STOPPED))|^read |^of those,|account\(s\) still (have no|without)" \
+      "$LOG" 2>/dev/null | tail -40
+  } > "$STATUS" 2>/dev/null || true
+  say "-- status for the phone: $STATUS"
+fi
+
 if [[ -n "$FAILURES" ]]; then
   say "=== finished with failures: $FAILURES"
   exit 1
