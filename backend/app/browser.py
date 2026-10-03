@@ -28,6 +28,8 @@ rest of the backend runs without it installed.
 """
 from __future__ import annotations
 
+import sys
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -159,6 +161,8 @@ class Browser:
         self._domain = domain
         self._read_any = False
         self._page = None
+        #: Set once a wall went unanswered. See `wait_for_person`.
+        self._stopped_waiting = False
 
     # -- session ---------------------------------------------------
 
@@ -358,26 +362,70 @@ class Browser:
         except Exception as problem:  # noqa: BLE001 - reported by the caller
             return None, type(problem).__name__
 
-    def wait_for_person(self, message: str, timeout_seconds: float = 900.0) -> None:
-        """Stop and let the operator deal with what is on screen.
+    def wait_for_person(self, message: str, timeout_seconds: float = 900.0) -> bool:
+        """Let the operator deal with what is on screen -- but not all night.
 
-        Enter carries on, but losing the terminal does not end the
-        wait: without one it polls until the session is back, because
-        closing the browser mid-challenge is the one thing that must
-        not happen.
+        Returns whether somebody dealt with it.
+
+        This used to block on `input()`, which is right when a person
+        is sitting there and wrong every other time. A run started in
+        the evening to work through the night stopped at the first
+        challenge and was still sitting at the prompt in the morning,
+        having done nothing for eight hours -- and the one case it was
+        protecting against, a challenge nobody answers, is exactly the
+        case where waiting costs the whole night's measurement.
+
+        So: Enter still carries on immediately, and so does the
+        session coming back by itself, but the wait ends at
+        `timeout_seconds` either way and the run goes on. The pages it
+        then cannot read are recorded as unreadable and re-read
+        tomorrow, which is a day of latency on those ids rather than a
+        night lost on all of them.
+
+        And it only waits once. A challenge that was not answered in
+        fifteen minutes will not be answered at the next video either,
+        so every later call returns straight away rather than spending
+        another quarter of an hour per page.
         """
+        if self._stopped_waiting:
+            return False
         print(f"\n  {message}")
-        print("  Deal with it in the browser window, then press Enter here.")
-        try:
-            input()
-            return
-        except EOFError:
-            print("  (no terminal to wait on -- watching the session instead)")
+        minutes = timeout_seconds / 60
+        print(
+            "  Deal with it in the browser window, then press Enter here.\n"
+            f"  Nobody there? It carries on by itself in {minutes:.0f} min."
+        )
+
+        pressed = threading.Event()
+        if sys.stdin is not None and sys.stdin.isatty():
+            def _enter() -> None:
+                try:
+                    input()
+                except (EOFError, OSError, ValueError):
+                    return
+                pressed.set()
+
+            threading.Thread(target=_enter, daemon=True).start()
+
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
+            if pressed.is_set():
+                return True
             if self.is_signed_in():
-                return
+                # The session is back -- somebody dealt with it in the
+                # window, or it cleared on its own.
+                return True
             time.sleep(3.0)
+
+        # Said once, and then not again: the run carries on and the
+        # log should show why its reads started failing.
+        self._stopped_waiting = True
+        print(
+            f"  Nobody answered in {minutes:.0f} min, so carrying on. "
+            "Pages that cannot be read are recorded as unreadable and "
+            "re-read on the next run."
+        )
+        return False
 
 
 @contextmanager

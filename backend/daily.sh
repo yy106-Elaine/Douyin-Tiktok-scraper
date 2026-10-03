@@ -40,6 +40,14 @@ BACKUP_DIR=backups
 KEEP_BACKUPS=30
 WINDOW_HOURS="${WINDOW_HOURS:-72}"
 DOUYIN="${DOUYIN:-1}"
+#: Which half of the day's work this run does. `all` is everything,
+#: as it always was. The two halves are scheduled separately --
+#: Douyin hours before dawn, where a slow browser pass costs nothing
+#: and a verification window is not in anybody's way; the rest at a
+#: civilised hour -- so they are split rather than ordered:
+#:   ONLY=douyin ./daily.sh      the browser pass and nothing else
+#:   DOUYIN=0    ./daily.sh      everything else
+ONLY="${ONLY:-all}"
 #: A Douyin step is cut off after this long. Long enough for a
 #: thousand pages at the browser's own pace; short enough that a run
 #: stopped at a verification screen does not sit there until morning
@@ -116,17 +124,23 @@ if [[ -f scraper.db ]]; then
     | while read -r old; do rm -f "$old"; done
 fi
 
-run "youtube collect" "$PY" -m app.youtube collect \
-    --keywords keywords.txt --hours "$WINDOW_HOURS"
-run "resolve links" "$PY" -m app.resolve
-run "mark relevance" "$PY" -m app.relevance
-run "recheck links" "$PY" -m app.recheck
+if [[ "$ONLY" != "douyin" ]]; then
+  run "youtube collect" "$PY" -m app.youtube collect \
+      --keywords keywords.txt --hours "$WINDOW_HOURS"
+  run "resolve links" "$PY" -m app.resolve
+  run "mark relevance" "$PY" -m app.relevance
+  # Not the Douyin platforms: see BROWSER_ONLY. This reaches TikTok
+  # and YouTube with plain requests, so it shares nothing with the
+  # browser pass below and the two can be scheduled hours apart
+  # without either waiting on the other.
+  run "recheck links" "$PY" -m app.recheck
+fi
 
 # Douyin last, and never in the way of the rest. The steps above are
 # cheap, they are the measurement for three platforms, and a Douyin
 # run that sits at a verification screen must not be what stops them
 # from happening.
-if [[ "$DOUYIN" == "1" ]]; then
+if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
   if pgrep -f "user-data-dir=.*$PROFILE" >/dev/null 2>&1; then
     # Two runs on one browser profile is a lost run and possibly a
     # lost session. A hand-run in another window wins; this one says

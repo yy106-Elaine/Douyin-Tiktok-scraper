@@ -1,44 +1,73 @@
 #!/usr/bin/env bash
 #
-# Schedule daily.sh at 09:00 every day, using launchd (macOS).
+# Schedule the day's collection with launchd (macOS). Two jobs:
 #
-#   ./install-daily.sh          # install and start
-#   ./install-daily.sh --remove # unschedule
+#   edu.wellesley.scraper.douyin   04:00  the signed-in browser pass
+#   edu.wellesley.scraper.daily    06:00  YouTube, TikTok, the rest
+#
+# Two and not one, because the two halves want different hours. The
+# Douyin pass opens a window and works through a thousand pages at the
+# browser's own pace; before dawn it is in nobody's way and has hours
+# of room. The rest is plain requests, costs minutes, and belongs at
+# an hour when a failure is read the same morning. They share nothing
+# -- the TikTok and YouTube re-checks do not use the browser -- so
+# neither waits on the other.
+#
+#   ./install-daily.sh                  # install and start both
+#   HOUR=7 DOUYIN_HOUR=3 ./install-daily.sh
+#   ./install-daily.sh --remove         # unschedule both
 #
 # launchd, not cron, because launchd runs a job it missed once the Mac
 # wakes. A laptop is asleep at most fixed times, and a skipped day is
 # not recoverable: the videos that disappeared that day are gone.
+#
+# Hours are the Mac's own local time, so 6 is 6am where the laptop is.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-LABEL=edu.wellesley.scraper.daily
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 HERE="$(pwd)"
-HOUR="${HOUR:-9}"
+DAILY=edu.wellesley.scraper.daily
+DOUYIN=edu.wellesley.scraper.douyin
+HOUR="${HOUR:-6}"
+DOUYIN_HOUR="${DOUYIN_HOUR:-4}"
+
+unschedule() {
+  local label="$1"
+  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/$label.plist"
+}
 
 if [[ "${1:-}" == "--remove" ]]; then
-  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-  rm -f "$PLIST"
+  unschedule "$DAILY"
+  unschedule "$DOUYIN"
   echo "Unscheduled. daily.sh can still be run by hand."
   exit 0
 fi
 
-mkdir -p "$HOME/Library/LaunchAgents" "$HERE/logs"
-cat > "$PLIST" <<PLIST_END
+# label, hour, ONLY, DOUYIN
+schedule() {
+  local label="$1" hour="$2" only="$3" douyin="$4"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
+  cat > "$plist" <<PLIST_END
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>$LABEL</string>
+  <key>Label</key><string>$label</string>
   <key>ProgramArguments</key>
   <array>
     <string>$HERE/daily.sh</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ONLY</key><string>$only</string>
+    <key>DOUYIN</key><string>$douyin</string>
+  </dict>
   <key>WorkingDirectory</key><string>$HERE</string>
   <key>StartCalendarInterval</key>
   <dict>
-    <key>Hour</key><integer>$HOUR</integer>
+    <key>Hour</key><integer>$hour</integer>
     <key>Minute</key><integer>0</integer>
   </dict>
   <key>StandardOutPath</key><string>$HERE/logs/launchd.out.log</string>
@@ -46,21 +75,27 @@ cat > "$PLIST" <<PLIST_END
 </dict>
 </plist>
 PLIST_END
+  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$plist"
+}
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "Scheduled: daily.sh runs at ${HOUR}:00 every day."
+mkdir -p "$HOME/Library/LaunchAgents" "$HERE/logs"
+schedule "$DOUYIN" "$DOUYIN_HOUR" douyin 1
+schedule "$DAILY" "$HOUR" api 0
+
+echo "Scheduled, in the Mac's own time zone:"
+echo "  ${DOUYIN_HOUR}:00  Douyin -- video check, 图文 check, 抖音号"
+echo "  ${HOUR}:00  YouTube collect, resolve, relevance, TikTok re-check"
 echo
-echo "  Run it now:      launchctl kickstart -k gui/$(id -u)/$LABEL"
+echo "  Run one now:     launchctl kickstart -k gui/$(id -u)/$DOUYIN"
+echo "                   launchctl kickstart -k gui/$(id -u)/$DAILY"
 echo "  Watch the log:   tail -f $HERE/logs/daily-\$(date +%F).log"
 echo "  Unschedule:      ./install-daily.sh --remove"
 echo
-echo "The Mac must be awake and online at that time, or within a"
+echo "The Mac must be awake and online at those times, or within a"
 echo "reasonable window after -- launchd runs a missed job on wake."
 echo
-echo "The Douyin steps open a browser window, so the Mac must also be"
-echo "logged in (not just awake) for them. They are last, after the"
-echo "platforms that need nothing, and each is cut off at a time"
-echo "budget -- so a day the site asks to verify costs that day's"
-echo "Douyin pages and nothing else. Leave them out with:"
-echo "    DOUYIN=0 ./daily.sh"
+echo "The Douyin job opens a browser window, so the Mac must also be"
+echo "logged in (locked is fine, logged out or shut down is not). Each"
+echo "of its steps is cut off at a time budget, so a night the site"
+echo "asks to verify costs that night's Douyin pages and nothing else."
