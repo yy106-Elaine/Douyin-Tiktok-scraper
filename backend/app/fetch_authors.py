@@ -376,6 +376,63 @@ def run(
     return report
 
 
+#: Between one pass and the next. Long on purpose: an account that
+#: came back as somebody else's profile is usually the site pacing
+#: us, and going straight round again asks the same question of the
+#: same throttle. Four minutes is enough for a run of a few dozen to
+#: come back with a different answer.
+ROUND_PAUSE_SECONDS = 240.0
+
+
+def repeat(
+    one_round,
+    remaining,
+    rounds: int,
+    round_pause: float = ROUND_PAUSE_SECONDS,
+    sleep=time.sleep,
+    on_round=None,
+) -> list[dict[str, int]]:
+    """Run the pass again while it is still finding something.
+
+    A pass leaves two kinds of account behind: one the site answered
+    for with somebody else's profile, and one it would not answer for
+    at all. Both are worth asking again later -- the same account
+    read twenty minutes apart often comes back readable -- and both
+    stay in `wanted`, so the next pass picks them up with no
+    bookkeeping.
+
+    What this adds is not retrying, it is *unattended* retrying. A
+    pass over two hundred accounts takes most of an hour, nobody is
+    watching it finish, and a pass that is not started is a pass that
+    does not happen.
+
+    Stops early on a round that made no progress: if the count did
+    not fall, the accounts left are the ones that are gone -- deleted
+    or banned -- and reading them again only spends requests. That
+    residue is itself a finding, and a separate one from a post being
+    removed.
+
+    `one_round` takes the list of accounts and returns a report;
+    `remaining` returns the accounts still wanting a handle.
+    """
+    reports: list[dict[str, int]] = []
+    before = len(remaining())
+    for index in range(rounds):
+        targets = remaining()
+        if not targets:
+            break
+        reports.append(one_round(targets))
+        after = len(remaining())
+        if on_round is not None:
+            on_round(index + 1, rounds, before, after)
+        if after >= before:
+            break
+        before = after
+        if index + 1 < rounds and remaining():
+            sleep(round_pause)
+    return reports
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
@@ -402,6 +459,28 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "ask the share host with no session, instead of a signed-in "
             "browser -- lighter, but reads far less"
         ),
+    )
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help=(
+            "run the pass up to this many times, unattended, pausing "
+            "between them. An account the site answered for with "
+            "somebody else's profile, or would not answer for at all, "
+            "often reads fine twenty minutes later -- and a pass over "
+            "two hundred accounts takes most of an hour, which is "
+            "longer than anyone sits and watches it. Stops early as "
+            "soon as a round finds nothing new: what is left then is "
+            "accounts that are themselves gone"
+        ),
+    )
+    parser.add_argument(
+        "--round-pause",
+        type=float,
+        default=ROUND_PAUSE_SECONDS,
+        metavar="SECONDS",
+        help="between rounds; the point is to let the site's pacing clear",
     )
     parser.add_argument("--profile", default=str(DEFAULT_PROFILE))
     parser.add_argument(
@@ -443,15 +522,54 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         def show(done: int, total: int, outcome: str) -> None:
             print(f"[{done}/{total}] {outcome}", flush=True)
 
-        if args.anonymous:
-            report = run(
-                session,
-                targets,
-                pause_seconds=args.pause,
-                dump=Path(args.dump) if args.dump else None,
-                fetcher=anonymous,
-                on_progress=show,
+        def still_wanted() -> list[str]:
+            left = wanted(session, refresh=False)
+            return left[: args.limit] if args.limit is not None else left
+
+        def on_round(index: int, rounds: int, before: int, after: int) -> None:
+            found = before - after
+            print(
+                f"\n--- round {index} of {rounds}: {before} wanted, "
+                f"{found} settled, {after} still without a 抖音号 ---",
+                flush=True,
             )
+            if found <= 0:
+                print(
+                    "nothing new this round, so stopping. The accounts left "
+                    "are ones the site has no profile for -- deleted or "
+                    "banned. Record that as its own finding; it is not the "
+                    "same thing as a post being removed.",
+                    flush=True,
+                )
+            elif index < rounds and after:
+                print(
+                    f"pausing {args.round_pause:g}s before the next round.",
+                    flush=True,
+                )
+
+        def totals(reports: list[dict[str, int]]) -> dict[str, int]:
+            out: dict[str, int] = {}
+            for one_report in reports:
+                for key, value in one_report.items():
+                    out[key] = out.get(key, 0) + value
+            return out
+
+        if args.anonymous:
+            reports = repeat(
+                lambda these: run(
+                    session,
+                    these,
+                    pause_seconds=args.pause,
+                    dump=Path(args.dump) if args.dump else None,
+                    fetcher=anonymous,
+                    on_progress=show,
+                ),
+                still_wanted,
+                rounds=args.rounds,
+                round_pause=args.round_pause,
+                on_round=on_round,
+            )
+            report = totals(reports)
         else:
             # A signed-in browser, and a stop rather than a retry when
             # the site asks for a person. Hammering a challenge is how
@@ -480,18 +598,31 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                     )
                     return
 
-                report = run(
-                    session,
-                    targets,
-                    pause_seconds=0,  # the browser paces itself
-                    dump=Path(args.dump) if args.dump else None,
-                    fetcher=through(browser, on_wall=None if args.headless else on_wall),
-                    on_progress=show,
+                reader = through(
+                    browser, on_wall=None if args.headless else on_wall
                 )
+                reports = repeat(
+                    lambda these: run(
+                        session,
+                        these,
+                        pause_seconds=0,  # the browser paces itself
+                        dump=Path(args.dump) if args.dump else None,
+                        fetcher=reader,
+                        on_progress=show,
+                    ),
+                    still_wanted,
+                    rounds=args.rounds,
+                    round_pause=args.round_pause,
+                    on_round=on_round,
+                )
+                report = totals(reports)
+        left = len(still_wanted())
         print(
-            f"read {report['read']} profile(s), {report['with_handle']} with a "
-            f"抖音号; {report['unreadable']} unreadable; "
-            f"{report.get('mismatched', 0)} served somebody else's profile"
+            f"\n{len(reports)} round(s): read {report.get('read', 0)} "
+            f"profile(s), {report.get('with_handle', 0)} with a 抖音号; "
+            f"{report.get('unreadable', 0)} unreadable; "
+            f"{report.get('mismatched', 0)} served somebody else's profile\n"
+            f"{left} account(s) still without a 抖音号"
         )
 
 
