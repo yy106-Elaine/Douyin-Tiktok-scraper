@@ -48,11 +48,17 @@ DOUYIN="${DOUYIN:-1}"
 #:   ONLY=douyin ./daily.sh      the browser pass and nothing else
 #:   DOUYIN=0    ./daily.sh      everything else
 ONLY="${ONLY:-all}"
-#: A Douyin step is cut off after this long. Long enough for a
-#: thousand pages at the browser's own pace; short enough that a run
-#: stopped at a verification screen does not sit there until morning
-#: holding the browser profile.
-DOUYIN_BUDGET="${DOUYIN_BUDGET:-14400}"
+#: Seconds before a Douyin step is cut off, or 0 for no limit, which
+#: is the default. There was a four-hour budget here, and it was the
+#: wrong instrument: the re-check grows by every post collected --
+#: it passed nine hundred pages in its first month -- so a fixed
+#: ceiling becomes a pass that is never allowed to finish, and the
+#: ids it never reaches are the ones whose removal goes unmeasured.
+#:
+#: What the budget was really guarding against was a run stuck at a
+#: prompt all night, and that is now handled where it happens: the
+#: browser waits five minutes for a person, once, and carries on.
+DOUYIN_BUDGET="${DOUYIN_BUDGET:-0}"
 #: Pages checked within this many hours are skipped, so a hand-run
 #: earlier in the day is not repeated and an interrupted run resumes.
 DOUYIN_SKIP_RECENT="${DOUYIN_SKIP_RECENT:-12}"
@@ -81,6 +87,11 @@ run() {
 # cut off here loses nothing but the pages it had not reached.
 run_limited() {
   local label="$1" seconds="$2"; shift 2
+  if [[ "$seconds" -le 0 ]]; then
+    # No ceiling: let it take as long as the corpus takes.
+    run "$label" "$@"
+    return
+  fi
   say "-- $label (up to $((seconds / 60)) min)"
   # `set -m` for the launch: it puts the step in a process group of
   # its own, so the watchdog can signal the browser along with the
@@ -158,7 +169,7 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # account only answers while it is still there. The pass above
     # reads the profile of every new account it meets; this is the
     # backlog, and it stops on its own once a round finds nothing.
-    run_limited "douyin 抖音号" 3600 \
+    run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
       "$PY" -m app.fetch_authors --apply --pause 8 --rounds 4
   fi
 fi

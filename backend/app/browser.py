@@ -362,7 +362,7 @@ class Browser:
         except Exception as problem:  # noqa: BLE001 - reported by the caller
             return None, type(problem).__name__
 
-    def wait_for_person(self, message: str, timeout_seconds: float = 900.0) -> bool:
+    def wait_for_person(self, message: str, timeout_seconds: float = 300.0) -> bool:
         """Let the operator deal with what is on screen -- but not all night.
 
         Returns whether somebody dealt with it.
@@ -382,8 +382,12 @@ class Browser:
         tomorrow, which is a day of latency on those ids rather than a
         night lost on all of them.
 
+        Five minutes, not fifteen: most of what this stops for is not
+        a challenge at all but the browser offering to restore a page,
+        which needs nothing done to it.
+
         And it only waits once. A challenge that was not answered in
-        fifteen minutes will not be answered at the next video either,
+        five minutes will not be answered at the next video either,
         so every later call returns straight away rather than spending
         another quarter of an hour per page.
         """
