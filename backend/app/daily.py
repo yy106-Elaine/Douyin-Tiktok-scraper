@@ -65,6 +65,7 @@ def one(
     directory: Path,
     redownload: bool = False,
     keep_all: bool = False,
+    author=None,
 ) -> tuple[str, str, int]:
     """Settle one video. Returns (outcome, description, bytes kept).
 
@@ -72,6 +73,17 @@ def one(
     and a referer and returns (bytes, status). Both are injected so
     this is testable without a browser, and so the caller decides
     whether the requests carry a session.
+
+    `author`, if given, is called with the post's account id once the
+    post has been read and found to be in the corpus. It reads the
+    account's profile for the 抖音号 -- the one field no video page
+    carries, and the one an interview request is addressed to. It runs
+    here rather than in a pass of its own so that the account is read
+    while the post that points at it is still in hand: after a
+    removal, a row's author fields are gone, and before this the
+    handle was collected days later or not at all. It is called after
+    the topic filter, never before, so a post the filter excludes
+    costs no profile reading of a person who is not in this study.
     """
     url = site.page_url(video_id, handle)
     page = read(url)
@@ -85,8 +97,14 @@ def one(
     # and not downloaded.
     if facts is not None and facts.video_id and facts.video_id != video_id:
         record_check(session, video_id, page, SERVED_ANOTHER, url, site.platform)
+        # Read before the row is emptied: the account is what `wipe`
+        # moves aside and what the interviews are for.
+        gone_author = _account(session, video_id)
         wipe(session, video_id, page, site.platform)
-        return "gone", f"gone -- the site served {facts.video_id} instead", 0
+        said = f"gone -- the site served {facts.video_id} instead"
+        if author is not None and gone_author:
+            said += f"; {author(gone_author)}"
+        return "gone", said, 0
 
     if facts is None or facts.is_empty():
         return (
@@ -133,6 +151,14 @@ def one(
     if caption and reason in HIDDEN and not keep_all:
         return "read", f"{said}  [not kept: {reason}]", 0
 
+    # In the corpus, so the account belongs on file by name as well as
+    # by id. One visit per account: the hook skips an account whose
+    # 抖音号 is already known.
+    if author is not None and facts.sec_uid:
+        told = author(facts.sec_uid, facts.author_handle, facts.author_name)
+        if told:
+            said += f"  [{told}]"
+
     # The file, out of the answer already in hand.
     if not redownload and held(row):
         return "read", f"{said}  [file held]", 0
@@ -166,6 +192,17 @@ def one(
 
     record(session, row, None, None, last)
     return "read", f"{said}  -- {last}", 0
+
+
+def _account(session: Session, video_id: str) -> str | None:
+    """The account id already on file for a post, before it is cleared."""
+    from sqlalchemy import select
+
+    from .models import WebVideo
+
+    return session.scalar(
+        select(WebVideo.sec_uid).where(WebVideo.video_id == video_id)
+    )
 
 
 def _keep_images(
@@ -217,6 +254,43 @@ def _keep_images(
     return "saved", f"{said}  {len(kept)} image(s), {total / 1_000_000:.1f} MB", total
 
 
+def authors(session: Session, read_profile) -> "object":
+    """A hook for `one`: read this account's profile if it is new.
+
+    `read_profile` takes a sec_uid and returns a `Fetched`, the same
+    shape `app.fetch_authors` uses, so this works with a signed-in
+    browser or with the anonymous share host.
+
+    Accounts already carrying a 抖音号 are skipped, so the cost is one
+    profile load per *new* account in the day's collection rather than
+    one per post. The handle itself never changes under an account, so
+    there is nothing to refresh -- `app.fetch_authors --refresh` is
+    for when the follower counts are wanted again.
+    """
+    from .fetch_authors import needs_reading, note, read_one
+
+    seen: set[str] = set()
+
+    def visit(
+        sec_uid: str,
+        author_handle: str | None = None,
+        author_name: str | None = None,
+    ) -> str:
+        if not sec_uid or sec_uid in seen:
+            return ""
+        seen.add(sec_uid)
+        # What the post's own page said goes on file first, with no
+        # request: it is sometimes the 抖音号 itself, and then there is
+        # nothing on the profile to go and get.
+        note(session, sec_uid, author_handle, author_name)
+        if not needs_reading(session, sec_uid):
+            return ""
+        outcome, said = read_one(session, sec_uid, fetcher=read_profile)
+        return said
+
+    return visit
+
+
 def run(
     session: Session,
     video_ids: list[str],
@@ -228,6 +302,7 @@ def run(
     pause_seconds: float = 0.0,
     redownload: bool = False,
     keep_all: bool = False,
+    author=None,
     on_progress=None,
 ) -> dict[str, int]:
     handle_for = handle_for or {}
@@ -246,6 +321,7 @@ def run(
             directory,
             redownload=redownload,
             keep_all=keep_all,
+            author=author,
         )
         report[outcome] = report.get(outcome, 0) + 1
         report["bytes"] += kept
@@ -337,6 +413,18 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         "--redownload",
         action="store_true",
         help="fetch the file again even where one is already held",
+    )
+    parser.add_argument(
+        "--no-authors",
+        dest="authors",
+        action="store_false",
+        help=(
+            "do not read the profile of a new account in the same pass. "
+            "The 抖音号 is then collected later by app.fetch_authors, or "
+            "not at all -- which is how months of the collection ended "
+            "up with no handle for the authors it most needs. Use this "
+            "only to keep a pass short; Douyin only either way"
+        ),
     )
     parser.add_argument("--dir", type=Path, default=None, help="where the files go")
     parser.add_argument("--profile", type=Path, default=None)
@@ -480,6 +568,18 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                     raise SystemExit(message)
                 print(f"{message}\n(carrying on signed out)\n")
 
+            # Douyin only: a profile URL is keyed on the sec_uid the
+            # Douyin pages carry, and nothing reads a TikTok or
+            # YouTube profile here.
+            author = None
+            if args.authors and args.platform.startswith("douyin"):
+                from .browser import AUTHOR_URL as PROFILE_URL
+
+                def read_profile(sec_uid: str):
+                    return browser.read(PROFILE_URL.format(sec_uid=sec_uid)).fetched
+
+                author = authors(session, read_profile)
+
             report = run(
                 session,
                 targets,
@@ -493,6 +593,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 pause_seconds=args.pause,
                 redownload=args.redownload,
                 keep_all=args.everything,
+                author=author,
                 on_progress=show,
             )
 

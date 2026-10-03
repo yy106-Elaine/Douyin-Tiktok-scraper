@@ -249,6 +249,108 @@ def through(browser, on_wall=None):
     return read
 
 
+def needs_reading(session: Session, sec_uid: str) -> bool:
+    """Is this account's 抖音号 still missing?
+
+    One visit per account, not per post. An account with half a dozen
+    posts in the corpus would otherwise be read half a dozen times
+    for an answer that does not change, and every extra profile load
+    is a request against a site that counts them.
+    """
+    if not sec_uid:
+        return False
+    row = session.scalars(
+        select(WebAuthor).where(WebAuthor.sec_uid == sec_uid)
+    ).first()
+    if row is None:
+        return True
+    return row.author_handle is None
+
+
+def note(
+    session: Session,
+    sec_uid: str,
+    author_handle: str | None = None,
+    author_name: str | None = None,
+    platform: str = "douyin",
+) -> WebAuthor:
+    """Put an account on file from what a post's page already said.
+
+    No request. The video payload sometimes carries `unique_id`, which
+    is the 抖音号 itself, and a display name, which is not an
+    identifier but is worth holding. Writing them here means every
+    account the corpus points at has a row from the day its post was
+    read, so a missing handle is a visible gap in `web_authors`
+    rather than a question nobody asked.
+
+    Only ever adds: a profile already read has the better answer.
+    """
+    row = session.scalars(
+        select(WebAuthor).where(WebAuthor.sec_uid == sec_uid)
+    ).first()
+    if row is None:
+        row = WebAuthor(sec_uid=sec_uid, platform=platform)
+        session.add(row)
+    if row.author_handle is None and author_handle:
+        row.author_handle = author_handle
+    if row.author_name is None and author_name:
+        row.author_name = author_name
+    session.commit()
+    return row
+
+
+def read_one(
+    session: Session,
+    sec_uid: str,
+    fetcher=anonymous,
+    dump: Path | None = None,
+) -> tuple[str, str]:
+    """Read one profile and store it. Returns (outcome, what to print).
+
+    `outcome` is one of `read`, `unreadable`, `mismatched`. Split out
+    of `run` so the daily pass can read an author's profile in the
+    same browser, the moment the post it belongs to has been read and
+    kept -- the account is only reachable while something points at
+    it, and the handle is what an interview request is addressed to.
+    """
+    page = fetcher(sec_uid)
+    facts = (
+        author_facts(page.html or "", page.payloads)
+        if (page.html or page.payloads)
+        else None
+    )
+
+    # The page has to be the one that was asked for.
+    #
+    # Douyin answers a request for a removed video with the next
+    # recommended one, and the video pass has checked the id it got
+    # back ever since -- that check is where this study's removals
+    # come from. The profile pass had no such check, and the site does
+    # the same thing here: a run of 45 accounts came back with one
+    # stranger's 抖音号 filed under nine different accounts. A wrong
+    # handle is worse than none, because an empty field is visibly
+    # empty and a wrong one is not.
+    if facts is not None and facts.sec_uid and facts.sec_uid != sec_uid:
+        page.error = SERVED_ANOTHER_PROFILE
+        store(session, sec_uid, page, None)
+        return "mismatched", "served another profile"
+
+    if facts is None or facts.is_empty():
+        outcome = page.error or f"HTTP {page.http_status}: nothing readable"
+        if dump is not None and page.html:
+            dump.mkdir(parents=True, exist_ok=True)
+            (dump / f"{sec_uid[:40]}.html").write_text(page.html, encoding="utf-8")
+            outcome += " -- page written out"
+        store(session, sec_uid, page, facts)
+        return "unreadable", outcome
+
+    store(session, sec_uid, page, facts)
+    return (
+        "read",
+        f"{facts.author_name or '?'}  抖音号={facts.author_handle or '—'}",
+    )
+
+
 def run(
     session: Session,
     sec_uids: list[str],
@@ -264,51 +366,12 @@ def run(
         if index and pause_seconds:
             time.sleep(pause_seconds)
 
-        page = fetcher(sec_uid)
-        facts = (
-            author_facts(page.html or "", page.payloads)
-            if (page.html or page.payloads)
-            else None
-        )
-
-        # The page has to be the one that was asked for.
-        #
-        # Douyin answers a request for a removed video with the next
-        # recommended one, and the video pass has checked the id it
-        # got back ever since -- that check is where this study's
-        # removals come from. The profile pass had no such check, and
-        # the site does the same thing here: a run of 45 accounts came
-        # back with one stranger's 抖音号 filed under nine different
-        # accounts. A wrong handle is worse than none, because an
-        # empty field is visibly empty and a wrong one is not.
-        if (
-            facts is not None
-            and facts.sec_uid
-            and facts.sec_uid != sec_uid
-        ):
-            report["mismatched"] = report.get("mismatched", 0) + 1
-            page.error = SERVED_ANOTHER_PROFILE
-            store(session, sec_uid, page, None)
-            if on_progress:
-                on_progress(index + 1, total, "served another profile")
-            continue
-
-        if facts is None or facts.is_empty():
-            report["unreadable"] += 1
-            outcome = page.error or f"HTTP {page.http_status}: nothing readable"
-            if dump is not None and page.html:
-                dump.mkdir(parents=True, exist_ok=True)
-                (dump / f"{sec_uid[:40]}.html").write_text(page.html, encoding="utf-8")
-                outcome += " -- page written out"
-        else:
-            report["read"] += 1
-            if facts.author_handle:
-                report["with_handle"] += 1
-            outcome = f"{facts.author_name or '?'}  抖音号={facts.author_handle or '—'}"
-
-        store(session, sec_uid, page, facts)
+        outcome, said = read_one(session, sec_uid, fetcher=fetcher, dump=dump)
+        report[outcome] = report.get(outcome, 0) + 1
+        if outcome == "read" and "抖音号=—" not in said:
+            report["with_handle"] += 1
         if on_progress:
-            on_progress(index + 1, total, outcome)
+            on_progress(index + 1, total, said)
 
     return report
 
