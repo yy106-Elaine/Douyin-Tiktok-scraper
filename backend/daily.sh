@@ -59,9 +59,19 @@ ONLY="${ONLY:-all}"
 #: prompt all night, and that is now handled where it happens: the
 #: browser waits five minutes for a person, once, and carries on.
 DOUYIN_BUDGET="${DOUYIN_BUDGET:-0}"
-#: Pages checked within this many hours are skipped, so a hand-run
-#: earlier in the day is not repeated and an interrupted run resumes.
-DOUYIN_SKIP_RECENT="${DOUYIN_SKIP_RECENT:-12}"
+#: Pages checked within this many hours are skipped. This is for
+#: resuming: a pass over a thousand pages takes hours, a network that
+#: drops takes it with it, and starting again from the top costs the
+#: hours over again.
+#:
+#: It is not for spacing the daily run, and setting it as if it were
+#: silently cancels that run. At 12 hours, a hand-run ending at 20:30
+#: left a 06:00 pass with nothing to do: nine and a half hours is
+#: inside twelve, so every page collected the evening before was
+#: skipped and the morning's measurement did not happen. Six hours is
+#: long enough to resume an interrupted pass and short enough that
+#: the next scheduled run always covers the whole corpus.
+DOUYIN_SKIP_RECENT="${DOUYIN_SKIP_RECENT:-6}"
 PROFILE=.browser-profile
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
