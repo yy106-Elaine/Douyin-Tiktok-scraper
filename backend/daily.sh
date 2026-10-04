@@ -48,6 +48,19 @@ DOUYIN="${DOUYIN:-1}"
 #:   ONLY=douyin ./daily.sh      the browser pass and nothing else
 #:   DOUYIN=0    ./daily.sh      everything else
 ONLY="${ONLY:-all}"
+#: A rehearsal: the same job, started the same way, reading two pages
+#: instead of a thousand. It exists because the thing most likely to
+#: stop an unattended run is not the code -- it is macOS asking for
+#: permission to reach a folder, which it asks of a background job
+#: and not of a terminal, so running this script by hand proves
+#: nothing about it. REHEARSE=1 opens the browser, reaches the same
+#: folders and writes to a status page of its own, leaving the day's
+#: measurement alone.
+REHEARSE="${REHEARSE:-0}"
+if [[ "$REHEARSE" == "1" ]]; then
+  ONLY=douyin
+  DOUYIN=1
+fi
 #: Seconds before a Douyin step is cut off, or 0 for no limit, which
 #: is the default. There was a four-hour budget here, and it was the
 #: wrong instrument: the re-check grows by every post collected --
@@ -169,12 +182,20 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     say "-- douyin: skipped, that browser profile is already open"
     say "   (a run by hand is using it; this is not a failure)"
   else
+    # A rehearsal reads two pages of each, which is enough to open the
+    # browser, sign in, reach the video folder and write a row -- every
+    # step that could ask for something -- and not enough to matter.
+    LIMIT=()
+    if [[ "$REHEARSE" == "1" ]]; then
+      LIMIT=(--limit 2)
+      say "-- REHEARSAL: two pages each, today's check is left alone"
+    fi
     run_limited "douyin video check" "$DOUYIN_BUDGET" \
       "$PY" -m app.daily --platform douyin \
-      --skip-recent "$DOUYIN_SKIP_RECENT" --apply
+      --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
     run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
       "$PY" -m app.daily --platform douyin_note \
-      --skip-recent "$DOUYIN_SKIP_RECENT" --apply
+      --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
     # The handle is what an interview request is addressed to, and an
     # account only answers while it is still there. The pass above
     # reads the profile of every new account it meets; this is the
@@ -186,8 +207,10 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # profiles that do not exist. The new accounts each day are read
     # by the pass above, and the second round is for the handful the
     # site declines to answer for the first time.
-    run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2
+    if [[ "$REHEARSE" != "1" ]]; then
+      run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
+        "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2
+    fi
   fi
 fi
 
@@ -211,6 +234,8 @@ STATUS_DIR="${STATUS_DIR:-$ICLOUD/douyin-status}"
 if [[ -d "$(dirname "$STATUS_DIR")" ]]; then
   mkdir -p "$STATUS_DIR"
   STATUS="$STATUS_DIR/last-run.txt"
+  # A rehearsal must not overwrite the morning's real answer.
+  [[ "$REHEARSE" == "1" ]] && STATUS="$STATUS_DIR/rehearsal.txt"
   {
     if [[ -n "$FAILURES" ]]; then
       echo "NEEDS A LOOK -- $FAILURES"

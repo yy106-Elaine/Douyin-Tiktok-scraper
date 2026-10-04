@@ -37,17 +37,28 @@ unschedule() {
   rm -f "$HOME/Library/LaunchAgents/$label.plist"
 }
 
+REHEARSAL=edu.wellesley.scraper.rehearsal
+
 if [[ "${1:-}" == "--remove" ]]; then
   unschedule "$DAILY"
   unschedule "$DOUYIN"
+  unschedule "$REHEARSAL"
   echo "Unscheduled. daily.sh can still be run by hand."
   exit 0
 fi
 
-# label, hour, ONLY, DOUYIN
+# label, hour (empty for no schedule), ONLY, DOUYIN, [REHEARSE]
 schedule() {
-  local label="$1" hour="$2" only="$3" douyin="$4"
+  local label="$1" hour="$2" only="$3" douyin="$4" rehearse="${5:-0}"
   local plist="$HOME/Library/LaunchAgents/$label.plist"
+  local when=""
+  if [[ -n "$hour" ]]; then
+    when="  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>$hour</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>"
+  fi
   cat > "$plist" <<PLIST_END
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -63,13 +74,10 @@ schedule() {
   <dict>
     <key>ONLY</key><string>$only</string>
     <key>DOUYIN</key><string>$douyin</string>
+    <key>REHEARSE</key><string>$rehearse</string>
   </dict>
   <key>WorkingDirectory</key><string>$HERE</string>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>$hour</integer>
-    <key>Minute</key><integer>0</integer>
-  </dict>
+$when
   <key>StandardOutPath</key><string>$HERE/logs/launchd.out.log</string>
   <key>StandardErrorPath</key><string>$HERE/logs/launchd.err.log</string>
 </dict>
@@ -79,14 +87,23 @@ PLIST_END
   launchctl bootstrap "gui/$(id -u)" "$plist"
 }
 
+# label, hour, ONLY, DOUYIN, [REHEARSE]
 mkdir -p "$HOME/Library/LaunchAgents" "$HERE/logs"
 schedule "$DOUYIN" "$DOUYIN_HOUR" douyin 1
 schedule "$DAILY" "$HOUR" api 0
+# On no schedule at all: it exists to be kicked by hand. Started the
+# same way as the real job, so it meets the same permission prompts --
+# which a run from a terminal does not, and which is the whole point.
+schedule "$REHEARSAL" "" douyin 1 1
 
 echo "Scheduled, in the Mac's own time zone:"
 echo "  ${DOUYIN_HOUR}:00  Douyin -- video check, 图文 check, 抖音号"
 echo "  ${HOUR}:00  YouTube collect, resolve, relevance, TikTok re-check"
 echo
+echo "  Rehearse:        launchctl kickstart -k gui/$(id -u)/$REHEARSAL"
+echo "                   (two pages, the real launchd path, today's"
+echo "                    check left alone -- this is what shows"
+echo "                    whether macOS still asks for permission)"
 echo "  Run one now:     launchctl kickstart -k gui/$(id -u)/$DOUYIN"
 echo "                   launchctl kickstart -k gui/$(id -u)/$DAILY"
 echo "  Watch the log:   tail -f $HERE/logs/daily-\$(date +%F).log"
