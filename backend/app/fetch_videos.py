@@ -228,6 +228,30 @@ _CONTENT = (
 )
 
 
+def link_author_post(
+    session: Session, sec_uid: str, video_id: str, platform: str = "douyin"
+) -> None:
+    """Record that this account posted this video, once.
+
+    Written from a page that was verified to be the video asked for,
+    so it is a fact about this post and not about whatever the site
+    answered with. It outlives the post: a removal empties the post's
+    row, and this is what still says whose post it was.
+    """
+    from .models import AuthorPost
+
+    if not sec_uid or not video_id:
+        return
+    known = session.scalars(
+        select(AuthorPost).where(
+            AuthorPost.sec_uid == sec_uid, AuthorPost.video_id == video_id
+        )
+    ).first()
+    if known is None:
+        session.add(AuthorPost(
+            sec_uid=sec_uid, video_id=video_id, platform=platform))
+
+
 def _keep_author(session: Session, row: "WebVideo", platform: str) -> None:
     """Hold on to the account before a row's contents are cleared.
 
@@ -241,6 +265,11 @@ def _keep_author(session: Session, row: "WebVideo", platform: str) -> None:
     sec_uid = row.sec_uid
     if not sec_uid:
         return
+    # One row per (account, post), so an account with three posts
+    # taken down keeps all three. `kept_for_video_id` below holds
+    # only the first and is left alone: the housekeeping that drops
+    # accounts nothing points at reads it.
+    link_author_post(session, sec_uid, row.video_id, platform)
     known = session.scalars(
         select(WebAuthor).where(WebAuthor.sec_uid == sec_uid)
     ).first()
@@ -312,6 +341,8 @@ def store(
     row.fetched_at = utc_now()
     if facts is not None:
         row.sec_uid = facts.sec_uid or row.sec_uid
+        if facts.sec_uid:
+            link_author_post(session, facts.sec_uid, video_id, platform)
         row.author_name = facts.author_name or row.author_name
         row.author_handle = facts.author_handle or row.author_handle
         row.caption = facts.caption or row.caption

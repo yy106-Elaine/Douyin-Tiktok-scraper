@@ -442,3 +442,32 @@ class WebAuthor(Base):
     kept_for_video_id: Mapped[str | None] = mapped_column(String(64), index=True)
 
     fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True, default=_utcnow)
+
+
+class AuthorPost(Base):
+    """This account posted this video. Written while that is knowable.
+
+    A removal clears the post's own author fields -- the page that
+    answered was another video's, so nothing on it belongs to this id
+    -- and with them went the only link from a removed post to the
+    person who posted it. `WebAuthor.kept_for_video_id` saved the
+    first such post per account and silently dropped the rest, which
+    is wrong for exactly the accounts that matter most: the ones with
+    several posts taken down.
+
+    So the link is recorded here, one row per (account, post), as soon
+    as a verified page says so -- and it stays after the post is
+    emptied. That is what makes an interview list possible: this
+    person, these posts of theirs, this is what happened to each.
+    """
+
+    __tablename__ = "author_posts"
+    __table_args__ = (
+        UniqueConstraint("sec_uid", "video_id", name="uq_author_post"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True, default="douyin")
+    sec_uid: Mapped[str] = mapped_column(String(255), index=True)
+    video_id: Mapped[str] = mapped_column(String(64), index=True)
+    noted_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

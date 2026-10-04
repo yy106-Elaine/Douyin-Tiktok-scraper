@@ -457,6 +457,7 @@ def _video_rows(rows) -> str:
 _VIEWS = (
     ("Capture", "/dashboard"),
     ("Takedowns", "/dashboard/takedowns"),
+    ("Interviews", "/dashboard/interviews"),
     ("Overview", "/dashboard/overview"),
 )
 
@@ -1424,6 +1425,151 @@ observed &mdash; report which fraction.</li>
 
 <footer>Findings are computed from the stored checks, never from a saved
 verdict &mdash; correcting the classification re-reads the whole history.</footer>
+</div></body></html>"""
+
+
+
+
+@router.get("/dashboard/interviews", response_class=HTMLResponse)
+def interviews(
+    key: str = Depends(require_admin_view),
+    platform: str = Query(default="douyin"),
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    """Who to approach, one row per account.
+
+    Douyin by default and in practice only: the 抖音号 and the
+    profile address are Douyin's, and nothing here reads a TikTok or
+    YouTube profile.
+    """
+    from .interviews import candidates, frame, stratify_placeholder
+
+    people = candidates(session, platform)
+    counted = frame(people)
+    return HTMLResponse(_interviews_page(
+        key=key,
+        platform=platform,
+        platforms=measured_platforms(session),
+        people=people,
+        counted=counted,
+        placeholder=stratify_placeholder(),
+    ))
+
+
+def _post_rows(person) -> str:
+    out = []
+    for post in person.posts:
+        caption = (post.caption or "").strip()
+        out.append(
+            "<tr>"
+            f'<td class="mono">{escape(post.video_id)}</td>'
+            f"<td>{escape(post.platform)}</td>"
+            f'<td class="cap">{escape(caption[:60]) if caption else "&mdash;"}</td>'
+            f"<td>{escape(post.state)}</td>"
+            f"<td>{_when(post.first_gone_at)}</td>"
+            f"<td>{_lasted(post.lifetime)}</td>"
+            f"<td>{_when(post.came_back_at)}</td>"
+            "</tr>"
+        )
+    return "".join(out)
+
+
+def _when(moment) -> str:
+    return "&mdash;" if moment is None else escape(moment.strftime("%Y-%m-%d %H:%M"))
+
+
+def _lasted(span) -> str:
+    """How long the post was up, at most. See interviews.Post."""
+    if span is None:
+        return "&mdash;"
+    hours = span.total_seconds() / 3600
+    return f"{hours / 24:.1f}d" if hours >= 48 else f"{round(hours)}h"
+
+
+def _person_block(person) -> str:
+    who = person.name or "&mdash;"
+    handle = (
+        f'<a href="{escape(person.profile_url)}" target="_blank" '
+        f'rel="noreferrer">{escape(person.handle)}</a>'
+        if person.handle
+        else '<span class="muted">no 抖音号</span>'
+    )
+    back = (f' · <strong>{person.came_back}</strong> came back'
+            if person.came_back else "")
+    return (
+        '<details class="person">'
+        f'<summary><span class="who">{escape(who)}</span> '
+        f'<span class="handle">{handle}</span> '
+        f'<span class="muted">{person.removed} removed'
+        f"{back} · {len(person.posts)} post(s) in corpus</span><br>"
+        f'<span class="note">{escape(person.note)}</span></summary>'
+        '<table class="narrow"><thead><tr>'
+        "<th>Video</th><th>Format</th><th>Caption</th><th>State</th>"
+        "<th>First gone</th><th>Lasted (at most)</th><th>Came back</th>"
+        "</tr></thead>"
+        f"<tbody>{_post_rows(person)}</tbody></table>"
+        "</details>"
+    )
+
+
+def _interviews_page(**ctx) -> str:
+    counted = ctx["counted"]
+    tiles = "".join([
+        _tile("Accounts to approach", f"{counted.accounts:,}",
+              "at least one post of theirs found gone"),
+        _tile("Reachable", f"{counted.reachable:,}", "抖音号 on file"),
+        _tile("Not reachable", f"{counted.unreachable:,}",
+              "no handle — usually the account itself is gone"),
+        _tile("Their posts removed", f"{counted.removed_posts:,}",
+              f"{counted.came_back_posts:,} of them came back"),
+    ])
+    people = "".join(_person_block(person) for person in ctx["people"])
+    if not people:
+        people = '<p class="empty">Nothing removed yet on this platform.</p>'
+
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interviews</title>
+<style>{_SHARED_CSS}
+  .person {{
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 8px; background: var(--surface);
+  }}
+  .person summary {{ cursor: pointer; line-height: 1.5; }}
+  .person .who {{ font-weight: 600; }}
+  .person .handle {{ font-family: ui-monospace, monospace; font-size: 13px; }}
+  .person .note {{ font-size: 12px; color: var(--ink-2); }}
+  .person table {{ margin-top: 10px; }}
+  .cap {{ max-width: 320px; }}
+</style>
+</head><body><div class="wrap">
+
+<h1>Interviews</h1>
+<p class="sub">One row per <strong>account</strong>, not per post: an interview
+is asked of a person. An account is here when at least one of its posts in the
+corpus has been found gone. Open a row for that account's posts and what
+became of each.</p>
+
+{_nav("Interviews", ctx["platform"], ctx["key"], ctx.get("platforms"))}
+<div class="tiles">{tiles}</div>
+
+<p class="sub"><strong>Reaching them needs the 抖音号.</strong> A display name
+is shared and changeable, and the profile address is keyed on an id the person
+never sees — so the handle is the only thing an approach can be addressed to.
+Where there is none, the note says why, and that is itself a result: a profile
+the site will not serve is usually an account that is gone, which is a heavier
+outcome than one post being removed.</p>
+
+<p class="sub"><strong>{escape(ctx["placeholder"])}</strong></p>
+
+{people}
+
+<footer>Links open the public profile. Captions are shown to help recognise a
+post before writing about it; nothing here is exported, and the identifying
+columns stay out of any file that leaves this machine unless a written reason
+says otherwise.</footer>
 </div></body></html>"""
 
 
