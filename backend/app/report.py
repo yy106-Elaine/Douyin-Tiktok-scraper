@@ -748,6 +748,58 @@ def _context(page: Page) -> str:
     )
 
 
+@dataclass
+class Comebacks:
+    """Reinstatement, counted against everything ever removed."""
+
+    ever: int = 0
+    back: int = 0
+    downs: list[timedelta] = field(default_factory=list)
+
+    @property
+    def share(self) -> float | None:
+        return self.back / self.ever if self.ever else None
+
+    @property
+    def median_down(self) -> timedelta | None:
+        if not self.downs:
+            return None
+        ordered = sorted(self.downs)
+        return ordered[len(ordered) // 2]
+
+
+def reinstatement(items: list[Finding]) -> Comebacks:
+    """How much of what was removed came back, and for how long it was gone.
+
+    The denominator is every post ever found gone -- the ones still
+    gone plus the ones that returned -- and not the posts being
+    watched. "How many removals were reversed" is a question about
+    removals.
+
+    It has to be said out loud because the removal share on this page
+    is read at the *last* check: a post taken down and reinstated is
+    counted there as still up, which is what its last check found and
+    is the right answer to that question. It would be the wrong answer
+    to this one. Both are true at once, and a reader seeing only the
+    first would never know the removal happened at all.
+
+    The time down is the gap between the check that found the post
+    gone and the check that found it back, so it is an upper bound on
+    how long it was really down -- the schedule's precision, not the
+    platform's behaviour.
+    """
+    found = Comebacks()
+    for finding in items:
+        if finding.came_back:
+            found.ever += 1
+            found.back += 1
+            if finding.came_back_at and finding.first_gone_ever:
+                found.downs.append(finding.came_back_at - finding.first_gone_ever)
+        elif finding.is_gone:
+            found.ever += 1
+    return found
+
+
 def _comebacks(page: Page) -> str:
     spells, flat = [], []
     for platform, items in page.held.items():
@@ -769,9 +821,43 @@ def _comebacks(page: Page) -> str:
     if not spells:
         return ""
     spells.sort(key=lambda s: s.gone)
+
+    everything = [f for items in page.held.values() for f in items]
+    whole = reinstatement(everything)
+    rows = []
+    for platform, items in sorted(page.held.items()):
+        one = reinstatement(items)
+        if not one.ever:
+            continue
+        rows.append([
+            label_for(platform), f"{one.ever:,}", f"{one.back:,}",
+            _pct1(one.share), _span(one.median_down),
+        ])
+    if len(rows) > 1:
+        rows.append(["All", f"{whole.ever:,}", f"{whole.back:,}",
+                     _pct1(whole.share), _span(whole.median_down)])
+
+    tiles = "".join([
+        tile("Reinstated", _pct1(whole.share),
+             f"{whole.back} of {whole.ever} posts ever found gone"),
+        tile("Typical time down", _span(whole.median_down),
+             "median, and an upper bound -- see below"),
+        tile("Still gone", f"{whole.ever - whole.back:,}",
+             "found gone and not back at the last check"),
+    ])
+
     return (
         '<section><h2>Removed, then back</h2>'
-        '<p class="note">From the check that found the post gone to the one '
+        f'<div class="tiles">{tiles}</div>'
+        '<p class="note"><strong>The denominator is removals, not posts '
+        'watched:</strong> every post ever found gone, whether it came back '
+        'or not. Note that the removal share above counts a post as it was '
+        'read at the <em>last</em> check, so a post taken down and reinstated '
+        'is counted there as still up — true of its state, and why the '
+        'removal it survived has to be counted here instead.</p>'
+        + table(["Platform", "Ever found gone", "Came back", "Reinstated",
+                 "Median time down"], rows, "reinstatement by platform")
+        + '<p class="note">From the check that found the post gone to the one '
         'that found it back. The figure on the right is an upper bound on how '
         'long it was down, not a measurement of it.</p>'
         f'{intervals(spells, ident="back")}'
