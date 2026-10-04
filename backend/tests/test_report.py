@@ -119,27 +119,73 @@ def test_the_age_curve_leaves_out_a_rate_measured_over_a_handful() -> None:
     """A chart cannot show a denominator; a table can.
 
     A rate over six posts moves sixteen points when one of them goes.
-    Drawing it beside a rate over four hundred invites reading the
-    two as comparable, so the thin one stays in the table.
+    Drawing it beside a rate over four hundred invites reading the two
+    as comparable, so the thin one stays in the table.
     """
     points = [
-        AgePoint(days=1, rate=0.2, removed=40, measured=200, censored=0),
-        AgePoint(days=3, rate=0.3, removed=60, measured=200, censored=5),
-        AgePoint(days=30, rate=0.9, removed=5, measured=6, censored=180),
+        AgePoint(days=1, rate=0.2, removed=40, measured=200,
+                 censored=0, coverage=1.0),
+        AgePoint(days=2, rate=0.3, removed=60, measured=200,
+                 censored=5, coverage=0.98),
+        AgePoint(days=3, rate=0.9, removed=5, measured=6,
+                 censored=2, coverage=0.75),
     ]
 
     svg = age_curve([("视频 (video)", points)], ident="t")
 
-    # Two points drawn, not three.
     assert svg.count('class="dot') == 2
-    assert "30%" in svg or "30.0%" in svg or "20%" in svg
+
+
+def test_a_rate_the_calendar_has_not_settled_is_not_drawn() -> None:
+    """The artefact this chart was quietly producing.
+
+    A removal is known the day it happens; survival is only known once
+    the post has been watched that long. At an age the collection has
+    barely reached, every removal is in the numerator and almost no
+    survivor is in the denominator, and the rate climbs to 100% on the
+    strength of the start date alone. 图文 did exactly this: a line to
+    100% by day 14, one week into collecting them.
+    """
+    points = [
+        AgePoint(days=1, rate=0.1, removed=30, measured=300,
+                 censored=10, coverage=0.97),
+        AgePoint(days=2, rate=0.9, removed=90, measured=100,
+                 censored=700, coverage=0.125),
+    ]
+
+    svg = age_curve([("图文 (note)", points)], ident="t")
+
+    # The well-covered point is drawn; the one the calendar has not
+    # settled is not, however large its denominator.
+    assert svg.count('class="dot') == 1
 
 
 def test_an_age_with_nothing_measurable_draws_nothing_at_all() -> None:
     """Rather than a line along the floor, which reads as "never removed"."""
-    thin = [AgePoint(days=1, rate=0.5, removed=1, measured=2, censored=0)]
+    thin = [AgePoint(days=1, rate=0.5, removed=1, measured=2,
+                     censored=0, coverage=1.0)]
 
     assert age_curve([("图文 (note)", thin)], ident="t") == ""
+
+
+def test_the_line_stops_rather_than_jumping_a_gap() -> None:
+    """A segment drawn across ages that were never measured is a claim."""
+    points = [
+        AgePoint(days=1, rate=0.1, removed=30, measured=300,
+                 censored=0, coverage=1.0),
+        AgePoint(days=2, rate=0.2, removed=60, measured=300,
+                 censored=0, coverage=1.0),
+        # Day 3 unsettled, day 5 solid again -- the line must not
+        # reach across day 3 as though it had been measured.
+        AgePoint(days=3, rate=0.8, removed=80, measured=100,
+                 censored=900, coverage=0.1),
+        AgePoint(days=5, rate=0.3, removed=90, measured=300,
+                 censored=0, coverage=1.0),
+    ]
+
+    svg = age_curve([("视频 (video)", points)], ident="t")
+
+    assert svg.count('class="dot') == 2
 
 
 def test_the_page_renders_when_nothing_has_been_collected(db: None) -> None:

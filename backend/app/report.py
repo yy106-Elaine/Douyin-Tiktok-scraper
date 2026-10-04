@@ -606,6 +606,19 @@ AGES: tuple[int, ...] = (1, 2, 3, 5, 7, 10, 14, 21, 30)
 #: out of the line.
 MIN_MEASURED = 10
 
+#: And below this share of the eligible posts settled, a point is not
+#: drawn either -- whatever its denominator.
+#:
+#: This is the rule that matters, and it was missing. A removal is
+#: known the day it happens; survival is only known once the post has
+#: been watched that long. So at an age the collection has barely
+#: reached, every removal is in the numerator and almost no survivor
+#: is in the denominator, and the rate climbs toward 100% for no
+#: reason but the calendar. 图文 collection began a week before this
+#: was written and its line duly reached 100% by day 14 -- an artefact
+#: of the start date, drawn as if it were a finding.
+MIN_COVERAGE = 0.6
+
 
 @dataclass
 class AgePoint:
@@ -616,6 +629,13 @@ class AgePoint:
     removed: int
     measured: int
     censored: int
+    #: Share of the posts eligible at this age whose fate is settled.
+    coverage: float
+
+    @property
+    def solid(self) -> bool:
+        """Whether this point may be drawn as a rate at all."""
+        return self.measured >= MIN_MEASURED and self.coverage >= MIN_COVERAGE
 
 
 def by_age(items: list[Finding]) -> list[AgePoint]:
@@ -635,7 +655,10 @@ def by_age(items: list[Finding]) -> list[AgePoint]:
     """
     out = []
     for days in AGES:
-        window = horizon(items, timedelta(days=days))
+        # Dated from the first sighting where the id carried no
+        # publication time: that is a lower bound on the post's age,
+        # so it can only understate how long the post lasted.
+        window = horizon(items, timedelta(days=days), from_first_sighting=True)
         measured = window.removed + window.survived
         if not measured:
             continue
@@ -645,6 +668,7 @@ def by_age(items: list[Finding]) -> list[AgePoint]:
             removed=window.removed,
             measured=measured,
             censored=window.censored,
+            coverage=window.coverage or 0.0,
         ))
     return out
 
@@ -663,13 +687,12 @@ def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
     plot_w = width - pad_left - pad_right
 
     drawn = [(name, points) for name, points in series
-             if any(p.measured >= MIN_MEASURED for p in points)]
+             if any(p.solid for p in points)]
     if not drawn:
         return ""
 
     top = max(
-        (p.rate for _, points in drawn for p in points
-         if p.measured >= MIN_MEASURED),
+        (p.rate for _, points in drawn for p in points if p.solid),
         default=0.0,
     )
     # A round ceiling above the data, never below it.
@@ -702,8 +725,15 @@ def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
 
     for number, (name, points) in enumerate(drawn, start=1):
         klass = f"c{number}"
-        shown = [(AGES.index(p.days), p) for p in points
-                 if p.measured >= MIN_MEASURED]
+        # Consecutive solid points only: the line stops where the
+        # collection stops rather than jumping a gap, which would draw
+        # a trend across ages that were never measured.
+        solid = [(AGES.index(p.days), p) for p in points if p.solid]
+        shown = []
+        for pair in solid:
+            if shown and pair[0] != shown[-1][0] + 1:
+                break
+            shown.append(pair)
         if not shown:
             continue
         path = " ".join(
@@ -718,7 +748,8 @@ def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
                      f"{point.removed} of {point.measured} posts whose fate "
                      f"at that age is known")
             if point.censored:
-                hover += f"\n{point.censored} not watched that long yet"
+                hover += (f"\n{point.censored} not watched that long yet "
+                          f"({_pct1(point.coverage)} of this age settled)")
             out.append(
                 f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
                 f'<circle class="hit" cx="{x_of(index):.1f}" '
@@ -744,7 +775,9 @@ def _by_age(session: Session, page: Page) -> str:
         for point in points:
             flat.append([
                 label_for(platform), f"{point.days}d", f"{point.measured:,}",
-                f"{point.removed:,}", _pct1(point.rate), f"{point.censored:,}",
+                f"{point.removed:,}",
+                _pct1(point.rate) if point.solid else f"({_pct1(point.rate)})",
+                f"{point.censored:,}", _pct1(point.coverage),
             ])
     chart = age_curve(series, ident="age")
     if not chart:
@@ -760,12 +793,24 @@ def _by_age(session: Session, page: Page) -> str:
         f'{chart}'
         '<p class="note">A line that keeps climbing means posts go on being '
         'removed as they age; a line that flattens means removal is something '
-        f'that happens early or not at all. Points measured over fewer than '
-        f'{MIN_MEASURED} posts are left out of the line and kept in the '
-        'table: a rate over six posts moves sixteen points when one of them '
-        'goes, which a chart cannot show and a table can.</p>'
+        'that happens early or not at all.</p>'
+        '<p class="note"><strong>Where the line stops, the collection '
+        'stops.</strong> A removal is known the day it happens; survival is '
+        'only known once a post has been watched that long — so at an age '
+        'this collection has barely reached, every removal is in and almost '
+        'no survivor is, and the rate climbs toward 100% for no reason but '
+        f'the start date. A point is drawn only where at least '
+        f'{MIN_COVERAGE:.0%} of the posts eligible at that age have settled '
+        f'one way or the other, and over at least {MIN_MEASURED} of them. '
+        'The rest stay in the table with their rate in brackets and their '
+        'coverage beside it — read the coverage first.</p>'
+        '<p class="note">Age runs from the post\u2019s publication time, '
+        'which a Douyin id carries. Where an id could not be read, it runs '
+        'from the first time the study saw the post, which is a lower bound '
+        'on its age: such a post can be shown lasting less than it did, '
+        'never more.</p>'
         + table(["Format", "By age", "Fate known", "Removed", "Share",
-                 "Not watched that long yet"],
+                 "Not watched that long yet", "Settled"],
                 flat, "removal rate by post age")
         + "</section>"
     )

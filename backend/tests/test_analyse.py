@@ -403,3 +403,70 @@ def test_a_hand_copied_link_is_not_excluded_on_its_truncated_caption(
         # The caption that survives the copy carries no community tag
         # at all, and the post stays in the corpus regardless.
         assert [row[1] for row in corpus_captions(session)] == ["7003"]
+
+
+def test_a_post_with_no_publication_time_can_be_dated_from_first_sight(
+    db: None,
+) -> None:
+    """A lower bound on the age, never an upper one.
+
+    A Douyin id carries its own publication time, so this reaches the
+    handful of rows whose id could not be read. Dating such a post
+    from the first sighting assumes it was posted then, which is the
+    latest it can have been -- so the post can only be shown lasting
+    less than it really did.
+    """
+    from datetime import timedelta
+
+    from app.survival import Finding, horizon
+
+    seen = datetime(2026, 9, 20, 12, 0)
+    undated = Finding(
+        video_id="1", platform="douyin", author_handle=None, url=None,
+        checks=2, uninformative=0,
+        first_checked_at=seen, last_checked_at=seen + timedelta(days=5),
+        last_alive_at=seen + timedelta(days=5),
+        first_gone_at=None, current="ok", outcome=None,
+        published_at=None,
+    )
+
+    without = horizon([undated], timedelta(days=3))
+    with_fallback = horizon([undated], timedelta(days=3), from_first_sighting=True)
+
+    assert without.eligible == 0
+    assert with_fallback.eligible == 1
+    assert with_fallback.survived == 1
+    assert with_fallback.undated == 1
+
+
+def test_coverage_says_when_a_horizon_rate_is_only_the_calendar(db: None) -> None:
+    """Removals are known at once; survival takes the whole window.
+
+    So a horizon the collection has barely reached has all of its
+    removals and almost none of its survivors, and the rate runs to
+    100%. Coverage is how that is seen rather than believed.
+    """
+    from datetime import timedelta
+
+    from app.survival import Finding, horizon
+
+    published = datetime(2026, 10, 1, 0, 0)
+
+    def _post(gone: bool) -> Finding:
+        return Finding(
+            video_id="x", platform="douyin", author_handle=None, url=None,
+            checks=2, uninformative=0,
+            first_checked_at=published,
+            last_checked_at=published + timedelta(days=2),
+            last_alive_at=published + timedelta(days=1 if gone else 2),
+            first_gone_at=published + timedelta(days=2) if gone else None,
+            current="gone" if gone else "ok", outcome=None,
+            published_at=published,
+        )
+
+    # Two days of watching, asked about fourteen: the one removal is
+    # settled, the nine survivors are not.
+    window = horizon([_post(True)] + [_post(False)] * 9, timedelta(days=14))
+
+    assert window.rate == 1.0
+    assert window.coverage == 0.1

@@ -541,21 +541,60 @@ class Horizon:
     #: -- the alternative is to drop the very events being measured --
     #: and reported so the rate's precision is visible.
     bracketed: int = 0
+    #: Counted here with the first sighting standing in for a missing
+    #: publication time. See `horizon`.
+    undated: int = 0
 
     @property
     def rate(self) -> float | None:
         measured = self.removed + self.survived
         return None if not measured else self.removed / measured
 
+    @property
+    def coverage(self) -> float | None:
+        """Share of the eligible posts whose fate at `age` is known.
 
-def horizon(items: list["Finding"], age: timedelta) -> Horizon:
-    """Share removed within `age` of publication. See `Horizon`."""
+        The number that decides whether this rate may be read at all.
+        A removal is known as soon as it happens; survival is only
+        known once the post has been watched that long. So at an age
+        the collection has barely reached, the removals are all in and
+        almost none of the survivors are -- and the rate climbs toward
+        100% for no reason but the calendar. Low coverage here means
+        exactly that, and the number to show instead of the rate.
+        """
+        if not self.eligible:
+            return None
+        return (self.removed + self.survived) / self.eligible
+
+
+def horizon(
+    items: list["Finding"], age: timedelta, from_first_sighting: bool = False
+) -> Horizon:
+    """Share removed within `age` of publication. See `Horizon`.
+
+    `from_first_sighting` dates a post with no publication time from
+    the first time the study saw it instead of dropping it. That is a
+    lower bound on its age -- it had already been posted when it was
+    found -- so such a post can only be counted as surviving longer
+    than it really did, never shorter. Douyin ids carry their own
+    publication time, so this reaches the handful of rows whose id
+    could not be read, and the count is reported rather than folded
+    in silently.
+    """
     out = Horizon(age=age)
     for finding in items:
         published = finding.published_at
+        if published is None and from_first_sighting:
+            published = finding.collected_at or finding.first_checked_at
+            if published is not None:
+                out.undated += 1
         if published is None:
             continue
         started = age_at_collection(finding)
+        if started is None and from_first_sighting:
+            # Dated from the first sighting, so by construction the
+            # study was there from its (assumed) beginning.
+            started = timedelta(0)
         if started is None or started >= age:
             # Not watched early enough for this question.
             continue
