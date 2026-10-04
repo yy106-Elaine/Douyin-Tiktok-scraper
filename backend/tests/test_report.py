@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from app.db import SessionLocal
 from app.models import LinkCheck, WebVideo
-from app.report import Column, build, columns, mask
+from app.report import AgePoint, age_curve, build, mask
 from app.survival import Finding
 
 CAPTION = "姐妹 情侣 日常 这个人的脸 #wlw #长发t"
@@ -115,25 +115,31 @@ def test_the_stamp_is_the_researchers_clock(db: None) -> None:
     assert "2026-10-01 02:30" not in page
 
 
-def test_an_unobserved_day_draws_a_break_and_an_observed_zero_draws_a_tick() -> None:
-    """The one thing this chart exists to get right.
+def test_the_age_curve_leaves_out_a_rate_measured_over_a_handful() -> None:
+    """A chart cannot show a denominator; a table can.
 
-    A gap and a zero look identical in every default charting
-    library, and they are the opposite of each other: one says the
-    study did not look, the other says it looked and found nothing.
+    A rate over six posts moves sixteen points when one of them goes.
+    Drawing it beside a rate over four hundred invites reading the
+    two as comparable, so the thin one stays in the table.
     """
-    drawn = [
-        Column("2026-09-26", value=2, at_risk=10, rate=0.2),
-        Column(label="", gap=True),
-        Column("2026-09-28", value=0, at_risk=8, rate=0.0),
+    points = [
+        AgePoint(days=1, rate=0.2, removed=40, measured=200, censored=0),
+        AgePoint(days=3, rate=0.3, removed=60, measured=200, censored=5),
+        AgePoint(days=30, rate=0.9, removed=5, measured=6, censored=180),
     ]
-    svg = columns(drawn, ident="t", title="t")
 
-    assert "//" in svg
-    assert 'class="zero"' in svg
-    # The gap contributes no bar and no day label of its own.
-    assert svg.count('class="bar"') == 1
-    assert "09-28" in svg
+    svg = age_curve([("视频 (video)", points)], ident="t")
+
+    # Two points drawn, not three.
+    assert svg.count('class="dot') == 2
+    assert "30%" in svg or "30.0%" in svg or "20%" in svg
+
+
+def test_an_age_with_nothing_measurable_draws_nothing_at_all() -> None:
+    """Rather than a line along the floor, which reads as "never removed"."""
+    thin = [AgePoint(days=1, rate=0.5, removed=1, measured=2, censored=0)]
+
+    assert age_curve([("图文 (note)", thin)], ident="t") == ""
 
 
 def test_the_page_renders_when_nothing_has_been_collected(db: None) -> None:

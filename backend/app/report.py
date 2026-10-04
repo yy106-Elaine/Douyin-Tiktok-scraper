@@ -47,13 +47,13 @@ from .analyse import (
     PLATFORMS,
     author_names,
     corpus_captions,
-    daily_hazard,
     own,
 )
 from .clock import local, now as clock_now, today as clock_today
 from .survival import (
     Finding,
     by_collection_age,
+    horizon,
     kaplan_meier,
     quartiles,
     removal_ages,
@@ -138,89 +138,6 @@ def mask(video_id: str, reveal: bool) -> str:
 
 
 # -- marks ------------------------------------------------------------
-
-
-@dataclass
-class Column:
-    """One column of a day series. `gap` draws a break, not a zero."""
-
-    label: str
-    value: int = 0
-    at_risk: int = 0
-    rate: float | None = None
-    gap: bool = False
-
-
-def columns(series: list[Column], *, ident: str, title: str,
-            width: int = 820) -> str:
-    """Counts per observed day, with the unobserved days drawn as breaks.
-
-    The break is the point of the chart. A day the study did not run
-    has no column and no zero; it has a `//` where the axis would have
-    continued, so the reader can see that the series is not a calendar.
-    """
-    pad_left, pad_right, pad_top, pad_bottom = 34, 10, 14, 30
-    plot_h = 96
-    slots = len(series)
-    width = max(width, pad_left + pad_right + slots * 26)
-    slot = (width - pad_left - pad_right) / max(slots, 1)
-    thickness = min(22.0, slot - 6)
-    peak = max([c.value for c in series] or [0])
-    scale = plot_h / peak if peak else 0
-    height = pad_top + plot_h + pad_bottom
-
-    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
-           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
-    out.append(f'<title id="{ident}-t">{_e(title)}</title>')
-
-    for step in range(0, peak + 1, max(1, peak // 2 or 1)):
-        y = pad_top + plot_h - step * scale
-        out.append(f'<line class="grid" x1="{pad_left}" y1="{y:.1f}" '
-                   f'x2="{width - pad_right}" y2="{y:.1f}" />')
-        out.append(f'<text class="tick" x="{pad_left - 6}" y="{y + 4:.1f}" '
-                   f'text-anchor="end">{step}</text>')
-
-    base = pad_top + plot_h
-    out.append(f'<line class="axis" x1="{pad_left}" y1="{base}" '
-               f'x2="{width - pad_right}" y2="{base}" />')
-
-    for index, column in enumerate(series):
-        centre = pad_left + slot * (index + 0.5)
-        if column.gap:
-            out.append(f'<text class="break" x="{centre:.1f}" '
-                       f'y="{base - plot_h / 2:.1f}" '
-                       f'text-anchor="middle">//</text>')
-            out.append(f'<text class="break" x="{centre:.1f}" y="{base + 14}" '
-                       f'text-anchor="middle">·</text>')
-            continue
-        out.append(f'<text class="tick day" x="{centre:.1f}" y="{base + 14}" '
-                   f'text-anchor="middle">{_e(column.label[5:])}</text>')
-        hover = (f"{column.label}\n{column.value} newly gone\n"
-                 f"{column.at_risk} still at risk\n{_pct1(column.rate)} of them")
-        if not column.value:
-            out.append(
-                f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
-                f'<rect class="hit" x="{centre - slot / 2:.1f}" y="{pad_top}" '
-                f'width="{slot:.1f}" height="{plot_h}" />'
-                f'<line class="zero" x1="{centre - thickness / 2:.1f}" '
-                f'y1="{base}" x2="{centre + thickness / 2:.1f}" y2="{base}" />'
-                f'</g>')
-            continue
-        length = max(column.value * scale, 3.0)
-        radius = min(4.0, length)
-        left = centre - thickness / 2
-        out.append(
-            f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
-            f'<rect class="hit" x="{centre - slot / 2:.1f}" y="{pad_top}" '
-            f'width="{slot:.1f}" height="{plot_h}" />'
-            f'<path class="bar" d="M{left:.1f} {base} '
-            f'V{base - length + radius:.1f} '
-            f'a{radius} {radius} 0 0 1 {radius} -{radius} '
-            f'h{thickness - 2 * radius:.1f} '
-            f'a{radius} {radius} 0 0 1 {radius} {radius} '
-            f'V{base} z" /></g>')
-    out.append("</svg>")
-    return "".join(out)
 
 
 @dataclass
@@ -678,39 +595,178 @@ def _content(session: Session, page: Page) -> str:
     )
 
 
-def _daily(session: Session, page: Page) -> str:
-    """New removals per day, Douyin only -- the other two are too thin."""
-    panels, flat = [], []
-    for platform in DOUYIN:
-        items = page.held.get(platform, [])
-        series = daily_hazard(session, platform, items)
-        if not series:
+#: The ages the removal rate is read at, in days. Close together
+#: early, where almost everything happens, and far apart later, where
+#: the question is only whether the rate is still climbing.
+AGES: tuple[int, ...] = (1, 2, 3, 5, 7, 10, 14, 21, 30)
+
+#: Below this many posts a point is not drawn. A rate over six posts
+#: swings by sixteen points when one of them goes, and a chart cannot
+#: show that while a table can -- so small ages stay in the table and
+#: out of the line.
+MIN_MEASURED = 10
+
+
+@dataclass
+class AgePoint:
+    """The removal rate at one age, with what it was measured over."""
+
+    days: int
+    rate: float
+    removed: int
+    measured: int
+    censored: int
+
+
+def by_age(items: list[Finding]) -> list[AgePoint]:
+    """Removed by day N of a post's life, for each N.
+
+    Cumulative and counted, not estimated: at each age the denominator
+    is the posts whose fate at that age is actually known -- watched
+    from early enough to have seen it (so a post found at three weeks
+    is not a survivor of its first three days), and watched long
+    enough for the answer to exist (a post two days old cannot be
+    asked whether it lasted a week).
+
+    This is the shape the per-day chart could not show. "Eleven
+    removals on the 3rd" is a fact about the study's own schedule;
+    "a fifth of posts are gone by day three, and the share barely
+    moves after day ten" is a fact about the platform.
+    """
+    out = []
+    for days in AGES:
+        window = horizon(items, timedelta(days=days))
+        measured = window.removed + window.survived
+        if not measured:
             continue
-        drawn: list[Column] = []
-        previous: datetime | None = None
-        for day, at_risk, events, rate in series:
-            current = datetime.strptime(day, "%Y-%m-%d")
-            if previous is not None and (current - previous).days > 1:
-                drawn.append(Column(label="", gap=True))
-            drawn.append(Column(day, events, at_risk, rate))
-            flat.append([label_for(platform), day, str(at_risk), str(events),
-                         _pct1(rate)])
-            previous = current
-        panels.append(
-            f'<figure class="wide"><figcaption>{_e(label_for(platform))}'
-            f'</figcaption>'
-            f'{columns(drawn, ident=f"d-{platform}", title=f"New removals per observed day, {label_for(platform)}")}'
-            f"</figure>")
-    if not panels:
+        out.append(AgePoint(
+            days=days,
+            rate=window.removed / measured,
+            removed=window.removed,
+            measured=measured,
+            censored=window.censored,
+        ))
+    return out
+
+
+def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
+              width: int = 820) -> str:
+    """Removal rate against post age, one line per format.
+
+    The x axis is evenly spaced by position rather than by days: the
+    interesting part is the first week, and a linear day axis spends
+    two thirds of its width on the fortnight where nothing changes.
+    """
+    pad_left, pad_right, pad_top, pad_bottom = 46, 76, 16, 34
+    plot_h = 170
+    height = pad_top + plot_h + pad_bottom
+    plot_w = width - pad_left - pad_right
+
+    drawn = [(name, points) for name, points in series
+             if any(p.measured >= MIN_MEASURED for p in points)]
+    if not drawn:
+        return ""
+
+    top = max(
+        (p.rate for _, points in drawn for p in points
+         if p.measured >= MIN_MEASURED),
+        default=0.0,
+    )
+    # A round ceiling above the data, never below it.
+    ceiling = max(0.1, min(1.0, (int(top * 10) + 1) / 10))
+
+    def x_of(index: int) -> float:
+        if len(AGES) == 1:
+            return pad_left + plot_w / 2
+        return pad_left + plot_w * index / (len(AGES) - 1)
+
+    def y_of(rate: float) -> float:
+        return pad_top + plot_h * (1 - rate / ceiling)
+
+    out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
+           f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
+    out.append(f'<title id="{ident}-t">Removal rate by post age</title>')
+
+    for step in range(5):
+        rate = ceiling * step / 4
+        y = y_of(rate)
+        out.append(f'<line class="grid" x1="{pad_left}" y1="{y:.1f}" '
+                   f'x2="{pad_left + plot_w}" y2="{y:.1f}" />')
+        out.append(f'<text class="tick" x="{pad_left - 8}" y="{y + 4:.1f}" '
+                   f'text-anchor="end">{rate * 100:.0f}%</text>')
+
+    for index, days in enumerate(AGES):
+        out.append(f'<text class="tick" x="{x_of(index):.1f}" '
+                   f'y="{pad_top + plot_h + 18}" text-anchor="middle">'
+                   f'{days}d</text>')
+
+    for number, (name, points) in enumerate(drawn, start=1):
+        klass = f"c{number}"
+        shown = [(AGES.index(p.days), p) for p in points
+                 if p.measured >= MIN_MEASURED]
+        if not shown:
+            continue
+        path = " ".join(
+            f"{'M' if first else 'L'}{x_of(index):.1f} {y_of(p.rate):.1f}"
+            for first, (index, p) in (
+                (i == 0, pair) for i, pair in enumerate(shown))
+        )
+        out.append(f'<path class="line {klass}" d="{path}" />')
+        for index, point in shown:
+            hover = (f"{name}\n"
+                     f"by day {point.days}: {_pct1(point.rate)} removed\n"
+                     f"{point.removed} of {point.measured} posts whose fate "
+                     f"at that age is known")
+            if point.censored:
+                hover += f"\n{point.censored} not watched that long yet"
+            out.append(
+                f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
+                f'<circle class="hit" cx="{x_of(index):.1f}" '
+                f'cy="{y_of(point.rate):.1f}" r="11" fill="transparent" />'
+                f'<circle class="dot {klass}" cx="{x_of(index):.1f}" '
+                f'cy="{y_of(point.rate):.1f}" r="4" /></g>')
+        last_index, last = shown[-1]
+        out.append(f'<text class="cat" x="{x_of(last_index) + 10:.1f}" '
+                   f'y="{y_of(last.rate) + 4:.1f}">{_e(name)}</text>')
+
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _by_age(session: Session, page: Page) -> str:
+    """How the removal rate moves with a post's age."""
+    series, flat = [], []
+    for platform in DOUYIN:
+        points = by_age(page.held.get(platform, []))
+        if not points:
+            continue
+        series.append((label_for(platform), points))
+        for point in points:
+            flat.append([
+                label_for(platform), f"{point.days}d", f"{point.measured:,}",
+                f"{point.removed:,}", _pct1(point.rate), f"{point.censored:,}",
+            ])
+    chart = age_curve(series, ident="age")
+    if not chart:
         return ""
     return (
-        '<section><h2>New removals, per day the study looked</h2>'
-        '<p class="note">A <code>//</code> is a day nobody looked; its '
-        'removals land on the next day that was. A tick on the baseline is a '
-        'real zero.</p>'
-        f'{"".join(panels)}'
-        + table(["Platform", "Day", "At risk", "Newly gone", "Of those at risk"],
-                flat, "new removals per observed day")
+        '<section><h2>Removal rate by the age of the post</h2>'
+        '<p class="note">Each point is <strong>the share of posts gone by '
+        'that age</strong>, counted over the posts whose fate at that age is '
+        'actually known: watched from early enough to have seen it, and '
+        'watched long enough for the answer to exist. So the denominator '
+        'shrinks as the ages get longer, and it is in the table and on every '
+        'point.</p>'
+        f'{chart}'
+        '<p class="note">A line that keeps climbing means posts go on being '
+        'removed as they age; a line that flattens means removal is something '
+        f'that happens early or not at all. Points measured over fewer than '
+        f'{MIN_MEASURED} posts are left out of the line and kept in the '
+        'table: a rate over six posts moves sixteen points when one of them '
+        'goes, which a chart cannot show and a table can.</p>'
+        + table(["Format", "By age", "Fate known", "Removed", "Share",
+                 "Not watched that long yet"],
+                flat, "removal rate by post age")
         + "</section>"
     )
 
@@ -1231,7 +1287,7 @@ def build(session: Session, *, reveal: bool = False,
     stamp = page.generated.strftime("%Y-%m-%d %H:%M") if page.generated else "—"
     overview = "".join([
         _douyin(session, page),
-        _daily(session, page),
+        _by_age(session, page),
         _comebacks(page),
         _context(page),
     ])
