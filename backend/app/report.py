@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 
 from sqlalchemy.orm import Session
@@ -49,11 +49,15 @@ from .analyse import (
     corpus_captions,
     own,
 )
-from .clock import local, now as clock_now, today as clock_today
+from .clock import (
+    local,
+    local_date,
+    now as clock_now,
+    today as clock_today,
+)
 from .survival import (
     Finding,
     by_collection_age,
-    horizon,
     kaplan_meier,
     quartiles,
     removal_ages,
@@ -595,120 +599,102 @@ def _content(session: Session, page: Page) -> str:
     )
 
 
-#: The ages the removal rate is read at, in days. Close together
-#: early, where almost everything happens, and far apart later, where
-#: the question is only whether the rate is still climbing.
-AGES: tuple[int, ...] = (1, 2, 3, 5, 7, 10, 14, 21, 30)
-
-#: Below this many posts a point is not drawn. A rate over six posts
-#: swings by sixteen points when one of them goes, and a chart cannot
-#: show that while a table can -- so small ages stay in the table and
-#: out of the line.
-MIN_MEASURED = 10
-
-#: And below this share of the eligible posts settled, a point is not
-#: drawn either -- whatever its denominator.
-#:
-#: This is the rule that matters, and it was missing. A removal is
-#: known the day it happens; survival is only known once the post has
-#: been watched that long. So at an age the collection has barely
-#: reached, every removal is in the numerator and almost no survivor
-#: is in the denominator, and the rate climbs toward 100% for no
-#: reason but the calendar. 图文 collection began a week before this
-#: was written and its line duly reached 100% by day 14 -- an artefact
-#: of the start date, drawn as if it were a finding.
-MIN_COVERAGE = 0.6
+#: Below this many posts a collection day is not drawn. A rate over
+#: six posts swings sixteen points when one of them goes, which a
+#: chart cannot show and a table can -- so a thin day stays in the
+#: table and out of the line.
+MIN_COHORT = 8
 
 
 @dataclass
-class AgePoint:
-    """The removal rate at one age, with what it was measured over."""
+class Cohort:
+    """The posts collected on one day, and where they stand today.
 
-    days: int
-    rate: float
-    removed: int
-    measured: int
-    censored: int
-    #: Share of the posts eligible at this age whose fate is settled.
-    coverage: float
+    This replaced a chart of "removed within N days of publication",
+    which could not be read honestly however it was drawn. That
+    question needs every post followed for N days; a collection three
+    weeks old has barely a post followed for thirty, so its removals
+    were all counted and its survivors were not, and the rate ran
+    toward 100% on the strength of the start date alone.
+
+    A cohort has no such problem, because every post in it has been
+    watched for exactly the same stretch: from that day to now. "Of
+    what was collected fifteen days ago, this much is gone" has
+    nothing estimated in it and nothing to adjust for.
+    """
+
+    day: date
+    days_ago: int
+    tracked: int
+    gone: int
+    #: Found gone at some point and watchable again at the last check.
+    back: int
 
     @property
-    def solid(self) -> bool:
-        """Whether this point may be drawn as a rate at all."""
-        return self.measured >= MIN_MEASURED and self.coverage >= MIN_COVERAGE
+    def rate(self) -> float:
+        return self.gone / self.tracked if self.tracked else 0.0
+
+    @property
+    def alive(self) -> int:
+        return self.tracked - self.gone
 
 
-def by_age(items: list[Finding]) -> list[AgePoint]:
-    """Removed by day N of a post's life, for each N.
-
-    Cumulative and counted, not estimated: at each age the denominator
-    is the posts whose fate at that age is actually known -- watched
-    from early enough to have seen it (so a post found at three weeks
-    is not a survivor of its first three days), and watched long
-    enough for the answer to exist (a post two days old cannot be
-    asked whether it lasted a week).
-
-    This is the shape the per-day chart could not show. "Eleven
-    removals on the 3rd" is a fact about the study's own schedule;
-    "a fifth of posts are gone by day three, and the share barely
-    moves after day ten" is a fact about the platform.
-    """
-    out = []
-    for days in AGES:
-        # Dated from the first sighting where the id carried no
-        # publication time: that is a lower bound on the post's age,
-        # so it can only understate how long the post lasted.
-        window = horizon(items, timedelta(days=days), from_first_sighting=True)
-        measured = window.removed + window.survived
-        if not measured:
+def cohorts(items: list[Finding], today: date | None = None) -> list[Cohort]:
+    """One group per day of collection, oldest first."""
+    now = today or clock_today()
+    groups: dict[date, list[Finding]] = {}
+    for finding in items:
+        seen = local_date(finding.collected_at or finding.first_checked_at)
+        if seen is None:
             continue
-        out.append(AgePoint(
-            days=days,
-            rate=window.removed / measured,
-            removed=window.removed,
-            measured=measured,
-            censored=window.censored,
-            coverage=window.coverage or 0.0,
+        groups.setdefault(seen, []).append(finding)
+
+    out = []
+    for day in sorted(groups):
+        found = groups[day]
+        out.append(Cohort(
+            day=day,
+            days_ago=(now - day).days,
+            tracked=len(found),
+            gone=sum(1 for f in found if f.is_gone),
+            back=sum(1 for f in found if f.came_back),
         ))
     return out
 
 
-def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
-              width: int = 820) -> str:
-    """Removal rate against post age, one line per format.
+def cohort_curve(series: list[tuple[str, list[Cohort]]], *, ident: str,
+                 width: int = 820) -> str:
+    """Share removed against how long ago the posts were collected.
 
-    The x axis is evenly spaced by position rather than by days: the
-    interesting part is the first week, and a linear day axis spends
-    two thirds of its width on the fortnight where nothing changes.
+    The x axis is real days, to scale, oldest on the left and today on
+    the right -- so the gap between two collection days is the gap
+    that happened, and a stretch nobody collected looks like one.
     """
-    pad_left, pad_right, pad_top, pad_bottom = 46, 76, 16, 34
-    plot_h = 170
+    pad_left, pad_right, pad_top, pad_bottom = 46, 86, 16, 44
+    plot_h = 180
     height = pad_top + plot_h + pad_bottom
     plot_w = width - pad_left - pad_right
 
-    drawn = [(name, points) for name, points in series
-             if any(p.solid for p in points)]
+    drawn = [(name, [c for c in points if c.tracked >= MIN_COHORT])
+             for name, points in series]
+    drawn = [(name, points) for name, points in drawn if points]
     if not drawn:
         return ""
 
-    top = max(
-        (p.rate for _, points in drawn for p in points if p.solid),
-        default=0.0,
-    )
-    # A round ceiling above the data, never below it.
+    oldest = max(max(c.days_ago for c in points) for _, points in drawn)
+    oldest = max(oldest, 1)
+    top = max(c.rate for _, points in drawn for c in points)
     ceiling = max(0.1, min(1.0, (int(top * 10) + 1) / 10))
 
-    def x_of(index: int) -> float:
-        if len(AGES) == 1:
-            return pad_left + plot_w / 2
-        return pad_left + plot_w * index / (len(AGES) - 1)
+    def x_of(days_ago: int) -> float:
+        return pad_left + plot_w * (oldest - days_ago) / oldest
 
     def y_of(rate: float) -> float:
         return pad_top + plot_h * (1 - rate / ceiling)
 
     out = [f'<svg class="chart" viewBox="0 0 {width} {height}" role="img" '
            f'style="max-width:{width}px" aria-labelledby="{ident}-t">']
-    out.append(f'<title id="{ident}-t">Removal rate by post age</title>')
+    out.append(f'<title id="{ident}-t">Share removed, by collection day</title>')
 
     for step in range(5):
         rate = ceiling * step / 4
@@ -718,100 +704,125 @@ def age_curve(series: list[tuple[str, list[AgePoint]]], *, ident: str,
         out.append(f'<text class="tick" x="{pad_left - 8}" y="{y + 4:.1f}" '
                    f'text-anchor="end">{rate * 100:.0f}%</text>')
 
-    for index, days in enumerate(AGES):
-        out.append(f'<text class="tick" x="{x_of(index):.1f}" '
-                   f'y="{pad_top + plot_h + 18}" text-anchor="middle">'
-                   f'{days}d</text>')
+    step_days = max(1, round(oldest / 7))
+    marks = sorted({oldest, 0} | set(range(0, oldest + 1, step_days)))
+    for days_ago in marks:
+        label = "today" if days_ago == 0 else f"{days_ago}d"
+        anchor = "end" if days_ago == 0 else (
+            "start" if days_ago == oldest else "middle")
+        out.append(f'<text class="tick" x="{x_of(days_ago):.1f}" '
+                   f'y="{pad_top + plot_h + 18}" text-anchor="{anchor}">'
+                   f"{label}</text>")
+    out.append(f'<text class="tick" x="{pad_left + plot_w / 2:.1f}" '
+               f'y="{pad_top + plot_h + 36}" text-anchor="middle">'
+               "how long ago these posts were collected</text>")
 
     for number, (name, points) in enumerate(drawn, start=1):
         klass = f"c{number}"
-        # Consecutive solid points only: the line stops where the
-        # collection stops rather than jumping a gap, which would draw
-        # a trend across ages that were never measured.
-        solid = [(AGES.index(p.days), p) for p in points if p.solid]
-        shown = []
-        for pair in solid:
-            if shown and pair[0] != shown[-1][0] + 1:
-                break
-            shown.append(pair)
-        if not shown:
-            continue
+        ordered = sorted(points, key=lambda c: -c.days_ago)
         path = " ".join(
-            f"{'M' if first else 'L'}{x_of(index):.1f} {y_of(p.rate):.1f}"
-            for first, (index, p) in (
-                (i == 0, pair) for i, pair in enumerate(shown))
+            f"{'M' if index == 0 else 'L'}{x_of(c.days_ago):.1f} "
+            f"{y_of(c.rate):.1f}"
+            for index, c in enumerate(ordered)
         )
         out.append(f'<path class="line {klass}" d="{path}" />')
-        for index, point in shown:
-            hover = (f"{name}\n"
-                     f"by day {point.days}: {_pct1(point.rate)} removed\n"
-                     f"{point.removed} of {point.measured} posts whose fate "
-                     f"at that age is known")
-            if point.censored:
-                hover += (f"\n{point.censored} not watched that long yet "
-                          f"({_pct1(point.coverage)} of this age settled)")
+        for cohort in ordered:
+            hover = (f"{name}\ncollected {cohort.day:%Y-%m-%d} "
+                     f"({cohort.days_ago} days ago)\n"
+                     f"{cohort.gone} of {cohort.tracked} now gone "
+                     f"({_pct1(cohort.rate)})\n"
+                     f"{cohort.alive} still up")
+            if cohort.back:
+                hover += f"\n{cohort.back} were gone and are back"
             out.append(
                 f'<g class="mark" tabindex="0" data-tip="{_e(hover)}">'
-                f'<circle class="hit" cx="{x_of(index):.1f}" '
-                f'cy="{y_of(point.rate):.1f}" r="11" fill="transparent" />'
-                f'<circle class="dot {klass}" cx="{x_of(index):.1f}" '
-                f'cy="{y_of(point.rate):.1f}" r="4" /></g>')
-        last_index, last = shown[-1]
-        out.append(f'<text class="cat" x="{x_of(last_index) + 10:.1f}" '
+                f'<circle class="hit" cx="{x_of(cohort.days_ago):.1f}" '
+                f'cy="{y_of(cohort.rate):.1f}" r="11" fill="transparent" />'
+                f'<circle class="dot {klass}" cx="{x_of(cohort.days_ago):.1f}" '
+                f'cy="{y_of(cohort.rate):.1f}" r="4" /></g>')
+        last = ordered[-1]
+        out.append(f'<text class="cat" x="{x_of(last.days_ago) + 10:.1f}" '
                    f'y="{y_of(last.rate) + 4:.1f}">{_e(name)}</text>')
 
     out.append("</svg>")
     return "".join(out)
 
 
-def _by_age(session: Session, page: Page) -> str:
-    """How the removal rate moves with a post's age."""
+def _each_post(page: Page) -> list[list[str]]:
+    """Every post, under the day it was collected.
+
+    What a day's rate is made of, so it can be checked rather than
+    taken: which posts, posted when, found when, where each stands
+    now. Posts are collected within a day or a week of being posted,
+    so the two dates are close and are not the same -- both are here.
+    """
+    rows = []
+    for platform in DOUYIN:
+        for finding in page.held.get(platform, []):
+            seen = local_date(finding.collected_at or finding.first_checked_at)
+            if seen is None:
+                continue
+            if finding.is_gone:
+                state = "已下架 (gone)"
+            elif finding.came_back:
+                state = "下架后恢复 (came back)"
+            else:
+                state = "仍在 (up)"
+            rows.append([
+                f"{seen:%Y-%m-%d}",
+                label_for(platform),
+                mask(finding.video_id, page.reveal),
+                _when(finding.published_at),
+                state,
+                _when(finding.first_gone_ever or finding.first_gone_at),
+                _when(finding.last_checked_at),
+            ])
+    rows.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    return rows
+
+
+def _cohorts(page: Page) -> str:
+    """What is left of each day's collection."""
     series, flat = [], []
     for platform in DOUYIN:
-        points = by_age(page.held.get(platform, []))
-        if not points:
+        found = cohorts(page.held.get(platform, []))
+        if not found:
             continue
-        series.append((label_for(platform), points))
-        for point in points:
+        series.append((label_for(platform), found))
+        for cohort in sorted(found, key=lambda c: -c.days_ago):
             flat.append([
-                label_for(platform), f"{point.days}d", f"{point.measured:,}",
-                f"{point.removed:,}",
-                _pct1(point.rate) if point.solid else f"({_pct1(point.rate)})",
-                f"{point.censored:,}", _pct1(point.coverage),
+                label_for(platform), f"{cohort.day:%Y-%m-%d}",
+                f"{cohort.days_ago}d ago", f"{cohort.tracked:,}",
+                f"{cohort.gone:,}", f"{cohort.alive:,}",
+                _pct1(cohort.rate) if cohort.tracked >= MIN_COHORT
+                else f"({_pct1(cohort.rate)})",
+                f"{cohort.back:,}",
             ])
-    chart = age_curve(series, ident="age")
+    chart = cohort_curve(series, ident="cohort")
     if not chart:
         return ""
     return (
-        '<section><h2>Removal rate by the age of the post</h2>'
-        '<p class="note">Each point is <strong>the share of posts gone by '
-        'that age</strong>, counted over the posts whose fate at that age is '
-        'actually known: watched from early enough to have seen it, and '
-        'watched long enough for the answer to exist. So the denominator '
-        'shrinks as the ages get longer, and it is in the table and on every '
-        'point.</p>'
-        f'{chart}'
-        '<p class="note">A line that keeps climbing means posts go on being '
-        'removed as they age; a line that flattens means removal is something '
-        'that happens early or not at all.</p>'
-        '<p class="note"><strong>Where the line stops, the collection '
-        'stops.</strong> A removal is known the day it happens; survival is '
-        'only known once a post has been watched that long — so at an age '
-        'this collection has barely reached, every removal is in and almost '
-        'no survivor is, and the rate climbs toward 100% for no reason but '
-        f'the start date. A point is drawn only where at least '
-        f'{MIN_COVERAGE:.0%} of the posts eligible at that age have settled '
-        f'one way or the other, and over at least {MIN_MEASURED} of them. '
-        'The rest stay in the table with their rate in brackets and their '
-        'coverage beside it — read the coverage first.</p>'
-        '<p class="note">Age runs from the post\u2019s publication time, '
-        'which a Douyin id carries. Where an id could not be read, it runs '
-        'from the first time the study saw the post, which is a lower bound '
-        'on its age: such a post can be shown lasting less than it did, '
-        'never more.</p>'
-        + table(["Format", "By age", "Fate known", "Removed", "Share",
-                 "Not watched that long yet", "Settled"],
-                flat, "removal rate by post age")
+        "<section><h2>What is left of each day’s collection</h2>"
+        '<p class="note">Every post collected on one day, and how much of '
+        'that day is gone now. <strong>Nothing here is estimated or adjusted'
+        ':</strong> every post in a point has been watched for exactly the '
+        'same stretch — from that day to now — so the share removed is a '
+        'count, and the rest of that day is still up.</p>'
+        f"{chart}"
+        '<p class="note">Oldest collection on the left, today on the right. A '
+        'day collected this morning has had no time to lose anything, so the '
+        'climb from right to left is removal accumulating. Days of fewer than '
+        f'{MIN_COHORT} posts are left out of the line and kept in the table.'
+        "</p>"
+        '<p class="note">Posts are collected within a day or a week of being '
+        'posted, so the collection day and the publication day are close but '
+        'not the same. Both are in the detail table, per post.</p>'
+        + table(["Format", "Collected", "Ago", "Posts", "Gone now",
+                 "Still up", "Share gone", "Came back"],
+                flat, "each day’s collection, as it stands now")
+        + table(["Collected", "Format", "Video", "Published", "State",
+                 "First found gone", "Last checked"],
+                _each_post(page), "every post, by the day it was collected")
         + "</section>"
     )
 
@@ -1332,7 +1343,7 @@ def build(session: Session, *, reveal: bool = False,
     stamp = page.generated.strftime("%Y-%m-%d %H:%M") if page.generated else "—"
     overview = "".join([
         _douyin(session, page),
-        _by_age(session, page),
+        _cohorts(page),
         _comebacks(page),
         _context(page),
     ])

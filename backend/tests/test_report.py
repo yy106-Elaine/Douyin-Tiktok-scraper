@@ -6,11 +6,11 @@ still being complete when the script does not run.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from app.db import SessionLocal
 from app.models import LinkCheck, WebVideo
-from app.report import AgePoint, age_curve, build, mask
+from app.report import Cohort, build, cohort_curve, mask
 from app.survival import Finding
 
 CAPTION = "姐妹 情侣 日常 这个人的脸 #wlw #长发t"
@@ -115,77 +115,58 @@ def test_the_stamp_is_the_researchers_clock(db: None) -> None:
     assert "2026-10-01 02:30" not in page
 
 
-def test_the_age_curve_leaves_out_a_rate_measured_over_a_handful() -> None:
-    """A chart cannot show a denominator; a table can.
+def _cohort(days_ago: int, tracked: int, gone: int, back: int = 0) -> Cohort:
+    return Cohort(
+        day=date(2026, 10, 4) - timedelta(days=days_ago),
+        days_ago=days_ago, tracked=tracked, gone=gone, back=back,
+    )
 
-    A rate over six posts moves sixteen points when one of them goes.
-    Drawing it beside a rate over four hundred invites reading the two
-    as comparable, so the thin one stays in the table.
+
+def test_a_days_rate_is_a_count_over_posts_watched_the_same_time() -> None:
+    """The reason this replaced the by-age chart.
+
+    "Removed within N days of publication" needs every post followed
+    for N days, and a three-week-old collection has barely a post
+    followed for thirty: its removals were all counted and its
+    survivors were not, so the rate ran toward 100% on the strength of
+    the start date. Every post in a cohort has been watched from the
+    same day to now, so there is nothing to adjust for.
     """
-    points = [
-        AgePoint(days=1, rate=0.2, removed=40, measured=200,
-                 censored=0, coverage=1.0),
-        AgePoint(days=2, rate=0.3, removed=60, measured=200,
-                 censored=5, coverage=0.98),
-        AgePoint(days=3, rate=0.9, removed=5, measured=6,
-                 censored=2, coverage=0.75),
-    ]
+    cohort = _cohort(days_ago=15, tracked=200, gone=50)
 
-    svg = age_curve([("视频 (video)", points)], ident="t")
-
-    assert svg.count('class="dot') == 2
+    assert cohort.rate == 0.25
+    assert cohort.alive == 150
 
 
-def test_a_rate_the_calendar_has_not_settled_is_not_drawn() -> None:
-    """The artefact this chart was quietly producing.
+def test_a_thin_day_is_left_out_of_the_line() -> None:
+    """A rate over three posts is not drawn beside a rate over three hundred."""
+    svg = cohort_curve(
+        [("视频 (video)", [_cohort(14, 300, 60), _cohort(13, 3, 3)])],
+        ident="t",
+    )
 
-    A removal is known the day it happens; survival is only known once
-    the post has been watched that long. At an age the collection has
-    barely reached, every removal is in the numerator and almost no
-    survivor is in the denominator, and the rate climbs to 100% on the
-    strength of the start date alone. 图文 did exactly this: a line to
-    100% by day 14, one week into collecting them.
-    """
-    points = [
-        AgePoint(days=1, rate=0.1, removed=30, measured=300,
-                 censored=10, coverage=0.97),
-        AgePoint(days=2, rate=0.9, removed=90, measured=100,
-                 censored=700, coverage=0.125),
-    ]
-
-    svg = age_curve([("图文 (note)", points)], ident="t")
-
-    # The well-covered point is drawn; the one the calendar has not
-    # settled is not, however large its denominator.
     assert svg.count('class="dot') == 1
 
 
-def test_an_age_with_nothing_measurable_draws_nothing_at_all() -> None:
-    """Rather than a line along the floor, which reads as "never removed"."""
-    thin = [AgePoint(days=1, rate=0.5, removed=1, measured=2,
-                     censored=0, coverage=1.0)]
+def test_the_axis_is_real_days_so_a_gap_in_collecting_shows_as_one() -> None:
+    """Evenly spaced points would hide the days nobody collected."""
+    svg = cohort_curve(
+        [("视频 (video)", [_cohort(20, 50, 20), _cohort(19, 50, 15),
+                           _cohort(1, 50, 2)])],
+        ident="t",
+    )
 
-    assert age_curve([("图文 (note)", thin)], ident="t") == ""
+    xs = sorted(
+        float(part.split('"')[1])
+        for part in svg.split('class="dot')[1:]
+        for part in [part.split("cx=")[1]]
+    )
+    # 20d and 19d sit next to each other; 1d is far away.
+    assert xs[1] - xs[0] < (xs[2] - xs[1]) / 5
 
 
-def test_the_line_stops_rather_than_jumping_a_gap() -> None:
-    """A segment drawn across ages that were never measured is a claim."""
-    points = [
-        AgePoint(days=1, rate=0.1, removed=30, measured=300,
-                 censored=0, coverage=1.0),
-        AgePoint(days=2, rate=0.2, removed=60, measured=300,
-                 censored=0, coverage=1.0),
-        # Day 3 unsettled, day 5 solid again -- the line must not
-        # reach across day 3 as though it had been measured.
-        AgePoint(days=3, rate=0.8, removed=80, measured=100,
-                 censored=900, coverage=0.1),
-        AgePoint(days=5, rate=0.3, removed=90, measured=300,
-                 censored=0, coverage=1.0),
-    ]
-
-    svg = age_curve([("视频 (video)", points)], ident="t")
-
-    assert svg.count('class="dot') == 2
+def test_nothing_to_draw_draws_nothing() -> None:
+    assert cohort_curve([("图文 (note)", [_cohort(3, 2, 1)])], ident="t") == ""
 
 
 def test_the_page_renders_when_nothing_has_been_collected(db: None) -> None:
