@@ -169,8 +169,15 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # account only answers while it is still there. The pass above
     # reads the profile of every new account it meets; this is the
     # backlog, and it stops on its own once a round finds nothing.
+    #
+    # Two rounds, not more. The backlog is now almost entirely
+    # accounts that are themselves gone -- a second round over 73 of
+    # them recovered one -- so further rounds are requests spent on
+    # profiles that do not exist. The new accounts each day are read
+    # by the pass above, and the second round is for the handful the
+    # site declines to answer for the first time.
     run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_authors --apply --pause 8 --rounds 4
+      "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2
   fi
 fi
 
