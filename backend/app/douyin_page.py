@@ -108,6 +108,33 @@ def _meta_tags(html: str) -> dict[str, str]:
     return {m.group("key").lower(): unescape(m.group("value")) for m in _META.finditer(html)}
 
 
+#: What Douyin's own description says when it has nothing to say:
+#: "于20261006发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！"
+#: -- the site's wording, filled in with the date and a like count,
+#: on a page that never handed over the video's record.
+_BOILERPLATE = re.compile(
+    r"于\s*\d{8}\s*发布在抖音|来抖音[，,]\s*记录美好生活"
+)
+
+
+def _caption_or_boilerplate(caption: str | None) -> str | None:
+    """None when the page's description is the site's, not the author's.
+
+    This is not a caption and must never be judged as one. The topic
+    filter read it, found no community tag in it -- of course not, the
+    author did not write it -- and declined to keep the file. For a
+    post that is later removed, that is the archive's only copy, lost
+    on the strength of a sentence the platform wrote.
+
+    An empty caption is the filter saying it cannot tell, and the
+    passes already keep a post whose caption they cannot read. This
+    puts these rows in that case, where they belong.
+    """
+    if caption and _BOILERPLATE.search(caption):
+        return None
+    return caption
+
+
 def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
     """Read a video page.
 
@@ -151,7 +178,9 @@ def video_facts(html: str, payloads: Sequence[dict] = ()) -> VideoFacts:
     posted = _POSTED.search(html)
     facts = VideoFacts(
         author_name=_text(meta.get("og:title")),
-        caption=_text(meta.get("og:description")) or _text(meta.get("description")),
+        caption=_caption_or_boilerplate(
+            _text(meta.get("og:description")) or _text(meta.get("description"))
+        ),
         parsed_by="surface",
     )
     if posted:

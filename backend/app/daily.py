@@ -438,6 +438,17 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--profile", type=Path, default=None)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
+        "--heavy",
+        action="store_true",
+        help=(
+            "let the page fetch the video and the pictures, as it did "
+            "before. A check reads the JSON record and the document, so "
+            "this is normally waste -- but it is the one thing to try "
+            "when a page starts coming back [surface only], because "
+            "that would mean the record depends on something blocked"
+        ),
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         default=None,
@@ -559,6 +570,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             headless=args.headless,
             pause_seconds=0,
             platform=args.platform,
+            light=not args.heavy,
         ) as browser:
             # Checked once, here. A run that asks to sign in at each of
             # two hundred videos is a run with no session at all, and

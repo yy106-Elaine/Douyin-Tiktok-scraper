@@ -531,3 +531,40 @@ def test_a_tiktok_page_serving_another_video_is_recorded_as_gone(client, api_key
         assert row.author_name is None
 
         assert classify(session.query(LinkCheck).one()) == GONE
+
+
+def test_the_sites_own_description_is_not_read_as_a_caption():
+    """A sentence Douyin wrote, judged as if the author had written it.
+
+    When the page hands over no record, its description is the site's
+    boilerplate -- "于20261006发布在抖音，已经收获了0个喜欢，来抖音，
+    记录美好生活！". The topic filter read that, found no community
+    tag in it, and declined to keep the file. For a post removed
+    afterwards, the archive's only copy is lost on the strength of a
+    sentence the platform wrote.
+    """
+    from app.douyin_page import video_facts
+
+    html = (
+        '<meta property="og:title" content="某人">'
+        '<meta property="og:description" content="'
+        "于20261006发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！"
+        '">'
+    )
+
+    facts = video_facts(html)
+
+    assert facts.caption is None
+    assert facts.author_name == "某人"
+    # Still a reading of the page, so the row is not pretended to be
+    # unread -- it is read, with no caption, which is the state the
+    # passes already keep a file for.
+    assert facts.parsed_by == "surface"
+
+
+def test_a_real_caption_is_untouched():
+    from app.douyin_page import video_facts
+
+    html = '<meta property="og:description" content="今天也喜欢你 #lwl #wlw">'
+
+    assert video_facts(html).caption == "今天也喜欢你 #lwl #wlw"
