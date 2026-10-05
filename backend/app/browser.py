@@ -351,7 +351,15 @@ class Browser:
                     pass
                 time.sleep(settle_seconds)
             html = page.content()
-            text = page.inner_text("body")[:4000]
+            # The served HTML, not the laid-out text.
+            #
+            # This asked the browser for `body`'s inner text, which
+            # forces a full layout of a page built to be scrolled --
+            # and all it is used for is looking for a challenge
+            # phrase, which is in the markup either way. The layout
+            # was the second most expensive thing in a check after
+            # the page's own scripts.
+            text = html[:200_000]
             landed = page.url
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
@@ -378,6 +386,10 @@ class Browser:
         if "verify" in landed or "captcha" in landed:
             return True
         return any(marker in text for marker in _CHALLENGE)
+
+    # `text` is the page's markup rather than its rendered text: the
+    # challenge phrases are in both, and only one of them costs a
+    # layout pass.
 
     # -- fetching a file -------------------------------------------
 
