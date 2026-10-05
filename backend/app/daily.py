@@ -270,6 +270,10 @@ def authors(session: Session, read_profile) -> "object":
     from .fetch_authors import needs_reading, note, read_one
 
     seen: set[str] = set()
+    #: What the profile visits cost this pass, reported at the end.
+    #: A page visit inside a loop that has a thousand of them is the
+    #: kind of cost that hides, so it is counted rather than guessed.
+    spent = {"visits": 0, "seconds": 0.0}
 
     def visit(
         sec_uid: str,
@@ -285,9 +289,13 @@ def authors(session: Session, read_profile) -> "object":
         note(session, sec_uid, author_handle, author_name)
         if not needs_reading(session, sec_uid):
             return ""
+        started = time.monotonic()
         outcome, said = read_one(session, sec_uid, fetcher=read_profile)
+        spent["visits"] += 1
+        spent["seconds"] += time.monotonic() - started
         return said
 
+    visit.spent = spent  # type: ignore[attr-defined]
     return visit
 
 
@@ -595,6 +603,13 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 keep_all=args.everything,
                 author=author,
                 on_progress=show,
+            )
+
+        if author is not None and author.spent["visits"]:
+            spent = author.spent
+            print(
+                f"\n{spent['visits']} profile(s) read for a 抖音号, "
+                f"{spent['seconds'] / 60:.1f} min of this pass"
             )
 
         from .survival import findings, today_at_a_glance

@@ -214,3 +214,46 @@ def test_a_handle_the_video_page_already_gave_costs_no_visit(session, tmp_path):
     )
 
     assert visited == []
+
+
+def test_an_account_the_site_already_refused_is_not_asked_again_here(session, tmp_path):
+    """Most of the nightly pass's time, spent on profiles that are gone.
+
+    Three quarters of the accounts still missing a 抖音号 are accounts
+    the site has no profile for. Asking for every one of them inside
+    the pass that checks removals -- every night -- is a page load
+    that cannot succeed, in front of the measurement that can.
+    Retrying them is `app.fetch_authors`'s job, which runs afterwards
+    and stops when a round finds nothing.
+    """
+    from app.fetch_authors import SERVED_ANOTHER_PROFILE
+
+    session.add(WebAuthor(
+        sec_uid=SEC_UID, platform="douyin", author_handle=None,
+        http_status=200, error=SERVED_ANOTHER_PROFILE,
+    ))
+    session.commit()
+
+    visited: list[str] = []
+    one(
+        session,
+        read=lambda url: _video("7686773732988082816"),
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686773732988082816",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+        author=_hook(session, visited),
+    )
+
+    assert visited == []
+
+
+def test_an_account_noted_from_a_post_but_never_visited_is_still_read(session, tmp_path):
+    """`note` writes a row without making a request, so the row's
+    existence must not be read as "already tried"."""
+    from app.fetch_authors import needs_reading, note
+
+    note(session, SEC_UID, None, "某人")
+
+    assert needs_reading(session, SEC_UID) is True

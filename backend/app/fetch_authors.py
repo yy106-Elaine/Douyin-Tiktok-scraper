@@ -250,12 +250,23 @@ def through(browser, on_wall=None):
 
 
 def needs_reading(session: Session, sec_uid: str) -> bool:
-    """Is this account's 抖音号 still missing?
+    """Is this an account whose profile has never been tried?
 
-    One visit per account, not per post. An account with half a dozen
-    posts in the corpus would otherwise be read half a dozen times
-    for an answer that does not change, and every extra profile load
-    is a request against a site that counts them.
+    One visit per account, not per post -- and not once per night
+    either. Three quarters of the accounts still missing a 抖音号 are
+    accounts the site has no profile for: they are gone, and asking
+    again costs a page load that cannot succeed. Asking for all of
+    them inside the nightly pass, every night, was most of that
+    pass's time.
+
+    So the pass that reads posts visits an account it has never
+    tried, and retrying the rest is `app.fetch_authors`'s job -- it
+    runs afterwards, it knows how to stop when a round finds nothing,
+    and it is not holding up the removal check while it does.
+
+    "Never tried" is `http_status` being unset: `note` writes a row
+    from what the post's page said without making a request, and
+    `store` is the only thing that records an answer.
     """
     if not sec_uid:
         return False
@@ -264,7 +275,9 @@ def needs_reading(session: Session, sec_uid: str) -> bool:
     ).first()
     if row is None:
         return True
-    return row.author_handle is None
+    if row.author_handle is not None:
+        return False
+    return row.http_status is None and row.error is None
 
 
 def note(
