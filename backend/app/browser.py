@@ -100,6 +100,17 @@ AUTHOR_URL = "https://www.douyin.com/user/{sec_uid}"
 #: needs checking against what the site actually sets.
 _SESSION_COOKIES = ("sessionid", "sessionid_ss", "sid_tt", "uid_tt", "sid_guard")
 
+#: What a check never looks at. Blocked on the page, not on the
+#: context, so the archive's own downloads -- which go through the
+#: request context -- are untouched.
+_SKIPPED_RESOURCES = frozenset({"media", "image", "font"})
+
+#: How long to wait for the site's own record of the video after the
+#: document arrives. The record is what the check reads, so the read
+#: ends the moment it lands; this is the ceiling for a page that
+#: never sends one.
+RECORD_PATIENCE_SECONDS = 8.0
+
 #: A challenge: a page asking the person to prove something. Narrow on
 #: purpose, and only consulted when the session is present -- so it
 #: cannot be confused with being signed out.
@@ -151,10 +162,22 @@ class Browser:
     """
 
     def __init__(
-        self, context, pause_seconds: float = 2.0, domain: str = "douyin.com"
+        self,
+        context,
+        pause_seconds: float = 2.0,
+        domain: str = "douyin.com",
+        light: bool = True,
     ) -> None:
         self._context = context
         self._pause = pause_seconds
+        #: Whether to let the page fetch the video and the pictures it
+        #: is about. It never needs to: what this reads is the JSON
+        #: record and the document, and the archive's own copies are
+        #: fetched separately through the request context, which this
+        #: does not touch. Downloading a video in order to decide
+        #: whether the video is still there is most of a check's time
+        #: and all of its bandwidth.
+        self._light = light
         #: Which site's cookies count as a session here. Both sites are
         #: the same company's and use the same cookie names, so without
         #: this a TikTok profile would read a Douyin session as its own.
@@ -276,6 +299,8 @@ class Browser:
         try:
             if self._page is None or self._page.is_closed():
                 self._page = self._context.new_page()
+                if self._light:
+                    self._page.route("**/*", _skip_heavy)
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
         page = self._page
@@ -294,20 +319,37 @@ class Browser:
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
             status = response.status if response is not None else None
-            # Douyin fills the page after the document arrives. Waiting
-            # on a selector would tie this to one build's markup, so it
-            # waits for the network to go quiet and then a moment more.
-            try:
-                page.wait_for_load_state("networkidle", timeout=15_000)
-            except Exception:
-                pass
-            time.sleep(settle_seconds)
-            # The record arrives after hydration, so give it a moment
-            # more when nothing has come back yet.
+
+            # Wait for the record, not for the page.
+            #
+            # Douyin fills the page after the document arrives, and
+            # this used to wait for the network to go quiet and then
+            # 2.5s more. A video page never goes quiet -- it is
+            # streaming the video -- so that wait ran its full 15s
+            # timeout on essentially every check, and the record it
+            # was waiting for had usually arrived in the first second
+            # or two. Seventeen seconds a page, spent waiting for a
+            # condition that cannot happen, on a thousand pages a
+            # night.
+            #
+            # So: stop the moment the record lands, and keep the old
+            # wait only for a page that never sends one -- where it is
+            # the HTML's meta tags that have to be read instead, and
+            # those want the page to have settled.
             waited = 0.0
-            while not payloads and waited < 8.0:
-                page.wait_for_timeout(500)
-                waited += 0.5
+            while not payloads and waited < RECORD_PATIENCE_SECONDS:
+                page.wait_for_timeout(250)
+                waited += 0.25
+            if payloads:
+                # A moment for the rest of the record's requests, which
+                # arrive together.
+                page.wait_for_timeout(250)
+            else:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8_000)
+                except Exception:
+                    pass
+                time.sleep(settle_seconds)
             html = page.content()
             text = page.inner_text("body")[:4000]
             landed = page.url
@@ -432,12 +474,24 @@ class Browser:
         return False
 
 
+def _skip_heavy(route, request) -> None:
+    """Let through what the check reads; drop what it never looks at."""
+    try:
+        if request.resource_type in _SKIPPED_RESOURCES:
+            route.abort()
+        else:
+            route.continue_()
+    except Exception:  # noqa: BLE001 - a route the page already abandoned
+        pass
+
+
 @contextmanager
 def open_browser(
     profile: Path = DEFAULT_PROFILE,
     headless: bool = False,
     pause_seconds: float = 2.0,
     platform: str = "douyin",
+    light: bool = True,
 ):
     """A browser using `profile`, created on first use.
 
@@ -471,6 +525,7 @@ def open_browser(
                 context,
                 pause_seconds=pause_seconds,
                 domain=DOMAINS.get(platform, "douyin.com"),
+                light=light,
             )
         finally:
             context.close()

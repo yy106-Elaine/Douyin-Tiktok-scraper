@@ -149,6 +149,12 @@ class _FlakyPage:
         self.index = index
         self.closed = False
         self.url = "https://www.douyin.com/video/1"
+        self.routed: list[str] = []
+
+    def route(self, pattern, handler):
+        # A check never looks at the video or the pictures, and a tab
+        # that is not told so downloads them: see Browser._light.
+        self.routed.append(pattern)
 
     def is_closed(self):
         return self.closed
@@ -220,3 +226,118 @@ def test_it_does_not_keep_opening_tabs():
 
     assert page.fetched.error == "RuntimeError"
     assert len(context.pages) == 2
+
+
+def test_a_check_does_not_download_the_video_it_is_checking():
+    """Most of a check's time, and all of its bandwidth, for nothing.
+
+    What the check reads is the site's JSON record and the document.
+    The archive's own copy is fetched separately, through the request
+    context, which this routing does not touch -- so a page that
+    streams the video while being asked whether the video exists is
+    pure cost.
+    """
+    from app.browser import Browser
+
+    context = _FlakyContext(failures=0)
+    browser = Browser(context, pause_seconds=0)
+
+    browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    assert context.pages[0].routed == ["**/*"]
+
+
+def test_the_media_kinds_are_dropped_and_the_record_is_not():
+    from app.browser import _skip_heavy
+
+    dropped, allowed = [], []
+
+    class _Route:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def abort(self):
+            dropped.append(self.kind)
+
+        def continue_(self):
+            allowed.append(self.kind)
+
+    class _Request:
+        def __init__(self, kind):
+            self.resource_type = kind
+
+    for kind in ("media", "image", "font", "xhr", "fetch", "document", "script"):
+        route = _Route(kind)
+        _skip_heavy(route, _Request(kind))
+
+    assert dropped == ["media", "image", "font"]
+    assert allowed == ["xhr", "fetch", "document", "script"]
+
+
+def test_the_read_ends_when_the_record_arrives_not_when_the_page_goes_quiet():
+    """Seventeen seconds a page, waiting for something that cannot happen.
+
+    A Douyin video page is streaming the video, so it never reaches
+    "networkidle" and that wait ran its full timeout on essentially
+    every check -- while the JSON record the check actually reads had
+    landed in the first second or two. A thousand pages a night.
+    """
+    waits: list[str] = []
+
+    class _Response:
+        status = 200
+        url = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
+
+        @staticmethod
+        def json():
+            return {"aweme_detail": {"aweme_id": "1"}}
+
+    class _Page(_FlakyPage):
+        def on(self, event, handler):
+            # The record arrives with the document, as it does in life.
+            handler(_Response())
+
+        def wait_for_load_state(self, *args, **kwargs):
+            waits.append("networkidle")
+
+        def wait_for_timeout(self, ms):
+            waits.append(f"{ms}ms")
+
+    class _Context(_FlakyContext):
+        def new_page(self):
+            page = _Page(self, len(self.pages))
+            self.pages.append(page)
+            return page
+
+    browser = Browser(_Context(failures=0), pause_seconds=0)
+
+    page = browser.read("https://www.douyin.com/video/1", settle_seconds=99)
+
+    assert page.fetched.payloads == [{"aweme_detail": {"aweme_id": "1"}}]
+    # It never waited for the page to go quiet, and never slept out
+    # the settle time either.
+    assert "networkidle" not in waits
+
+
+def test_a_page_that_sends_no_record_still_gets_the_old_patient_read():
+    """Then the meta tags in the HTML are the answer, and they want a
+    settled page. Only this case pays for the wait."""
+    waits: list[str] = []
+
+    class _Page(_FlakyPage):
+        def wait_for_load_state(self, *args, **kwargs):
+            waits.append("networkidle")
+
+        def wait_for_timeout(self, ms):
+            waits.append(f"{ms}ms")
+
+    class _Context(_FlakyContext):
+        def new_page(self):
+            page = _Page(self, len(self.pages))
+            self.pages.append(page)
+            return page
+
+    browser = Browser(_Context(failures=0), pause_seconds=0)
+    browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    assert "networkidle" in waits
