@@ -760,10 +760,10 @@ def freshness(
     Written because "is the morning job actually running?" was being
     answered by opening the dashboard and looking for a row with
     yesterday's time on it. Two different things produce that row and
-    they need different fixes: a platform the scheduled job does not
-    cover at all (Douyin needs the signed-in browser, so it is only
-    ever as fresh as the last hand-run of `app.daily`), and a video
-    the cadence did not make due this morning.
+    they need different fixes: a platform this job does not cover at
+    all (Douyin needs the signed-in browser, so it is read by the
+    early job rather than by `app.recheck`), and a video the cadence
+    did not make due this morning.
 
     So the counts are reported per platform and the browser-only ones
     are named as such, rather than averaged into one number that is
@@ -816,12 +816,16 @@ def _print_freshness(session: Session) -> None:  # pragma: no cover - CLI
             mark = " (batched: always due, not missed)"
         print(f"{row['platform']:14} {row['tracked']:8} {row['today']:12} "
               f"{row['never']:6} {row['due']:8}  {age}{mark}")
-    print("\n  The scheduled 09:00 job runs app.recheck, which cannot read\n"
-          "  douyin.com without a session -- those rows are only as fresh\n"
-          "  as the last hand-run of  python -m app.daily --platform douyin\n"
-          "  --apply. YouTube is checked fifty ids to a request, so it has\n"
-          "  no cadence and every video reads as due. The number to watch\n"
-          "  is TikTok's, which should be near zero after the morning run.")
+    print("\n  Two scheduled jobs, in the laptop's own time. The early one\n"
+          "  runs app.daily in a signed-in browser, which is what reads\n"
+          "  douyin.com at all -- 视频 and 图文 in parallel, then the\n"
+          "  抖音号 backlog. The later one runs app.recheck, which covers\n"
+          "  TikTok and YouTube and cannot read Douyin without a session.\n"
+          "  YouTube is checked fifty ids to a request, so it has no\n"
+          "  cadence and every video reads as due; TikTok's number is the\n"
+          "  one to watch, and should be near zero after that job. Douyin\n"
+          "  stale by more than a day means the early job did not finish\n"
+          "  -- see logs/daily-<date>.log, and the phone's last-run.txt.")
 
 
 def main() -> None:  # pragma: no cover - thin CLI wrapper
