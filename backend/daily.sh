@@ -86,6 +86,21 @@ DOUYIN_BUDGET="${DOUYIN_BUDGET:-0}"
 #: the next scheduled run always covers the whole corpus.
 DOUYIN_SKIP_RECENT="${DOUYIN_SKIP_RECENT:-6}"
 PROFILE=.browser-profile
+#: The second signed-in browser, for running 视频 and 图文 at once.
+#:
+#: Chromium holds a lock on its profile directory, so two passes
+#: cannot share one -- hence a copy, made once from the first. The
+#: copy carries the session: the cookies are encrypted against a key
+#: held for this user on this machine, not against the directory.
+#:
+#: One account and one IP either way. Two sessions is twice the
+#: request rate on one account, which is the cost; five machines on
+#: five IPs under one account is the thing not to do, because that is
+#: what a stolen account looks like to a risk system and the account
+#: is the one part of this collection that cannot be replaced.
+NOTE_PROFILE=.browser-profile-note
+#: 0 runs 视频 and 图文 one after the other, as before.
+DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-1}"
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -146,6 +161,62 @@ run_limited() {
   fi
 }
 
+# Two Douyin passes at once, each in its own browser, each with its
+# own log -- interleaved progress lines from two runs are unreadable,
+# and the point of the log is to be read afterwards.
+run_together() {
+  local label_a="$1" label_b="$2"; shift 2
+  say "-- $label_a and $label_b, together"
+  local log_a="$LOG_DIR/$(date +%F)-video.log"
+  local log_b="$LOG_DIR/$(date +%F)-note.log"
+
+  set -m
+  "$PY" -m app.daily --platform douyin \
+    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
+    >"$log_a" 2>&1 &
+  local pid_a=$!
+  "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
+    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
+    >"$log_b" 2>&1 &
+  local pid_b=$!
+  set +m
+
+  local code_a=0 code_b=0
+  wait "$pid_a" || code_a=$?
+  wait "$pid_b" || code_b=$?
+
+  for pair in "$label_a:$code_a:$log_a" "$label_b:$code_b:$log_b"; do
+    local label="${pair%%:*}" rest="${pair#*:}"
+    local code="${rest%%:*}" where="${rest#*:}"
+    cat "$where" >>"$LOG"
+    if [[ $code -eq 0 ]]; then
+      say "   $label ok"
+    else
+      say "   $label FAILED (exit $code) -- see $where"
+      FAILURES="${FAILURES}${label} "
+    fi
+  done
+}
+
+# The second browser, copied from the first the once. A copy rather
+# than a second sign-in: one account, and nothing to scan or type.
+ensure_note_profile() {
+  [[ -d "$NOTE_PROFILE" ]] && return 0
+  if [[ ! -d "$PROFILE" ]]; then
+    say "-- no $PROFILE to copy; sign in once first:  python -m app.login"
+    return 1
+  fi
+  say "-- making $NOTE_PROFILE from $PROFILE (one account, second window)"
+  # Lock files and the crash state belong to the first browser's run,
+  # not to the copy.
+  rm -rf "$NOTE_PROFILE.partial"
+  cp -R "$PROFILE" "$NOTE_PROFILE.partial" || return 1
+  rm -f "$NOTE_PROFILE.partial/SingletonLock" \
+        "$NOTE_PROFILE.partial/SingletonCookie" \
+        "$NOTE_PROFILE.partial/SingletonSocket" 2>/dev/null
+  mv "$NOTE_PROFILE.partial" "$NOTE_PROFILE"
+}
+
 FAILURES=""
 say "=== daily run starting"
 
@@ -190,12 +261,16 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
       LIMIT=(--limit 2)
       say "-- REHEARSAL: two pages each, today's check is left alone"
     fi
-    run_limited "douyin video check" "$DOUYIN_BUDGET" \
-      "$PY" -m app.daily --platform douyin \
-      --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
-    run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
-      "$PY" -m app.daily --platform douyin_note \
-      --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
+    if [[ "$DOUYIN_PARALLEL" == "1" ]] && ensure_note_profile; then
+      run_together "douyin video check" "douyin 图文 check"
+    else
+      run_limited "douyin video check" "$DOUYIN_BUDGET" \
+        "$PY" -m app.daily --platform douyin \
+        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
+      run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
+        "$PY" -m app.daily --platform douyin_note \
+        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
+    fi
     # The handle is what an interview request is addressed to, and an
     # account only answers while it is still there. The pass above
     # reads the profile of every new account it meets; this is the
