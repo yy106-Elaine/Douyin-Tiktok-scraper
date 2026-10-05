@@ -186,6 +186,10 @@ class Browser:
         self._page = None
         #: Set once a wall went unanswered. See `wait_for_person`.
         self._stopped_waiting = False
+        #: Seconds the last read spent in each stage. Kept because two
+        #: rounds of guessing at where a check's twenty seconds go
+        #: bought five percent between them. `app.measure` reads it.
+        self.last_timing: dict[str, float] = {}
 
     # -- session ---------------------------------------------------
 
@@ -316,9 +320,19 @@ class Browser:
                 pass
 
         page.on("response", keep)
+        marks: dict[str, float] = {}
+        clock = time.monotonic()
+
+        def mark(stage: str) -> None:
+            nonlocal clock
+            now = time.monotonic()
+            marks[stage] = now - clock
+            clock = now
+
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
             status = response.status if response is not None else None
+            mark("goto")
 
             # Wait for the record, not for the page.
             #
@@ -344,13 +358,18 @@ class Browser:
                 # A moment for the rest of the record's requests, which
                 # arrive together.
                 page.wait_for_timeout(250)
+                mark("record")
+                marks["quiet"] = 0.0
             else:
+                mark("record")
                 try:
                     page.wait_for_load_state("networkidle", timeout=8_000)
                 except Exception:
                     pass
                 time.sleep(settle_seconds)
+                mark("quiet")
             html = page.content()
+            mark("html")
             # The served HTML, not the laid-out text.
             #
             # This asked the browser for `body`'s inner text, which
@@ -365,6 +384,7 @@ class Browser:
             return PageRead(Fetched(url=url, error=type(problem).__name__))
         finally:
             page.remove_listener("response", keep)
+            self.last_timing = marks
 
         return PageRead(
             Fetched(
