@@ -54,6 +54,12 @@ from .platforms import filter_policy
 from .recheck import ID_CONFIRMED, SERVED_ANOTHER
 from .relevance import HIDDEN, classify
 
+#: A page read this slow is not an ordinary page. Counted separately
+#: because an average hides the thing worth seeing: whether the pass
+#: is uniformly slow (the site, the machine) or mostly fast with a
+#: tail of stalls (a rate limit, a retry, a timeout).
+SLOW_PAGE_SECONDS = 20.0
+
 
 def one(
     session: Session,
@@ -600,10 +606,35 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
                 author = authors(session, read_profile)
 
+            # What the pass actually spent, page by page.
+            #
+            # A hand-run of twenty pages at seven in the evening says
+            # 2.7 seconds a read. The same pass over fifteen hundred
+            # pages at three in the morning took five hours, and three
+            # plausible explanations for the difference were all wrong
+            # when measured. So the run measures itself: the median is
+            # the ordinary page, and the slow count is the tail, which
+            # is what a rate limit looks like.
+            pace: dict[str, float] = {"pages": 0, "seconds": 0.0, "slow": 0}
+            spans: list[float] = []
+            reader = through(browser, on_wall=None if args.headless else on_wall)
+
+            def timed(url: str):
+                started = time.monotonic()
+                try:
+                    return reader(url)
+                finally:
+                    spent = time.monotonic() - started
+                    pace["pages"] += 1
+                    pace["seconds"] += spent
+                    spans.append(spent)
+                    if spent >= SLOW_PAGE_SECONDS:
+                        pace["slow"] += 1
+
             report = run(
                 session,
                 targets,
-                read=through(browser, on_wall=None if args.headless else on_wall),
+                read=timed,
                 download=lambda address, referer: browser.download(
                     address, referer=referer
                 ),
@@ -615,6 +646,17 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 keep_all=args.everything,
                 author=author,
                 on_progress=show,
+            )
+
+        if spans:
+            spans.sort()
+            median = spans[len(spans) // 2]
+            worst = spans[-1]
+            print(
+                f"\npage reads: {int(pace['pages'])} in "
+                f"{pace['seconds'] / 60:.0f} min — median {median:.1f}s, "
+                f"slowest {worst:.0f}s, "
+                f"{int(pace['slow'])} over {SLOW_PAGE_SECONDS:.0f}s"
             )
 
         if author is not None and author.spent["visits"]:
