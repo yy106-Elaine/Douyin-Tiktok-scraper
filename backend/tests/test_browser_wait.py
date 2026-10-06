@@ -71,3 +71,47 @@ def test_a_session_that_comes_back_ends_the_wait_at_once():
     browser._context = _SignsIn()
 
     assert browser.wait_for_person("a wall", timeout_seconds=30.0) is True
+
+
+def test_a_challenge_is_not_cleared_by_the_session_being_present():
+    """The wall wait was resolving itself in three seconds, by itself.
+
+    `_is_wall` reports two different things: signed out, and signed in
+    but challenged. For the second the cookies are there the whole
+    time, so "the session is back" was true on the first poll and
+    nobody had done anything -- twenty-two of them in one night, each
+    followed by reads of a page that was still asking.
+    """
+    class _HasSession:
+        def cookies(self):
+            return [{"name": "sessionid", "value": "x", "domain": ".douyin.com"}]
+
+    browser = _browser()
+    browser._context = _HasSession()
+    started = time.monotonic()
+
+    answered = browser.wait_for_person("a challenge", timeout_seconds=1.0)
+
+    assert answered is False
+    # It waited out its timeout rather than declaring itself resolved.
+    assert time.monotonic() - started >= 1.0
+
+
+def test_signing_in_during_the_wait_still_ends_it():
+    """The case the check was written for, which must keep working."""
+    class _SignsIn:
+        def __init__(self):
+            self.asked = 0
+
+        def cookies(self):
+            self.asked += 1
+            if self.asked > 1:
+                return [{
+                    "name": "sessionid", "value": "x", "domain": ".douyin.com",
+                }]
+            return []
+
+    browser = _browser()
+    browser._context = _SignsIn()
+
+    assert browser.wait_for_person("signed out", timeout_seconds=30.0) is True

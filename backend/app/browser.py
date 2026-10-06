@@ -467,6 +467,16 @@ class Browser:
         """
         if self._stopped_waiting:
             return False
+        # Whether a session coming back can count as the wall clearing.
+        #
+        # It cannot when there is one already. `_is_wall` reports two
+        # different things: signed out, and signed in but challenged.
+        # For the second, the cookies are present the whole time, so
+        # "the session is back" was true on the first poll and every
+        # wall "resolved" itself in three seconds with nobody there.
+        # Twenty-two of them in one night's run, each followed by
+        # reads of a page that was still asking.
+        was_signed_in = self.is_signed_in()
         print(f"\n  {message}")
         minutes = timeout_seconds / 60
         print(
@@ -489,9 +499,8 @@ class Browser:
         while time.monotonic() < deadline:
             if pressed.is_set():
                 return True
-            if self.is_signed_in():
-                # The session is back -- somebody dealt with it in the
-                # window, or it cleared on its own.
+            if not was_signed_in and self.is_signed_in():
+                # Signed out and now signed in: somebody signed in.
                 return True
             time.sleep(3.0)
 
