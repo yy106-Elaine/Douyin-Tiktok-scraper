@@ -531,3 +531,35 @@ def test_a_page_that_says_nothing_is_still_only_unreadable(session, tmp_path):
     )
 
     assert outcome == "unreadable"
+
+
+def test_a_visit_that_read_nothing_is_still_recorded_as_a_visit(session, tmp_path):
+    """"We did not look" and "we looked and saw nothing" are not the same.
+
+    They were indistinguishable: a page that came back empty wrote no
+    check at all, so the row kept yesterday's time and read as a day
+    the study had skipped. Two posts that were alive and open fine in
+    a browser sat there looking neglected.
+
+    It is recorded as telling us nothing -- never as a sighting, which
+    would fabricate survival.
+    """
+    from app.models import LinkCheck
+    from app.recheck import NOTHING_READ, UNKNOWN, classify
+
+    quiet = Fetched(url="x", html="<div>…</div>", http_status=200, payloads=[])
+
+    outcome, said, kept = one(
+        session,
+        read=lambda url: quiet,
+        download=lambda address, referer: (MP4, 200),
+        video_id="7691661533974593265",
+        site=SITES["douyin_note"],
+        handle=None,
+        directory=tmp_path,
+    )
+
+    assert outcome == "unreadable"
+    check = session.query(LinkCheck).one()
+    assert check.evidence == NOTHING_READ
+    assert classify(check) == UNKNOWN

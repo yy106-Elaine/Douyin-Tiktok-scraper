@@ -240,11 +240,21 @@ ID_CONFIRMED = "id confirmed"
 #: study counted only the first, because the second leaves no record
 #: to parse and the pass filed it as unreadable.
 PAGE_SAYS_GONE = "page says the post is gone"
+#: The visit happened and taught us nothing: the page answered, said
+#: nothing about the post, and carried no record. Recorded, because
+#: "we did not look" and "we looked and learned nothing" are different
+#: things and the second was indistinguishable from the first -- the
+#: pass simply wrote no check, and the row went on showing yesterday's
+#: time as if the day had been skipped.
+NOTHING_READ = "read, nothing on the page"
 
 _BY_EVIDENCE = {
     SERVED_ANOTHER: GONE,
     ID_CONFIRMED: ALIVE,
     PAGE_SAYS_GONE: GONE,
+    # Not ALIVE. A page that said nothing is not a sighting, and
+    # counting it as one fabricates survival.
+    NOTHING_READ: UNKNOWN,
 }
 
 #: Platforms that answer an anonymous request for any video -- present

@@ -51,7 +51,12 @@ from .fetch_videos import (
     wipe,
 )
 from .platforms import filter_policy
-from .recheck import ID_CONFIRMED, PAGE_SAYS_GONE, SERVED_ANOTHER
+from .recheck import (
+    ID_CONFIRMED,
+    NOTHING_READ,
+    PAGE_SAYS_GONE,
+    SERVED_ANOTHER,
+)
 from .relevance import HIDDEN, classify
 
 #: A page read this slow is not an ordinary page. Counted separately
@@ -127,6 +132,12 @@ def one(
             if author is not None and gone_author:
                 said += f"; {author(gone_author)}"
             return "gone", said, 0
+        # The visit still happened, and it is recorded. Without this
+        # the row kept yesterday's "last checked" and read as a day
+        # the study skipped, which is a different thing from a day it
+        # looked and the page said nothing. It is filed as telling us
+        # nothing, never as a sighting.
+        record_check(session, video_id, page, NOTHING_READ, url, site.platform)
         return (
             "unreadable",
             page.error or f"HTTP {page.http_status}: nothing readable",
