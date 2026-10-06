@@ -406,11 +406,22 @@ class Browser:
             # wait only for a page that never sends one -- where it is
             # the HTML's meta tags that have to be read instead, and
             # those want the page to have settled.
+            # Two ways a visit can be finished, and the wait ends at
+            # either: the record arrives, or the page says there is no
+            # record to send.
+            #
+            # Without the second, a removed post cost the whole
+            # patience and then the quiet wait on top -- twenty
+            # seconds to be told something the page had already
+            # printed in the first second. A third of the pages in a
+            # re-check are removals, which is most of why a night's
+            # pass took five hours.
             waited = 0.0
-            while (
-                not any(_carries_a_record(blob) for blob in detail)
-                and waited < RECORD_PATIENCE_SECONDS
-            ):
+            while waited < RECORD_PATIENCE_SECONDS:
+                if any(_carries_a_record(blob) for blob in detail):
+                    break
+                if waited >= 1.0 and says_missing(_page_text(page)):
+                    break
                 page.wait_for_timeout(250)
                 waited += 0.25
             if detail:
@@ -575,6 +586,21 @@ class Browser:
             "re-read on the next run."
         )
         return False
+
+
+def _page_text(page) -> str:
+    """The page's text, without forcing a layout.
+
+    `textContent` rather than `innerText`: the first reads the DOM,
+    the second lays the page out, and this runs several times a second
+    while waiting.
+    """
+    try:
+        return page.evaluate(
+            "() => (document.body && document.body.textContent) || ''"
+        )
+    except Exception:  # noqa: BLE001 - a page mid-navigation
+        return ""
 
 
 def says_missing(text: str) -> bool:
