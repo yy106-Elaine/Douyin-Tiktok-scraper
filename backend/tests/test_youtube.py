@@ -384,3 +384,55 @@ def test_youtube_publication_time_reaches_the_findings_page(client):
         "/dashboard/takedowns?key=test-admin-key&platform=youtube"
     ).text
     assert "2026-09-16 04:30" in body
+
+
+def test_a_dropped_connection_is_tried_again():
+    """One reset socket used to end the day's YouTube collection.
+
+    A thousand-video sweep abandoned mid-run, with the quota for it
+    already spent, because of something that says nothing about the
+    request and everything about the minute it was made in.
+    """
+    import urllib.error
+
+    from app import youtube
+
+    attempts = []
+
+    def flaky(endpoint, params, timeout):
+        attempts.append(endpoint)
+        if len(attempts) < 3:
+            raise urllib.error.URLError("[Errno 54] Connection reset by peer")
+        return {"items": [{"id": "abc"}]}
+
+    original = youtube._call_once
+    youtube._call_once = flaky
+    try:
+        answer = youtube.call("videos", {"id": "abc"}, sleep=lambda _: None)
+    finally:
+        youtube._call_once = original
+
+    assert answer == {"items": [{"id": "abc"}]}
+    assert len(attempts) == 3
+
+
+def test_the_api_refusing_is_not_retried():
+    """A quota refusal says the same thing however often it is asked,
+    and asking again spends what little quota is left."""
+    from app import youtube
+
+    attempts = []
+
+    def refused(endpoint, params, timeout):
+        attempts.append(endpoint)
+        raise youtube.YouTubeError("daily quota exhausted: ...")
+
+    original = youtube._call_once
+    youtube._call_once = refused
+    try:
+        with pytest.raises(youtube.YouTubeError, match="quota"):
+            youtube.call("search", {"q": "wlw"}, sleep=lambda _: None)
+    finally:
+        youtube._call_once = original
+
+    assert len(attempts) == 1

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -91,8 +92,51 @@ def api_key() -> str:
     return key
 
 
-def call(endpoint: str, params: dict[str, str], timeout: float = 30.0) -> dict:
-    """One API request. Raises YouTubeError with the API's own message."""
+#: Tries for a request the network, rather than the API, refused.
+#: One reset connection in the middle of a collection used to end the
+#: day's YouTube collection -- a thousand-video sweep abandoned over a
+#: dropped socket, with the quota for it already spent. A reset says
+#: nothing about the request and everything about the minute it was
+#: made in, so it is worth making again.
+NETWORK_TRIES = 4
+NETWORK_BACKOFF_SECONDS = 2.0
+
+
+def call(
+    endpoint: str,
+    params: dict[str, str],
+    timeout: float = 30.0,
+    tries: int = NETWORK_TRIES,
+    sleep=time.sleep,
+) -> dict:
+    """One API request. Raises YouTubeError with the API's own message.
+
+    A network failure is retried; an answer from the API is not. The
+    distinction matters: a quota refusal or a bad key will say the
+    same thing however many times it is asked, and asking again wastes
+    what little quota is left.
+    """
+    last: Exception | None = None
+    for attempt in range(tries):
+        if attempt:
+            sleep(NETWORK_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+        try:
+            return _call_once(endpoint, params, timeout)
+        except (_Unreachable, urllib.error.URLError, OSError) as error:
+            # The second two are belt and braces: `_call_once` turns
+            # them into `_Unreachable`, and a request that never got
+            # an answer is retried whichever way it arrives here.
+            last = error
+    raise YouTubeError(
+        f"could not reach the API after {tries} tries: {last}"
+    ) from last
+
+
+class _Unreachable(Exception):
+    """The request never got an answer. Retried; see `call`."""
+
+
+def _call_once(endpoint: str, params: dict[str, str], timeout: float) -> dict:
     query = urllib.parse.urlencode({**params, "key": api_key()})
     request = urllib.request.Request(f"{API_ROOT}/{endpoint}?{query}")
     try:
@@ -110,7 +154,7 @@ def call(endpoint: str, params: dict[str, str], timeout: float = 30.0) -> dict:
             raise YouTubeError(f"daily quota exhausted: {message}") from error
         raise YouTubeError(f"HTTP {error.code}: {message}") from error
     except (urllib.error.URLError, OSError) as error:
-        raise YouTubeError(f"could not reach the API: {error}") from error
+        raise _Unreachable(str(error)) from error
 
 
 # --------------------------------------------------------------------
