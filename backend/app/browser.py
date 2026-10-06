@@ -143,6 +143,36 @@ _WANTED_RESPONSES = (
 )
 
 
+#: Keys that mark a payload as the record this visit came for, rather
+#: than one of the other answers a page fetches while it builds
+#: itself.
+_RECORD_KEYS = frozenset({
+    "aweme_detail", "aweme_id", "awemeId", "desc", "sec_uid", "secUid",
+    "itemInfo", "itemStruct",
+})
+
+
+def _carries_a_record(blob: object, depth: int = 0) -> bool:
+    """Whether this answer is the one the page was opened for.
+
+    A video page fetches several of the endpoints this listens on --
+    the author's other posts arrive before the video's own record more
+    often than not. Treating the first of them as "the record is here"
+    is how a page that reads perfectly by hand came back empty in a
+    run: the wait ended on the wrong answer and the right one was
+    still in flight.
+    """
+    if depth > 6:
+        return False
+    if isinstance(blob, dict):
+        if _RECORD_KEYS & blob.keys():
+            return True
+        return any(_carries_a_record(value, depth + 1) for value in blob.values())
+    if isinstance(blob, list):
+        return any(_carries_a_record(item, depth + 1) for item in blob[:40])
+    return False
+
+
 @dataclass
 class PageRead:
     """A rendered page, or why there isn't one."""
@@ -351,7 +381,10 @@ class Browser:
             # the HTML's meta tags that have to be read instead, and
             # those want the page to have settled.
             waited = 0.0
-            while not payloads and waited < RECORD_PATIENCE_SECONDS:
+            while (
+                not any(_carries_a_record(blob) for blob in payloads)
+                and waited < RECORD_PATIENCE_SECONDS
+            ):
                 page.wait_for_timeout(250)
                 waited += 0.25
             if payloads:

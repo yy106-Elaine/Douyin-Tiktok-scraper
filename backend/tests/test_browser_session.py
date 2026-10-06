@@ -341,3 +341,59 @@ def test_a_page_that_sends_no_record_still_gets_the_old_patient_read():
     browser.read("https://www.douyin.com/video/1", settle_seconds=0)
 
     assert "networkidle" in waits
+
+
+def test_the_wait_ends_on_the_record_not_on_the_first_answer_that_arrives():
+    """A page that reads perfectly by hand came back empty in a run.
+
+    A Douyin video page fetches several of the endpoints this listens
+    on, and the author's other posts arrive before the video's own
+    record more often than not. Ending the wait on the first of them
+    leaves the parse with a list of somebody's other videos and no
+    video.
+    """
+    class _Posts:
+        status = 200
+        url = "https://www.douyin.com/aweme/post/"
+
+        @staticmethod
+        def json():
+            return {"status_code": 0, "has_more": 1, "max_cursor": 17}
+
+    class _Detail:
+        status = 200
+        url = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
+
+        @staticmethod
+        def json():
+            return {"aweme_detail": {"aweme_id": "1", "desc": "今天"}}
+
+    class _Page(_FlakyPage):
+        def __init__(self, context, index):
+            super().__init__(context, index)
+            self.handler = None
+            self.ticks = 0
+
+        def on(self, event, handler):
+            self.handler = handler
+            # The other answer first, as it comes in life.
+            handler(_Posts())
+
+        def wait_for_timeout(self, ms):
+            self.ticks += 1
+            if self.ticks == 3 and self.handler is not None:
+                self.handler(_Detail())
+
+        def wait_for_load_state(self, *args, **kwargs):
+            raise AssertionError("should not fall back: the record arrived")
+
+    class _Context(_FlakyContext):
+        def new_page(self):
+            page = _Page(self, len(self.pages))
+            self.pages.append(page)
+            return page
+
+    browser = Browser(_Context(failures=0), pause_seconds=0)
+    read = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    assert any("aweme_detail" in blob for blob in read.fetched.payloads)
