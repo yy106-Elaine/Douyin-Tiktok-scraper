@@ -104,6 +104,11 @@ _MARKERS: tuple[tuple[str, str, str], ...] = (
     ("tiktok_login", WITHHELD, r"log in to (?:continue|tiktok)"),
     ("tiktok_captcha", UNKNOWN, r"verify to continue|captcha|unusual traffic"),
     ("douyin_deleted", GONE, r"该作品已(?:被)?删除|内容不存在|作品不存在"),
+    # "你要观看的视频不存在" is the page a removed Douyin video
+    # actually shows, and it matched none of the above: 视频, not
+    # 作品 or 内容. A whole kind of removal was being filed as a page
+    # that could not be read.
+    ("douyin_missing", GONE, r"视频不存在|图文不存在|作品已失效"),
     ("douyin_gone", GONE, r"视频不见了|已下架|无法查看"),
     ("douyin_account_gone", AUTHOR_GONE, r"该账号已注销|账号不存在|用户不存在"),
     ("douyin_private", WITHHELD, r"私密账号|仅自己可见|需要关注"),
@@ -230,10 +235,16 @@ def searchable_text(check: LinkCheck) -> str:
 #: removed video by serving a different one leaves no wording to find.
 SERVED_ANOTHER = "served another video"
 ID_CONFIRMED = "id confirmed"
+#: The page said so in words -- "你要观看的视频不存在" -- rather than by
+#: handing over somebody else's video. Both are removals and the
+#: study counted only the first, because the second leaves no record
+#: to parse and the pass filed it as unreadable.
+PAGE_SAYS_GONE = "page says the post is gone"
 
 _BY_EVIDENCE = {
     SERVED_ANOTHER: GONE,
     ID_CONFIRMED: ALIVE,
+    PAGE_SAYS_GONE: GONE,
 }
 
 #: Platforms that answer an anonymous request for any video -- present

@@ -51,7 +51,7 @@ from .fetch_videos import (
     wipe,
 )
 from .platforms import filter_policy
-from .recheck import ID_CONFIRMED, SERVED_ANOTHER
+from .recheck import ID_CONFIRMED, PAGE_SAYS_GONE, SERVED_ANOTHER
 from .relevance import HIDDEN, classify
 
 #: A page read this slow is not an ordinary page. Counted separately
@@ -113,6 +113,20 @@ def one(
         return "gone", said, 0
 
     if facts is None or facts.is_empty():
+        # The page may have said why: "你要观看的视频不存在". That is a
+        # removal, stated in words rather than by handing over a
+        # different video -- and it was being filed as a page that
+        # could not be read, which left a whole kind of removal out of
+        # the count.
+        if getattr(page, "missing", False):
+            record_check(session, video_id, page, PAGE_SAYS_GONE, url,
+                         site.platform)
+            gone_author = _account(session, video_id)
+            wipe(session, video_id, page, site.platform)
+            said = "gone -- the page says the post is not there"
+            if author is not None and gone_author:
+                said += f"; {author(gone_author)}"
+            return "gone", said, 0
         return (
             "unreadable",
             page.error or f"HTTP {page.http_status}: nothing readable",

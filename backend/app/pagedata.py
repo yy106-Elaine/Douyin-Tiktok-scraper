@@ -53,6 +53,12 @@ class Fetched:
     http_status: int | None = None
     error: str | None = None
     payloads: list[dict] = field(default_factory=list)
+    #: The page said, in words, that the post is not there --
+    #: "你要观看的视频不存在". A removal that leaves wording instead of
+    #: handing over a different video. Carried here rather than only
+    #: on the browser's own `PageRead`, because what the passes are
+    #: given is this.
+    missing: bool = False
 
 
 def fetch(

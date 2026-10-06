@@ -182,6 +182,11 @@ class PageRead:
     #: verification challenge. Recorded rather than retried, because
     #: retrying is what turns a challenge into a block.
     wall: bool = False
+    #: True when the page said, in words, that the post is not there:
+    #: "你要观看的视频不存在". A removal that leaves wording rather
+    #: than handing over a different video, and one the passes used to
+    #: file as a page they could not read.
+    missing: bool = False
 
 
 class Browser:
@@ -419,11 +424,14 @@ class Browser:
             page.remove_listener("response", keep)
             self.last_timing = marks
 
+        gone_in_words = says_missing(text)
         return PageRead(
             Fetched(
-                url=url, html=html, http_status=status, payloads=payloads
+                url=url, html=html, http_status=status, payloads=payloads,
+                missing=gone_in_words,
             ),
             wall=self._is_wall(landed, text),
+            missing=gone_in_words,
         )
 
     def _is_wall(self, landed: str, text: str) -> bool:
@@ -546,6 +554,20 @@ class Browser:
             "re-read on the next run."
         )
         return False
+
+
+def says_missing(text: str) -> bool:
+    """Whether the page states that the post is not there.
+
+    Read off the markers `app.recheck` already keeps, so there is one
+    list of what a removal looks like in words and not two.
+    """
+    from .recheck import GONE, _COMPILED
+
+    return any(
+        verdict == GONE and pattern.search(text or "")
+        for _, verdict, pattern in _COMPILED
+    )
 
 
 def _skip_heavy(route, request) -> None:

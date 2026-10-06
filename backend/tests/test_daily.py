@@ -477,3 +477,57 @@ def test_the_day_s_news_is_the_researcher_s_day_not_utc_s():
 
     assert today_at_a_glance([evening, morning], day=last_night) == (1, 0)
     assert today_at_a_glance([evening, morning], day=this_morning) == (1, 0)
+
+
+def test_a_page_that_says_the_video_is_gone_is_a_removal(session, tmp_path):
+    """A whole kind of removal was being filed as an unreadable page.
+
+    Douyin answers some removed videos by handing over the next
+    recommended one -- that is the signal this study was built on --
+    and others with a page that says "你要观看的视频不存在". The second
+    leaves no record to parse, so the pass called it "HTTP 200:
+    nothing readable" and recorded no check at all. Two hundred and
+    fifty-two of those in one night.
+    """
+    from app.models import LinkCheck
+    from app.recheck import PAGE_SAYS_GONE
+
+    empty = Fetched(
+        url="x",
+        html="<div>你要观看的视频不存在</div>",
+        http_status=200,
+        payloads=[],
+        missing=True,
+    )
+
+    outcome, said, kept = one(
+        session,
+        read=lambda url: empty,
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686528190130806202",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+    )
+
+    assert outcome == "gone"
+    check = session.query(LinkCheck).one()
+    assert check.evidence == PAGE_SAYS_GONE
+    assert check.video_id == "7686528190130806202"
+
+
+def test_a_page_that_says_nothing_is_still_only_unreadable(session, tmp_path):
+    """Silence is not evidence of removal, and must not be counted as one."""
+    quiet = Fetched(url="x", html="<div>…</div>", http_status=200, payloads=[])
+
+    outcome, said, kept = one(
+        session,
+        read=lambda url: quiet,
+        download=lambda address, referer: (MP4, 200),
+        video_id="7686528190130806203",
+        site=SITES["douyin"],
+        handle=None,
+        directory=tmp_path,
+    )
+
+    assert outcome == "unreadable"
