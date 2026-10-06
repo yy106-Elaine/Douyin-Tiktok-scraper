@@ -143,6 +143,22 @@ _WANTED_RESPONSES = (
 )
 
 
+#: The endpoints that answer with *this* post's record. The others in
+#: `_WANTED_RESPONSES` are worth keeping -- the author's other posts,
+#: the recommendations -- and must never end the wait, because every
+#: item in them carries a `desc` and a `sec_uid` of its own and so
+#: looks exactly like a record.
+#:
+#: That is how a removed video came back as "nothing readable": the
+#: page has no record to send, the recommendations arrive at once,
+#: the wait ended on them, and the HTML was taken before the page had
+#: rendered the sentence 你要观看的视频不存在 that says what happened.
+_DETAIL_RESPONSES = (
+    "/aweme/detail/",
+    "/aweme/v1/web/aweme/detail",
+    "/api/item/detail",
+)
+
 #: Keys that mark a payload as the record this visit came for, rather
 #: than one of the other answers a page fetches while it builds
 #: itself.
@@ -346,13 +362,18 @@ class Browser:
 
         payloads: list[dict] = []
 
+        detail: list[dict] = []
+
         def keep(response) -> None:
             if not any(part in response.url for part in _WANTED_RESPONSES):
                 return
             try:
-                payloads.append(response.json())
+                blob = response.json()
             except Exception:  # noqa: BLE001 - a body that is not JSON
-                pass
+                return
+            payloads.append(blob)
+            if any(part in response.url for part in _DETAIL_RESPONSES):
+                detail.append(blob)
 
         page.on("response", keep)
         marks: dict[str, float] = {}
@@ -387,12 +408,12 @@ class Browser:
             # those want the page to have settled.
             waited = 0.0
             while (
-                not any(_carries_a_record(blob) for blob in payloads)
+                not any(_carries_a_record(blob) for blob in detail)
                 and waited < RECORD_PATIENCE_SECONDS
             ):
                 page.wait_for_timeout(250)
                 waited += 0.25
-            if payloads:
+            if detail:
                 # A moment for the rest of the record's requests, which
                 # arrive together.
                 page.wait_for_timeout(250)

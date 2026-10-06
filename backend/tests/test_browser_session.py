@@ -397,3 +397,53 @@ def test_the_wait_ends_on_the_record_not_on_the_first_answer_that_arrives():
     read = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
 
     assert any("aweme_detail" in blob for blob in read.fetched.payloads)
+
+
+def test_the_recommendations_do_not_count_as_this_video_s_record():
+    """How a removed video came back as "nothing readable".
+
+    A removed page has no record to send, but it still fetches the
+    recommendations -- and every item in those carries a `desc` and a
+    `sec_uid` of its own, so they look exactly like a record. The wait
+    ended on them, and the HTML was taken before the page had rendered
+    the sentence that says what happened.
+    """
+    class _Recommended:
+        status = 200
+        url = "https://www.douyin.com/aweme/post/"
+
+        @staticmethod
+        def json():
+            return {"aweme_list": [
+                {"aweme_id": "9", "desc": "somebody else's video"},
+            ]}
+
+    class _Page(_FlakyPage):
+        def __init__(self, context, index):
+            super().__init__(context, index)
+            self.waited_for_quiet = False
+
+        def on(self, event, handler):
+            handler(_Recommended())
+
+        def wait_for_load_state(self, *args, **kwargs):
+            self.waited_for_quiet = True
+
+        def content(self):
+            # Rendered by the time the patient path has finished.
+            return "<div>你要观看的视频不存在</div>"
+
+    class _Context(_FlakyContext):
+        def new_page(self):
+            page = _Page(self, len(self.pages))
+            self.pages.append(page)
+            return page
+
+    context = _Context(failures=0)
+    browser = Browser(context, pause_seconds=0)
+
+    read = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+
+    # It went the patient way, and so it saw what the page said.
+    assert context.pages[0].waited_for_quiet is True
+    assert read.fetched.missing is True
