@@ -1301,6 +1301,53 @@ appearance was coded on. Every claim that joins appearance to removal
 is therefore restricted to the windowed subset, and its n is that
 subset's n, not the corpus total. Say which n is which.
 
+### 14d. The interview frame, before the content coding exists
+
+`interviews.candidates` orders accounts by how many of their posts
+went. That is the right order for reading the list and the wrong one
+for working it: written down from the top, every interview -- and so
+every quotation in the write-up -- comes from the tail of the
+distribution.
+
+The intended frame is stratified by what the posts are *about*, and
+that needs the visual coding, which does not run until the collection
+window closes (14c). Waiting is not free. Accounts are disappearing
+while we wait, and an account that goes before it is contacted is a
+person this study can never hear from -- which is the same mechanism
+the study is about, operating on its own sample.
+
+So recruitment runs from an interim frame, built only from what is
+known on the day of contact, in `app/outreach.py`:
+
+- **outcome** -- still has a post down, or everything came back. The
+  difference is the study's own finding; recruiting from one side is
+  recruiting from half the question.
+- **volume** -- one post, or several. One removal is an accident the
+  author may not have noticed; several is a pattern they have an
+  account-level theory about.
+
+Four cells, a seeded shuffle inside each, read round-robin so that
+stopping early leaves them roughly balanced. The seed is fixed and
+the stratum is written down beside each contact at the moment of
+contact, never recomputed -- an account whose post comes back later
+must still be reported as recruited under the outcome it had.
+
+**What to call this in the write-up.** Not a probability sample of
+Chinese WLW creators. A stratified convenience sample of accounts
+this study observed losing a post *and could still reach*. The
+accounts it could not reach are counted alongside it, because that
+count is the heavier finding: an unreachable account is usually one
+that is itself gone.
+
+**What the record is for.** `models.Outreach` is one row per account,
+and it exists for two failures that cannot be repaired afterwards. A
+person who declined being written to again is the study making itself
+a nuisance to someone it is studying -- and on Douyin the first
+message to a non-follower is the only one that arrives, so a
+duplicate spends the contact rather than repeating it. And ¥50 is
+owed the moment an interview ends, including to someone who stopped
+halfway; a memory of having paid is not a record of having paid.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school

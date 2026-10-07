@@ -471,3 +471,60 @@ class AuthorPost(Base):
     sec_uid: Mapped[str] = mapped_column(String(255), index=True)
     video_id: Mapped[str] = mapped_column(String(64), index=True)
     noted_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Outreach(Base):
+    """One recruitment contact, and where it got to.
+
+    Interviews are asked of strangers one message at a time, over
+    weeks, from a list of hundreds. Two things go wrong without a
+    record, and neither is recoverable afterwards.
+
+    **The same person gets written to twice.** An unsolicited message
+    to someone who already declined is not a clerical slip; it is the
+    study being a nuisance to a person it is studying, and on Douyin
+    the first message to a non-follower is the only one that gets
+    through, so a duplicate burns the contact rather than repeating
+    it.
+
+    **Who was paid stops being knowable.** ¥50 is owed the moment an
+    interview ends, including to someone who stopped halfway, and a
+    memory of having sent it is not a record of having sent it.
+
+    One row per account per platform, updated in place, because the
+    question asked of it is always "where is this person now".
+    """
+
+    __tablename__ = "outreach"
+    __table_args__ = (
+        UniqueConstraint("sec_uid", "platform", name="uq_outreach_account"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True, default="douyin")
+    sec_uid: Mapped[str] = mapped_column(String(255), index=True)
+
+    #: The 抖音号 at the time of writing, kept beside the sec_uid
+    #: because that is what was typed into the search box, and a
+    #: handle can change afterwards.
+    handle: Mapped[str | None] = mapped_column(String(255))
+
+    #: See `outreach.STATUSES`. Stored as text rather than an enum so
+    #: a status this study has not thought of yet can be added without
+    #: a migration.
+    status: Mapped[str] = mapped_column(String(32), index=True)
+
+    #: Which stratum the account was drawn from, recorded at contact
+    #: time. The strata are a sampling decision, and a decision that
+    #: is not written down beside the thing it decided is a decision
+    #: nobody can report.
+    stratum: Mapped[str | None] = mapped_column(String(64), index=True)
+
+    #: Free text: what was said, why they declined, when to follow up.
+    #: Never the interview itself -- that is not this table's job.
+    note: Mapped[str | None] = mapped_column(Text)
+
+    first_contacted_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
