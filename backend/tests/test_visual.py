@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from app.db import SessionLocal
@@ -232,3 +232,63 @@ def test_the_token_estimate_tracks_pixel_area() -> None:
     # Twice the area, twice the cost.
     assert image_tokens((2560, 1440)) == pytest.approx(
         image_tokens((1280, 720)) * 4, rel=0.01)
+
+
+def test_the_coding_window_is_collection_days_not_publication(
+    db: None, tmp_path
+) -> None:
+    """A one-shot coding run has to say which corpus it coded.
+
+    The window is the same one the cohort chart draws on -- the day a
+    post was *first collected*, not the day it was published. A post
+    published in May and first seen in October belongs to October's
+    corpus, because October is when this study could start watching
+    it.
+    """
+    from app.models import CaptureEvent, DouyinPost
+    from app.visual import collected_within
+
+    for name in ("7001", "7002", "7003"):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "01.jpg").write_bytes(b"\xff\xd8\xff")
+
+    with SessionLocal() as session:
+        event = CaptureEvent(
+            participant_id="P001", device_id="d", platform="douyin",
+            fingerprint="f", capture_date="2026-09-20",
+            captured_at=datetime(2026, 9, 20, 18, 0), payload="{}",
+        )
+        session.add(event)
+        session.flush()
+        # Before the window, inside it, and after it.
+        session.add_all([
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       video_id="7001",
+                       captured_at=datetime(2026, 9, 20, 18, 0)),
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       video_id="7002",
+                       captured_at=datetime(2026, 10, 3, 18, 0)),
+            DouyinPost(capture_event_id=event.id, participant_id="P001",
+                       video_id="7003",
+                       captured_at=datetime(2026, 11, 2, 18, 0)),
+        ])
+        session.add_all([
+            WebVideo(platform="douyin_note", video_id=name,
+                     local_path=str(tmp_path / name),
+                     fetched_at=datetime(2026, 11, 3, 12, 0))
+            for name in ("7001", "7002", "7003")
+        ])
+        session.commit()
+
+        window = collected_within(session, date(2026, 9, 27),
+                                  date(2026, 10, 27))
+        assert window == {"7002"}
+
+        narrowed = archived(session, "douyin_note",
+                            date(2026, 9, 27), date(2026, 10, 27))
+        assert [post.video_id for post in narrowed] == ["7002"]
+
+        # No window asked for is no filter -- not an empty corpus.
+        assert collected_within(session, None, None) is None
+        assert len(archived(session, "douyin_note")) == 3

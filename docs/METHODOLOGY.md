@@ -1272,6 +1272,35 @@ classmate. Where the pairing itself matters to a claim, the
 `presented_as_couple` field and the caption are the evidence, not the
 head count.
 
+### 14c. The visual coding is run once, over a fixed collection window
+
+The coding run is a single Batch submission over a corpus that is
+closed before it starts, and the window is stated in days of
+**collection**, not of publication: `--since` / `--until` on
+`app.visual` filter on the day each post was first captured, the same
+left edge the survival cohorts use.
+
+Why a window at all. 图文 collection did not begin with the study --
+the per-day counts show single digits through late September and
+roughly a hundred a day only from 09-29 onwards. A corpus that runs
+from the first 图文 ever captured would have a thin, unrepresentative
+head, and "the first three weeks" would mean something different from
+"the rest". Closing both ends makes the coded corpus one thing that
+can be described in one sentence.
+
+Why run it once. Coding in instalments means some posts are coded
+before their removal is known and some after, and the second group's
+coder has seen more of the world. One submission, one model, one
+prompt, one day. A post collected after the window is not coded, and
+is not quietly added later.
+
+What this costs, and it belongs in the limitations. The coded corpus
+is not the watched corpus: collection and takedown checking continue
+past the window, so removal rates are computed on more posts than
+appearance was coded on. Every claim that joins appearance to removal
+is therefore restricted to the windowed subset, and its n is that
+subset's n, not the corpus total. Say which n is which.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school

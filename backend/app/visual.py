@@ -43,11 +43,13 @@ import base64
 import json
 import random
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .clock import local_date
 from .models import WebVideo
 
 #: Per post. A 图文 can run to twenty cards and the first few carry
@@ -96,19 +98,63 @@ class Post:
         return bool(self.images or self.video)
 
 
-def archived(session: Session, platform: str) -> list[Post]:
+def collected_within(session: Session, since: date | None,
+                     until: date | None) -> set[str] | None:
+    """Video ids first collected inside a window of collection days.
+
+    The window is on *first collection*, not on publication: the
+    corpus is what this study could see, and a post enters it the day
+    it was first captured. Reusing `survival._collected_by_video`
+    keeps that definition in one place, so the window a coding run
+    used and the window the cohort chart draws are the same window.
+
+    Returns None when no window was asked for, which means no filter.
+    """
+    if since is None and until is None:
+        return None
+    from .survival import _collected_by_video
+
+    # Every platform, not this one: `_collected_by_video` keys off the
+    # structured tables, and `douyin_note` is not one of them -- 图文
+    # rows live in the Douyin table under their own platform column.
+    # Asking for "douyin_note" would quietly come back empty, which is
+    # the kind of filter that silently codes nothing. Ids are unique
+    # across platforms, so the caller's own platform filter is what
+    # narrows this.
+    inside: set[str] = set()
+    for video_id, captured_at in _collected_by_video(session, None).items():
+        day = local_date(captured_at)
+        if day is None:
+            continue
+        if since is not None and day < since:
+            continue
+        if until is not None and day > until:
+            continue
+        inside.add(video_id)
+    return inside
+
+
+def archived(session: Session, platform: str,
+             since: date | None = None,
+             until: date | None = None) -> list[Post]:
     """Posts of this platform whose files are on disk right now.
 
     The database records a download; the disk is what can be coded.
     A row whose folder was emptied is not a post this can look at,
     and saying so here is cheaper than a failure per call.
+
+    `since`/`until` narrow it to posts first collected in that window
+    of local days, both ends included.
     """
+    window = collected_within(session, since, until)
     found: list[Post] = []
     for row in session.scalars(
         select(WebVideo).where(
             WebVideo.platform == platform, WebVideo.local_path.isnot(None)
         )
     ):
+        if window is not None and row.video_id not in window:
+            continue
         path = Path(row.local_path or "")
         post = Post(video_id=row.video_id, platform=platform)
         if path.is_dir():
@@ -416,7 +462,7 @@ def code_one(client, post: Post, prompt: str, model: str,
 
 
 def estimate(posts: list[Post], prompt: str, max_edge: int,
-             client=None, model: str = "") -> None:
+             client=None, model: str = "", whole: int = 0) -> None:
     """What the run really costs, measured from the actual pictures.
 
     Works with no credentials: image tokens come from pixel area,
@@ -465,15 +511,16 @@ def estimate(posts: list[Post], prompt: str, max_edge: int,
               f"downscaling saves {(1 - tokens / full) * 100:.0f}%")
 
     out_per_post = 1200
-    print(f"\n{'model':20} {'this sample':>12} {'all 560':>10} "
-          f"{'560 batched':>12}")
+    corpus = whole or len(posts)
+    print(f"\n{'model':20} {'this sample':>12} {'all ' + str(corpus):>10} "
+          f"{str(corpus) + ' batched':>14}")
     for name, (dollars_in, dollars_out) in PRICES.items():
         here = (tokens * dollars_in
                 + len(posts) * out_per_post * dollars_out) / 1_000_000
-        whole = here / max(len(posts), 1) * 560
+        total = here / max(len(posts), 1) * corpus
         print(f"{name:20} {'$' + format(here, '.2f'):>12} "
-              f"{'$' + format(whole, '.2f'):>10} "
-              f"{'$' + format(whole / 2, '.2f'):>12}")
+              f"{'$' + format(total, '.2f'):>10} "
+              f"{'$' + format(total / 2, '.2f'):>14}")
     print("\n  Batched is the Batch API: half price, hours not seconds.")
     print("  Output is assumed at 1,200 tokens per post — one filled-in "
           "schema plus thinking.")
@@ -489,6 +536,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                         help="how many posts to code (default 30)")
     parser.add_argument("--seed", type=int, default=11,
                         help="fixed, so a re-run gets the same sample")
+    parser.add_argument("--since", type=date.fromisoformat, default=None,
+                        metavar="YYYY-MM-DD",
+                        help="only posts first collected on or after this "
+                             "day (collection day, not publication day)")
+    parser.add_argument("--until", type=date.fromisoformat, default=None,
+                        metavar="YYYY-MM-DD",
+                        help="only posts first collected on or before this "
+                             "day; with --since this is the coding window")
     parser.add_argument("--out", default="visual-coding.jsonl",
                         help="one JSON object per post, appended")
     parser.add_argument("--model", default="claude-opus-5-5")
@@ -515,7 +570,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
-        posts = archived(session, args.platform)
+        posts = archived(session, args.platform, args.since, args.until)
 
     chosen = sample(posts, args.limit, args.seed)
     out = Path(args.out)
@@ -523,7 +578,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         done = already_done(out)
         chosen = [post for post in chosen if post.video_id not in done]
 
-    print(f"{len(posts)} archived {args.platform} post(s) on disk; "
+    window = ""
+    if args.since or args.until:
+        window = (f", first collected {args.since or 'any'} "
+                  f"to {args.until or 'any'}")
+    print(f"{len(posts)} archived {args.platform} post(s) on disk{window}; "
           f"{len(chosen)} to code")
 
     if args.estimate:
@@ -532,7 +591,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             import anthropic
 
             client = anthropic.Anthropic()
-        estimate(chosen, prompt, args.max_edge, client, args.model)
+        estimate(chosen, prompt, args.max_edge, client, args.model,
+                 whole=len(posts))
         return
 
     if not args.apply:
