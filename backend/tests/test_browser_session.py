@@ -414,8 +414,10 @@ def test_the_recommendations_do_not_count_as_this_video_s_record():
 
         @staticmethod
         def json():
+            # Another post's record: a desc and an id of its own, and
+            # not the id that was asked for.
             return {"aweme_list": [
-                {"aweme_id": "9", "desc": "somebody else's video"},
+                {"aweme_id": "999", "desc": "somebody else's video"},
             ]}
 
     class _Page(_FlakyPage):
@@ -442,8 +444,51 @@ def test_the_recommendations_do_not_count_as_this_video_s_record():
     context = _Context(failures=0)
     browser = Browser(context, pause_seconds=0)
 
-    read = browser.read("https://www.douyin.com/video/1", settle_seconds=0)
+    # A real id, because what tells a record from a recommendation is
+    # whether it is about the post that was asked for.
+    read = browser.read(
+        "https://www.douyin.com/video/7686528190130806202", settle_seconds=0
+    )
 
     # It went the patient way, and so it saw what the page said.
     assert context.pages[0].waited_for_quiet is True
     assert read.fetched.missing is True
+
+
+def test_a_note_s_record_ends_the_wait_whatever_endpoint_it_came_on():
+    """Narrowing to the video detail endpoint made every 图文 wait it out.
+
+    Twenty-one seconds a page, on pages that read perfectly, because a
+    note's record does not come back on that endpoint. What tells the
+    record from the recommendations is not which endpoint sent it --
+    it is whether it is about the post that was asked for.
+    """
+    class _NoteRecord:
+        status = 200
+        url = "https://www.douyin.com/aweme/post/"
+
+        @staticmethod
+        def json():
+            return {"aweme_list": [
+                {"aweme_id": "7693105053100764398", "desc": "#lwl"},
+            ]}
+
+    class _Page(_FlakyPage):
+        def on(self, event, handler):
+            handler(_NoteRecord())
+
+        def wait_for_load_state(self, *args, **kwargs):
+            raise AssertionError("the record was here; no need to be patient")
+
+    class _Context(_FlakyContext):
+        def new_page(self):
+            page = _Page(self, len(self.pages))
+            self.pages.append(page)
+            return page
+
+    browser = Browser(_Context(failures=0), pause_seconds=0)
+    read = browser.read(
+        "https://www.douyin.com/note/7693105053100764398", settle_seconds=99
+    )
+
+    assert read.fetched.payloads

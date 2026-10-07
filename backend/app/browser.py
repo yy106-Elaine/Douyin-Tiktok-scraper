@@ -28,6 +28,7 @@ rest of the backend runs without it installed.
 """
 from __future__ import annotations
 
+import re
 import sys
 import threading
 import time
@@ -143,22 +144,6 @@ _WANTED_RESPONSES = (
 )
 
 
-#: The endpoints that answer with *this* post's record. The others in
-#: `_WANTED_RESPONSES` are worth keeping -- the author's other posts,
-#: the recommendations -- and must never end the wait, because every
-#: item in them carries a `desc` and a `sec_uid` of its own and so
-#: looks exactly like a record.
-#:
-#: That is how a removed video came back as "nothing readable": the
-#: page has no record to send, the recommendations arrive at once,
-#: the wait ended on them, and the HTML was taken before the page had
-#: rendered the sentence 你要观看的视频不存在 that says what happened.
-_DETAIL_RESPONSES = (
-    "/aweme/detail/",
-    "/aweme/v1/web/aweme/detail",
-    "/api/item/detail",
-)
-
 #: Keys that mark a payload as the record this visit came for, rather
 #: than one of the other answers a page fetches while it builds
 #: itself.
@@ -168,16 +153,45 @@ _RECORD_KEYS = frozenset({
 })
 
 
-def _carries_a_record(blob: object, depth: int = 0) -> bool:
-    """Whether this answer is the one the page was opened for.
+#: The id in a post's address: /video/<id>, /note/<id>, /video/<id>/.
+_ID_IN_URL = re.compile(r"/(?:video|note|item)/(\d{6,})")
 
-    A video page fetches several of the endpoints this listens on --
-    the author's other posts arrive before the video's own record more
-    often than not. Treating the first of them as "the record is here"
-    is how a page that reads perfectly by hand came back empty in a
-    run: the wait ended on the wrong answer and the right one was
-    still in flight.
+
+def _asked_for(url: str) -> str | None:
+    found = _ID_IN_URL.search(url)
+    return found.group(1) if found else None
+
+
+def _mentions(blob: object, video_id: str, depth: int = 0) -> bool:
+    """Whether this answer is about the post that was asked for.
+
+    Not "which endpoint sent it". Narrowing to the video detail
+    endpoint looked right and made every 图文 page wait out its whole
+    patience -- 21 seconds each, on pages that read perfectly -- because
+    a note's record does not come back on that endpoint. And the
+    opposite, "any answer at all", ended the wait on the
+    recommendations, which arrive first and carry a desc and a
+    sec_uid of their own.
+
+    The id is the thing that distinguishes them: the recommendations
+    are about other posts, and the record is about this one.
     """
+    if depth > 7:
+        return False
+    if isinstance(blob, dict):
+        for key, value in blob.items():
+            if isinstance(value, str) and value == video_id:
+                return True
+            if _mentions(value, video_id, depth + 1):
+                return True
+        return False
+    if isinstance(blob, list):
+        return any(_mentions(item, video_id, depth + 1) for item in blob[:60])
+    return isinstance(blob, str) and blob == video_id
+
+
+def _carries_a_record(blob: object, depth: int = 0) -> bool:
+    """A record of some post -- used only when the address has no id."""
     if depth > 6:
         return False
     if isinstance(blob, dict):
@@ -362,7 +376,7 @@ class Browser:
 
         payloads: list[dict] = []
 
-        detail: list[dict] = []
+        asked = _asked_for(url)
 
         def keep(response) -> None:
             if not any(part in response.url for part in _WANTED_RESPONSES):
@@ -372,8 +386,11 @@ class Browser:
             except Exception:  # noqa: BLE001 - a body that is not JSON
                 return
             payloads.append(blob)
-            if any(part in response.url for part in _DETAIL_RESPONSES):
-                detail.append(blob)
+
+        def arrived() -> bool:
+            if asked:
+                return any(_mentions(blob, asked) for blob in payloads)
+            return any(_carries_a_record(blob) for blob in payloads)
 
         page.on("response", keep)
         marks: dict[str, float] = {}
@@ -418,13 +435,13 @@ class Browser:
             # pass took five hours.
             waited = 0.0
             while waited < RECORD_PATIENCE_SECONDS:
-                if any(_carries_a_record(blob) for blob in detail):
+                if arrived():
                     break
                 if waited >= 1.0 and says_missing(_page_text(page)):
                     break
                 page.wait_for_timeout(250)
                 waited += 0.25
-            if detail:
+            if arrived():
                 # A moment for the rest of the record's requests, which
                 # arrive together.
                 page.wait_for_timeout(250)
