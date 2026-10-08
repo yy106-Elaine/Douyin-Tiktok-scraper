@@ -101,6 +101,11 @@ PROFILE=.browser-profile
 NOTE_PROFILE=.browser-profile-note
 #: 0 runs 视频 and 图文 one after the other, as before.
 DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-1}"
+#: How often the parallel passes report into the main log, in
+#: seconds. A multiple of 15, which is how often the wait loop
+#: wakes. Five minutes is often enough to tell a slow run from a
+#: stopped one, and rare enough not to bury the log.
+HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-300}"
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -164,6 +169,17 @@ run_limited() {
 # Two Douyin passes at once, each in its own browser, each with its
 # own log -- interleaved progress lines from two runs are unreadable,
 # and the point of the log is to be read afterwards.
+#: How far a pass has got, read off its own output.
+#:
+#: `app.daily` prints `[12/316] ...` per page, flushed. Taking the
+#: last one means this reports the pass's own count rather than a
+#: second count kept here that could disagree with it.
+furthest() {
+  local log="$1" label="$2" last
+  last=$(grep -o '\[[0-9]\{1,\}/[0-9]\{1,\}\]' "$log" 2>/dev/null | tail -1)
+  printf '%s %s' "$label" "${last:-starting}"
+}
+
 run_together() {
   local label_a="$1" label_b="$2"; shift 2
   say "-- $label_a and $label_b, together"
@@ -181,7 +197,20 @@ run_together() {
   local pid_b=$!
   set +m
 
-  local code_a=0 code_b=0
+  # A heartbeat into the main log while they run. Without it the
+  # parallel passes write only to their own files, and the log a
+  # person is watching says nothing for four hours -- which looks
+  # exactly like a run that has hung, and twice now has been treated
+  # as one. The counts come from the passes' own `[n/total]` lines,
+  # so this reports what they report and invents nothing.
+  local code_a=0 code_b=0 waited=0
+  while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null; do
+    sleep 15
+    waited=$((waited + 15))
+    if (( waited % HEARTBEAT_SECONDS == 0 )); then
+      say "   ... $(furthest "$log_a" "$label_a") | $(furthest "$log_b" "$label_b")"
+    fi
+  done
   wait "$pid_a" || code_a=$?
   wait "$pid_b" || code_b=$?
 

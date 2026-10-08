@@ -176,3 +176,60 @@ def test_a_skipped_douyin_pass_is_not_reported_as_clean() -> None:
     # And the clean line is still reachable only with neither.
     clean = text.index('say "=== finished cleanly"')
     assert text.index('if [[ -n "$SKIPPED" ]]; then', clean - 400) < clean
+
+
+def _helper(name: str) -> str:
+    """One shell function, lifted out of daily.sh."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.S | re.M)
+    assert found, f"{name} is not in daily.sh any more"
+    return found.group(0)
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_progress_is_read_off_the_passes_own_count(tmp_path) -> None:
+    """A four-hour silence looks exactly like a run that has hung.
+
+    The parallel passes write only to their own files, so the log a
+    person watches says nothing until they finish -- and twice that
+    has been read as a stall. The heartbeat reports what the passes
+    themselves print, rather than keeping a second count here that
+    could disagree with them.
+    """
+    busy = tmp_path / "video.log"
+    busy.write_text("[1/316] a\n[12/316] b\n", encoding="utf-8")
+    fresh = tmp_path / "note.log"
+    fresh.write_text("", encoding="utf-8")
+
+    script = tmp_path / "hb.sh"
+    script.write_text(
+        "#!/bin/bash\n" + _helper("furthest")
+        + f'\nfurthest {busy} "video"; echo\n'
+        + f'furthest {fresh} "图文"; echo\n'
+        + f'furthest {tmp_path}/never-written.log "gone"; echo\n',
+        encoding="utf-8",
+    )
+    done = subprocess.run(["bash", str(script)], capture_output=True, text=True)
+    lines = done.stdout.strip().splitlines()
+
+    assert lines[0] == "video [12/316]"
+    # Started but nothing read yet, and a log that does not exist at
+    # all, both say the same honest thing rather than "0".
+    assert lines[1] == "图文 starting"
+    assert lines[2] == "gone starting"
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_the_heartbeat_does_not_reach_the_phone_page() -> None:
+    """The phone page answers "did it run, and did anything break?".
+
+    Forty-eight progress lines are not that, and the page shows the
+    last forty lines of the log -- so an unfiltered heartbeat would
+    push the step results off it entirely.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    page = re.search(r'grep -E "(\^\[0-9.*?)" \\\n\s+"\$LOG"', text)
+    assert page, "the status page's grep has moved"
+    # The heartbeat lines are `   ... `, which the page's anchors
+    # (`-- `, `   ok`, `   FAILED`, `   STOPPED`) do not admit.
+    assert "..." not in page.group(1)
