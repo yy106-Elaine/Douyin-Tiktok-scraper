@@ -373,6 +373,38 @@ def run(
     return report
 
 
+def shard_of(targets: list[str], which: int, outof: int) -> list[str]:
+    """One worker's share of the list, taken every `outof`th item.
+
+    Two browsers on one platform need a split neither has to ask the
+    other about: no lock, no queue, no shared cursor. Strided slicing
+    gives that -- the shards are disjoint by construction and their
+    union is the whole list, whatever either worker does or does not
+    finish.
+
+    Strided rather than cut in half because the list is ordered and
+    its two ends are not alike: the oldest ids sit together, and so
+    do the posts most likely to be gone. Every other one gives both
+    workers the same mixture, so an interrupted run has covered a
+    sample of the corpus rather than one end of it.
+    """
+    if outof < 1 or not 1 <= which <= outof:
+        raise ValueError(f"shard {which}/{outof} is not a share of anything")
+    return targets[which - 1::outof]
+
+
+def _shard(text: str) -> tuple[int, int]:
+    """`2/3` as (2, 3), for argparse."""
+    which, _, outof = text.partition("/")
+    try:
+        pair = (int(which), int(outof))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not like 1/2") from None
+    if pair[1] < 1 or not 1 <= pair[0] <= pair[1]:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a share of anything")
+    return pair
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
@@ -391,6 +423,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "this video and no other. Repeatable. For going back to one "
             "video on purpose -- a reinstatement to re-download and "
             "compare against the archived copy before it goes again"
+        ),
+    )
+    parser.add_argument(
+        "--shard", type=_shard, default=None, metavar="N/M",
+        help=(
+            "this worker's share of the due videos, as 1/2, 2/2 and so "
+            "on. Two browsers on one platform, splitting the list "
+            "without having to coordinate"
         ),
     )
     parser.add_argument(
@@ -562,6 +602,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             targets = [v for v in targets if v not in gone]
             if before != len(targets):
                 print(f"skipping {before - len(targets)} already found gone")
+
+        if args.shard is not None:
+            which, outof = args.shard
+            targets = shard_of(targets, which, outof)
+            print(f"shard {which} of {outof}: {len(targets)} to read here")
 
         if args.limit is not None:
             targets = targets[: args.limit]

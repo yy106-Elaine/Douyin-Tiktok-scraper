@@ -182,9 +182,19 @@ furthest() {
 
 run_together() {
   local label_a="$1" label_b="$2"; shift 2
-  say "-- $label_a and $label_b, together"
   local log_a="$LOG_DIR/$(date +%F)-video.log"
   local log_b="$LOG_DIR/$(date +%F)-note.log"
+  local log_c="$LOG_DIR/$(date +%F)-note2.log"
+
+  # 图文 outnumber the videos five to one, so the two browsers used
+  # to finish an hour and a half apart: the video pass was done in
+  # twenty minutes and its browser then sat idle while 图文 ground on
+  # alone. The 图文 list is therefore halved from the start, and the
+  # second half begins in the video browser the moment it is free.
+  # Two browsers at a time throughout, which is what the account can
+  # afford -- the same account on more than that is what a stolen
+  # account looks like to a risk system.
+  say "-- $label_a, and $label_b in two halves"
 
   set -m
   "$PY" -m app.daily --platform douyin \
@@ -192,10 +202,12 @@ run_together() {
     >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
+    --shard 1/2 \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
     >"$log_b" 2>&1 &
   local pid_b=$!
   set +m
+  local pid_c=""
 
   # A heartbeat into the main log while they run. Without it the
   # parallel passes write only to their own files, and the log a
@@ -203,21 +215,52 @@ run_together() {
   # exactly like a run that has hung, and twice now has been treated
   # as one. The counts come from the passes' own `[n/total]` lines,
   # so this reports what they report and invents nothing.
-  local code_a=0 code_b=0 waited=0
-  while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null; do
+  local code_a=0 code_b=0 code_c=0 waited=0
+  while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null \
+        || { [[ -n "$pid_c" ]] && kill -0 "$pid_c" 2>/dev/null; }; do
     sleep 15
     waited=$((waited + 15))
+
+    # The video pass is done and its browser is free: start the other
+    # half of 图文 in it. `--shard 2/2` is disjoint from the half
+    # already running, so neither worker has to know about the other.
+    if [[ -z "$pid_c" ]] && ! kill -0 "$pid_a" 2>/dev/null; then
+      wait "$pid_a" || code_a=$?
+      say "   $label_a done; starting the second half of $label_b in its browser"
+      set -m
+      "$PY" -m app.daily --platform douyin_note --profile "$PROFILE" \
+        --shard 2/2 \
+        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
+        >"$log_c" 2>&1 &
+      pid_c=$!
+      set +m
+    fi
+
     if (( waited % HEARTBEAT_SECONDS == 0 )); then
-      say "   ... $(furthest "$log_a" "$label_a") | $(furthest "$log_b" "$label_b")"
+      local line
+      line="$(furthest "$log_b" "$label_b 1/2")"
+      if [[ -n "$pid_c" ]]; then
+        line="$line | $(furthest "$log_c" "$label_b 2/2")"
+      else
+        line="$(furthest "$log_a" "$label_a") | $line"
+      fi
+      say "   ... $line"
     fi
   done
-  wait "$pid_a" || code_a=$?
+  # Harmless when already reaped above; bash keeps the status.
+  kill -0 "$pid_a" 2>/dev/null && { wait "$pid_a" || code_a=$?; }
   wait "$pid_b" || code_b=$?
+  [[ -n "$pid_c" ]] && { wait "$pid_c" || code_c=$?; }
 
-  for pair in "$label_a:$code_a:$log_a" "$label_b:$code_b:$log_b"; do
-    local label="${pair%%:*}" rest="${pair#*:}"
-    local code="${rest%%:*}" where="${rest#*:}"
-    cat "$where" >>"$LOG"
+  # An array, because the labels have spaces in them and an
+  # unquoted list would split "图文 check 1/2" into three steps.
+  local finished=("$label_a:$code_a:$log_a" "$label_b 1/2:$code_b:$log_b")
+  [[ -n "$pid_c" ]] && finished+=("$label_b 2/2:$code_c:$log_c")
+  local pair label rest code where
+  for pair in "${finished[@]}"; do
+    label="${pair%%:*}"; rest="${pair#*:}"
+    code="${rest%%:*}"; where="${rest#*:}"
+    cat "$where" >>"$LOG" 2>/dev/null
     if [[ $code -eq 0 ]]; then
       say "   $label ok"
     else

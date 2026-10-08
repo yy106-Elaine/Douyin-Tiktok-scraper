@@ -563,3 +563,63 @@ def test_a_visit_that_read_nothing_is_still_recorded_as_a_visit(session, tmp_pat
     check = session.query(LinkCheck).one()
     assert check.evidence == NOTHING_READ
     assert classify(check) == UNKNOWN
+
+
+def test_two_workers_split_the_list_without_talking_to_each_other() -> None:
+    """Two browsers on one platform, and no lock, queue or shared cursor.
+
+    Strided slicing makes the shards disjoint by construction and
+    their union the whole list -- which is what lets the second
+    worker start an hour after the first, in the browser the video
+    pass has just finished with, and still need to know nothing
+    about what the first has done.
+    """
+    from app.daily import shard_of
+
+    whole = [f"v{i:03d}" for i in range(11)]
+
+    first = shard_of(whole, 1, 2)
+    second = shard_of(whole, 2, 2)
+
+    assert not set(first) & set(second)
+    assert sorted(first + second) == whole
+    # An odd list splits as evenly as it can.
+    assert len(first) == 6 and len(second) == 5
+
+    # And it generalises past two, for the day this runs on more than
+    # one machine.
+    thirds = [shard_of(whole, n, 3) for n in (1, 2, 3)]
+    assert sorted(sum(thirds, [])) == whole
+    assert all(thirds)
+
+
+def test_a_shard_is_a_sample_not_one_end_of_the_list() -> None:
+    """The list is ordered and its two ends are not alike.
+
+    The oldest ids sit together and so do the posts most likely to
+    be gone. Cut in half, an interrupted worker would have covered
+    one end of the corpus; taken every other one, it has covered a
+    sample of it.
+    """
+    from app.daily import shard_of
+
+    whole = list("abcdefgh")
+
+    assert shard_of(whole, 1, 2) == ["a", "c", "e", "g"]
+    assert shard_of(whole, 2, 2) == ["b", "d", "f", "h"]
+
+
+def test_a_shard_that_is_not_a_share_of_anything_is_refused() -> None:
+    """Silently reading nothing is the expensive way to find a typo."""
+    import pytest
+
+    from app.daily import _shard, shard_of
+
+    for bad in ((0, 2), (3, 2), (1, 0)):
+        with pytest.raises(ValueError):
+            shard_of(["a", "b"], *bad)
+
+    assert _shard("2/3") == (2, 3)
+    for text in ("", "2", "0/2", "3/2", "a/b", "1/0"):
+        with pytest.raises(Exception):
+            _shard(text)

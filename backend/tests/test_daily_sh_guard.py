@@ -233,3 +233,30 @@ def test_the_heartbeat_does_not_reach_the_phone_page() -> None:
     # The heartbeat lines are `   ... `, which the page's anchors
     # (`-- `, `   ok`, `   FAILED`, `   STOPPED`) do not admit.
     assert "..." not in page.group(1)
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_the_freed_browser_goes_to_the_other_half_of_the_notes() -> None:
+    """304 videos take twenty minutes; 1,384 图文 take hours.
+
+    The video browser used to sit idle for the rest of the run. Now
+    the 图文 list is halved from the start and the second half opens
+    in the video profile the moment it is free -- two browsers
+    throughout, never three, because the same account on more than
+    two is what a stolen account looks like.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    # The launch lines, not the comments that mention them.
+    launches = [
+        line.strip() for line in text.splitlines()
+        if "--shard" in line and not line.lstrip().startswith("#")
+    ]
+    assert launches == ["--shard 1/2 \\", "--shard 2/2 \\"]
+
+    # The second half takes over the video profile, not a third one.
+    second = text.index("        --shard 2/2")
+    opened = text.rindex('--profile "$PROFILE"', 0, second)
+    assert second - opened < 120
+    # And only once the video pass has actually gone.
+    assert 'if [[ -z "$pid_c" ]] && ! kill -0 "$pid_a" 2>/dev/null; then' in text
