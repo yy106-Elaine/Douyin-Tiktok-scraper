@@ -273,6 +273,56 @@ class AutoCapture(private val service: AccessibilityService) {
      * that lands on something else is the failure this whole class is
      * written to avoid.
      */
+    /**
+     * Which of the grid's three tests failed, in the order they run.
+     *
+     * The three are not alike. A missing search box means the page
+     * is not search at all; a missing tab strip means it is a post
+     * opened out of the results; no cards means the right page in
+     * the wrong tab -- or a tab whose cards this does not recognise,
+     * which is a different problem needing a different fix.
+     */
+    private fun whyNotTheGrid(): String {
+        val roots = activeRoots()
+        if (!ShareSheet.isSearchResults(roots)) {
+            return "a 图文 run has to start on the search results. " +
+                "This is not a search page at all. Nothing was pressed"
+        }
+        if (!SearchGrid.hasTabStrip(roots)) {
+            return "the search box is here but not the tab strip, so " +
+                "this is a post opened out of the results rather than " +
+                "the results. Go back, then start. Nothing was pressed"
+        }
+        return "the search results are here, with the tab strip, but " +
+            "no row of tappable cards -- so either this is a tab that " +
+            "lists its results (综合 does) rather than the 图文 grid, " +
+            "or the cards are not being recognised. The rejected " +
+            "labels below say which. Nothing was pressed"
+    }
+
+    /** What `tiles` threw out, and the rule that threw it. */
+    private fun rejectedCards(): List<String> {
+        val metrics = service.resources.displayMetrics
+        val why = mutableListOf<String>()
+        SearchGrid.tiles(
+            activeRoots(), metrics.widthPixels, metrics.heightPixels,
+        ) { reason ->
+            // "not a post" is every button and tab on the page and
+            // would bury the rest; the interesting rejections are the
+            // ones that got as far as being considered.
+            if (!reason.startsWith("not a post: ") && why.size < REJECTIONS_SHOWN) {
+                why.add("  rejected: $reason")
+            }
+        }
+        if (why.isEmpty()) {
+            return listOf(
+                "  no label on this page even looks like a post title " +
+                    "-- see the window dump above",
+            )
+        }
+        return listOf("why each candidate card was rejected:") + why
+    }
+
     private fun openTile() {
         if (!keepGoing()) return
 
@@ -282,21 +332,20 @@ class AutoCapture(private val service: AccessibilityService) {
             // started on whatever page the person was standing on,
             // and if that is not the grid the answer is to say so.
             if (opened.isEmpty()) {
-                // Naming the tab, not the symptom. The first live
-                // attempt failed on the 综合 tab, which carries the
-                // search box and the whole tab strip and so satisfies
-                // two of the three tests -- and lays its results out
-                // as a feed, where the title is plain text and only
-                // the like button is clickable. "A full row of cards"
-                // described what was missing to someone who already
-                // knew; this says which tab to press.
+                // Say which of the three tests failed, and for the
+                // cards say what was rejected and why.
+                //
+                // `tiles` has carried an `onReject` callback since it
+                // was written and nothing ever passed one, so every
+                // failure here reported the same sentence whatever
+                // the actual cause -- and the first guess off it was
+                // wrong twice: the page really was the 图文 tab. A
+                // dump of the window is not the answer either; what
+                // is needed is which candidate labels were seen and
+                // which rule threw each one out.
                 CaptureStats.onAutoFailure(
-                    "a 图文 run has to start on the 图文 tab of the " +
-                        "search results, where the posts are a grid of " +
-                        "cards. The 综合 tab looks right but its results " +
-                        "are not tappable cards. Tap 图文, wait for the " +
-                        "cards, then start. Nothing was pressed",
-                    SearchGrid.describe(activeRoots()),
+                    whyNotTheGrid(),
+                    SearchGrid.describe(activeRoots()) + rejectedCards(),
                 )
                 stop("not started on the search results")
                 return
@@ -1292,6 +1341,12 @@ class AutoCapture(private val service: AccessibilityService) {
          * scroll after a long run of opened cells can land on a row
          * that is still loading its labels.
          */
+        /**
+         * How many rejected candidates the failure report lists.
+         * Enough to see the pattern, few enough to read on a phone.
+         */
+        private const val REJECTIONS_SHOWN = 12
+
         const val BARREN_SCROLLS = 2
     }
 }
