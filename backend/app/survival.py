@@ -94,6 +94,18 @@ class Finding:
     #: day for the rest of the study.
     came_back_at: datetime | None = None
 
+    #: Every spell of being gone, oldest first, as (the check that
+    #: found it gone, the check that found it back). The second is
+    #: None for a spell that has not ended -- the post is gone now.
+    #:
+    #: `first_gone_ever` and `came_back_at` are the first and the
+    #: last of these, and summarising a post by that pair is what
+    #: made a removal → restore → removal read as one episode. A post
+    #: here has been down five times; the figures drew one bar.
+    episodes: list[tuple[datetime, datetime | None]] = field(
+        default_factory=list
+    )
+
     #: The earliest disappearance ever recorded, kept whatever
     #: happened afterwards. `first_gone_at` is reset by a later alive
     #: check, which is right for "is it gone now" and wrong for the
@@ -203,11 +215,14 @@ def finding_for(
     disappearances = 0
     first_gone_ever: datetime | None = None
     came_back_at: datetime | None = None
+    episodes: list[tuple[datetime, datetime | None]] = []
     for check, verdict in graded:
         if verdict == ALIVE:
             # Alive after a disappearance: this check is the comeback.
             if first_gone is not None:
                 came_back_at = check.checked_at
+                if episodes and episodes[-1][1] is None:
+                    episodes[-1] = (episodes[-1][0], check.checked_at)
             # A video that came back resets the span: reinstatement is
             # a finding of its own, not a data error to smooth over.
             last_alive = check.checked_at
@@ -216,6 +231,7 @@ def finding_for(
         elif verdict in DISAPPEARED and first_gone is None:
             first_gone = check.checked_at
             disappearances += 1
+            episodes.append((check.checked_at, None))
             if first_gone_ever is None:
                 first_gone_ever = check.checked_at
             # An account that is itself gone explains the video better
@@ -244,6 +260,7 @@ def finding_for(
         disappearances=disappearances,
         first_gone_ever=first_gone_ever,
         came_back_at=came_back_at,
+        episodes=episodes,
     )
 
 

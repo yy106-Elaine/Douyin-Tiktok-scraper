@@ -153,3 +153,61 @@ def test_a_post_removed_once_is_not_a_repeat() -> None:
 
     assert (found.ever, found.back) == (1, 0)
     assert (found.repeats, found.gone_again, found.most_cycles) == (0, 0, 0)
+
+
+def test_every_spell_of_being_gone_is_recorded_not_just_the_first() -> None:
+    """A post down five times drew one bar, because only two moments were kept.
+
+    `first_gone_ever` and `came_back_at` are the first and the last
+    of a sequence. Summarising a post by that pair is what made
+    removal → restore → removal read as a single episode.
+    """
+    from datetime import datetime
+
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, SERVED_ANOTHER
+    from app.survival import finding_for
+
+    def check(day: int, alive: bool) -> LinkCheck:
+        return LinkCheck(
+            video_id="v1", platform="douyin", target_kind="video",
+            url="u", http_status=200,
+            evidence=ID_CONFIRMED if alive else SERVED_ANOTHER,
+            checked_at=datetime(2026, 10, day, 3, 0),
+        )
+
+    # Up, gone, back, gone again, back again, gone a third time.
+    found = finding_for([
+        check(1, True), check(2, False), check(3, True),
+        check(4, False), check(6, True), check(7, False),
+    ])
+
+    assert found is not None
+    assert found.disappearances == 3
+    assert [(g.day, b.day if b else None) for g, b in found.episodes] == [
+        (2, 3), (4, 6), (7, None),
+    ]
+    # The old pair is still the first and the last of them.
+    assert found.first_gone_ever == datetime(2026, 10, 2, 3, 0)
+    assert found.came_back_at == datetime(2026, 10, 6, 3, 0)
+    # And it is gone right now, whatever the comebacks say.
+    assert found.is_gone
+
+
+def test_a_post_that_never_went_down_has_no_spells() -> None:
+    from datetime import datetime
+
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED
+    from app.survival import finding_for
+
+    found = finding_for([
+        LinkCheck(video_id="v1", platform="douyin", target_kind="video",
+                  url="u", http_status=200, evidence=ID_CONFIRMED,
+                  checked_at=datetime(2026, 10, day, 3, 0))
+        for day in (1, 2, 3)
+    ])
+
+    assert found is not None
+    assert found.episodes == []
+    assert found.disappearances == 0

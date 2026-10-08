@@ -146,10 +146,31 @@ def mask(video_id: str, reveal: bool) -> str:
 
 @dataclass
 class Spell:
+    """One post's whole history of being gone, not one episode of it.
+
+    `down` is every spell, oldest first, as (gone at, back at); the
+    second is None for a spell still running. The stretches between
+    them are the times the post was up again, and they are drawn --
+    a post removed, restored and removed again is the finding this
+    chart exists to show, and summarising it as one bar erased it.
+    """
+
     label: str
-    gone: datetime
-    back: datetime
+    down: list[tuple[datetime, datetime | None]]
     hover: str
+    #: Where the row's timeline ends: the last check, so a post still
+    #: gone runs to the edge rather than stopping at a tidy point.
+    until: datetime
+
+    @property
+    def gone(self) -> datetime:
+        return self.down[0][0]
+
+    @property
+    def last(self) -> datetime:
+        return max(
+            [end for _, end in self.down if end] + [self.until, self.gone]
+        )
 
 
 def intervals(spells: list[Spell], *, ident: str, width: int = 720) -> str:
@@ -160,13 +181,13 @@ def intervals(spells: list[Spell], *, ident: str, width: int = 720) -> str:
     page says so underneath. A single duration drawn as a bar would be
     a claim about the platform; this is a claim about the schedule.
     """
-    pad_left, pad_right, pad_top = 86, 86, 18
+    pad_left, pad_right, pad_top = 86, 96, 18
     row = 30
     plot = width - pad_left - pad_right
     height = pad_top + row * len(spells) + 26
 
     first = min(s.gone for s in spells)
-    last = max(s.back for s in spells)
+    last = max(s.last for s in spells)
     reach = (last - first).total_seconds() or 1.0
 
     def x_of(moment: datetime) -> float:
@@ -187,18 +208,58 @@ def intervals(spells: list[Spell], *, ident: str, width: int = 720) -> str:
         mid = pad_top + row * index + row / 2
         out.append(f'<text class="cat mono" x="{pad_left - 10}" y="{mid + 4}" '
                    f'text-anchor="end">{_e(spell.label)}</text>')
-        x1, x2 = x_of(spell.gone), x_of(spell.back)
         out.append(
             f'<g class="mark" tabindex="0" data-tip="{_e(spell.hover)}">'
             f'<rect class="hit" x="{pad_left}" y="{mid - 12:.1f}" '
-            f'width="{plot}" height="24" />'
-            f'<line class="spell" x1="{x1:.1f}" y1="{mid:.1f}" '
-            f'x2="{max(x2, x1 + 2):.1f}" y2="{mid:.1f}" />'
-            f'<circle class="dot" cx="{x1:.1f}" cy="{mid:.1f}" r="4.5" />'
-            f'<circle class="dot" cx="{max(x2, x1 + 2):.1f}" cy="{mid:.1f}" '
-            f'r="4.5" /></g>')
+            f'width="{plot}" height="24" />')
+
+        # Up again, drawn under the removals: from the end of one
+        # spell to the start of the next, and on to the last check if
+        # the post is up now. Without these the gaps are empty page
+        # and a reader cannot tell "back for a week" from "back
+        # yesterday".
+        for (_, back), (next_gone, _) in zip(spell.down, spell.down[1:]):
+            if back is None:
+                continue
+            out.append(
+                f'<line class="alive" x1="{x_of(back):.1f}" y1="{mid:.1f}" '
+                f'x2="{x_of(next_gone):.1f}" y2="{mid:.1f}" />')
+        tail_from = spell.down[-1][1]
+        if tail_from is not None and spell.until > tail_from:
+            out.append(
+                f'<line class="alive" x1="{x_of(tail_from):.1f}" '
+                f'y1="{mid:.1f}" x2="{x_of(spell.until):.1f}" '
+                f'y2="{mid:.1f}" />')
+
+        total = timedelta()
+        for gone, back in spell.down:
+            x1 = x_of(gone)
+            # A spell with no end is still running: draw it to the
+            # last check and leave the right end open, because the
+            # post has not come back and a closed dot would say it
+            # had.
+            ends = back if back is not None else spell.until
+            x2 = max(x_of(ends), x1 + 2)
+            total += ends - gone
+            out.append(
+                f'<line class="spell" x1="{x1:.1f}" y1="{mid:.1f}" '
+                f'x2="{x2:.1f}" y2="{mid:.1f}" />'
+                f'<circle class="dot gone" cx="{x1:.1f}" cy="{mid:.1f}" '
+                f'r="4.5" />')
+            if back is not None:
+                out.append(
+                    f'<circle class="dot upagain" cx="{x2:.1f}" '
+                    f'cy="{mid:.1f}" r="4.5" />')
+            else:
+                out.append(
+                    f'<path class="open" d="M{x2 - 5:.1f},{mid - 5:.1f} '
+                    f'L{x2:.1f},{mid:.1f} L{x2 - 5:.1f},{mid + 5:.1f}" />')
+        out.append("</g>")
+
+        times = len(spell.down)
         out.append(f'<text class="value" x="{pad_left + plot + 8}" '
-                   f'y="{mid + 4}">{_span(spell.back - spell.gone)}</text>')
+                   f'y="{mid + 4}">{_span(total)}'
+                   f'{f" ×{times}" if times > 1 else ""}</text>')
     out.append("</svg>")
     return "".join(out)
 
@@ -948,14 +1009,18 @@ def _comebacks(page: Page) -> str:
         for f in items:
             if not (f.came_back_at and f.first_gone_ever):
                 continue
+            told = "\n".join(
+                f"gone by {_when(gone)}"
+                + (f", back by {_when(back)}" if back
+                   else ", not back at the last check")
+                for gone, back in f.episodes
+            )
             spells.append(Spell(
                 label=mask(f.video_id, page.reveal),
-                gone=f.first_gone_ever,
-                back=f.came_back_at,
+                down=f.episodes or [(f.first_gone_ever, f.came_back_at)],
+                until=f.last_checked_at or f.came_back_at,
                 hover=(f"{label_for(platform)}\n"
-                       f"gone by {_when(f.first_gone_ever)}\n"
-                       f"back by {_when(f.came_back_at)}\n"
-                       f"{f.disappearances} disappearance(s)"),
+                       f"{f.disappearances} disappearance(s)\n{told}"),
             ))
             flat.append([
                 label_for(platform), mask(f.video_id, page.reveal),
@@ -1026,7 +1091,14 @@ def _comebacks(page: Page) -> str:
         + '<p class="note">From the check that found the post gone to the one '
         'that found it back. The figure on the right is an upper bound on how '
         'long it was down, not a measurement of it.</p>'
+        '<p class="legend"><span><i class="swatch gone"></i>gone</span>'
+        '<span><i class="swatch upagain"></i>up again</span>'
+        '<span>▶ still gone at the last check</span></p>'
         f'{intervals(spells, ident="back")}'
+        '<p class="note">One row per post, oldest removal on the left. '
+        'A post removed, restored and removed again has more than one '
+        'orange stretch, and the figure on the right is its total time '
+        'down with the number of removals beside it.</p>'
         + table(["Platform", "Video", "Gone by", "Back by", "At most",
                  "Times down", "Now"],
                 flat, "removed then reinstated")
@@ -1231,8 +1303,24 @@ figcaption {
 .risk { font-size: 10px; }
 .mark:hover .dot, .mark:focus .dot { r: 5; }
 .zero { stroke: var(--axis); stroke-width: 2; }
-.spell { stroke: var(--series-1); stroke-width: 2; stroke-linecap: round; }
-.spell + .dot, circle.dot:not(.c1):not(.c2) { fill: var(--series-1); }
+/* Two states on one row. Gone wears the warmer hue because it is
+   the event; back up is the recessive one. Both already carry this
+   page's series tokens, so the pair is the one the rest of the page
+   is drawn in, and it passes CVD separation in both modes. */
+.spell { stroke: var(--series-2); stroke-width: 2.5; stroke-linecap: butt; }
+.alive { stroke: var(--series-1); stroke-width: 2; stroke-linecap: butt;
+         opacity: .55; }
+.dot.gone { fill: var(--series-2); }
+.dot.upagain { fill: var(--series-1); }
+.open { fill: none; stroke: var(--series-2); stroke-width: 2;
+        stroke-linecap: round; stroke-linejoin: round; }
+circle.dot:not(.c1):not(.c2):not(.gone):not(.upagain) { fill: var(--series-1); }
+.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px;
+          vertical-align: -1px; margin-right: 5px; }
+.swatch.gone { background: var(--series-2); }
+.swatch.upagain { background: var(--series-1); opacity: .55; }
+.legend { margin: 2px 0 14px; color: var(--text-secondary); font-size: 13.5px; }
+.legend span + span { margin-left: 18px; }
 .hit { fill: transparent; }
 .mark { cursor: default; }
 .mark:hover .bar, .mark:focus .bar { fill-opacity: 0.82; }
