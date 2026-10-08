@@ -89,6 +89,25 @@ class SearchGridTest {
     }
 
     @Test
+    fun `the 综合 tab satisfies two of the three tests and is not the grid`() {
+        // A live run failed here. 综合 carries the search box and the
+        // whole tab strip -- 综合 视频 用户 商品 直播 … 图文 -- so two
+        // of the three tests pass. What it does not carry is cards:
+        // it lays results out as a feed, where the post's title is
+        // plain text and the only clickable thing on the row is the
+        // like button. `tiles` wants a clickable node with text of
+        // its own, and finds none.
+        //
+        // Which is why the refusal has to name the tab. "A full row
+        // of cards is missing" describes the symptom to someone
+        // already holding the answer; the person reading it is
+        // looking at a page with a tab strip on it, wondering what
+        // else the run could possibly want.
+        assertFalse(SearchGrid.isGridEvidence(
+            searchBox = true, tabStrip = true, cards = 0))
+    }
+
+    @Test
     fun `size is the rule that does not need to have seen the label`() {
         // 1080x2400 phone. A card is a column of the grid; the like
         // button and the timestamp under it are not, whatever they

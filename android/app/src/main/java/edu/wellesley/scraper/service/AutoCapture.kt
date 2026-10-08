@@ -282,10 +282,20 @@ class AutoCapture(private val service: AccessibilityService) {
             // started on whatever page the person was standing on,
             // and if that is not the grid the answer is to say so.
             if (opened.isEmpty()) {
+                // Naming the tab, not the symptom. The first live
+                // attempt failed on the 综合 tab, which carries the
+                // search box and the whole tab strip and so satisfies
+                // two of the three tests -- and lays its results out
+                // as a feed, where the title is plain text and only
+                // the like button is clickable. "A full row of cards"
+                // described what was missing to someone who already
+                // knew; this says which tab to press.
                 CaptureStats.onAutoFailure(
-                    "a 图文 run has to start on the search results, with " +
-                        "the tab strip and a full row of cards on screen. " +
-                        "Nothing was pressed",
+                    "a 图文 run has to start on the 图文 tab of the " +
+                        "search results, where the posts are a grid of " +
+                        "cards. The 综合 tab looks right but its results " +
+                        "are not tappable cards. Tap 图文, wait for the " +
+                        "cards, then start. Nothing was pressed",
                     SearchGrid.describe(activeRoots()),
                 )
                 stop("not started on the search results")
