@@ -868,9 +868,31 @@ class Comebacks:
     back: int = 0
     downs: list[timedelta] = field(default_factory=list)
 
+    #: Posts found gone more than once -- down, back, and down again
+    #: (and sometimes again after that).
+    repeats: int = 0
+
+    #: Of the posts gone at the last check, the ones that had already
+    #: come back once. A removal that stuck is one thing; a removal
+    #: that followed a reinstatement is a different thing, and the
+    #: page used to show them as the same number.
+    gone_again: int = 0
+
+    #: How many disappearances each repeatedly-removed post has had,
+    #: so "twice" and "four times" are not one bucket.
+    cycles: list[int] = field(default_factory=list)
+
     @property
     def share(self) -> float | None:
         return self.back / self.ever if self.ever else None
+
+    @property
+    def repeat_share(self) -> float | None:
+        return self.repeats / self.ever if self.ever else None
+
+    @property
+    def most_cycles(self) -> int:
+        return max(self.cycles) if self.cycles else 0
 
     @property
     def median_down(self) -> timedelta | None:
@@ -909,6 +931,14 @@ def reinstatement(items: list[Finding]) -> Comebacks:
                 found.downs.append(finding.came_back_at - finding.first_gone_ever)
         elif finding.is_gone:
             found.ever += 1
+            # Gone now, and it had come back before: this removal
+            # followed a reinstatement rather than being the first
+            # thing that happened to the post.
+            if finding.came_back_at is not None:
+                found.gone_again += 1
+        if finding.disappearances > 1:
+            found.repeats += 1
+            found.cycles.append(finding.disappearances)
     return found
 
 
@@ -927,9 +957,17 @@ def _comebacks(page: Page) -> str:
                        f"back by {_when(f.came_back_at)}\n"
                        f"{f.disappearances} disappearance(s)"),
             ))
-            flat.append([label_for(platform), mask(f.video_id, page.reveal),
-                         _when(f.first_gone_ever), _when(f.came_back_at),
-                         _span(f.came_back_at - f.first_gone_ever)])
+            flat.append([
+                label_for(platform), mask(f.video_id, page.reveal),
+                _when(f.first_gone_ever), _when(f.came_back_at),
+                _span(f.came_back_at - f.first_gone_ever),
+                f"{f.disappearances}",
+                # What it is now, because "came back" names an event
+                # in this post's past and not its state. A row that
+                # reads "gone again" is a reinstatement that did not
+                # hold, and is the row worth asking its author about.
+                "gone again" if f.is_gone else "up",
+            ])
     if not spells:
         return ""
     spells.sort(key=lambda s: s.gone)
@@ -943,11 +981,12 @@ def _comebacks(page: Page) -> str:
             continue
         rows.append([
             label_for(platform), f"{one.ever:,}", f"{one.back:,}",
-            _pct1(one.share), _span(one.median_down),
+            _pct1(one.share), f"{one.repeats:,}", _span(one.median_down),
         ])
     if len(rows) > 1:
         rows.append(["All", f"{whole.ever:,}", f"{whole.back:,}",
-                     _pct1(whole.share), _span(whole.median_down)])
+                     _pct1(whole.share), f"{whole.repeats:,}",
+                     _span(whole.median_down)])
 
     tiles = "".join([
         tile("Reinstated", _pct1(whole.share),
@@ -956,6 +995,12 @@ def _comebacks(page: Page) -> str:
              "median, and an upper bound -- see below"),
         tile("Still gone", f"{whole.ever - whole.back:,}",
              "found gone and not back at the last check"),
+        tile("Removed again", f"{whole.repeats:,}",
+             ("down, back, and down again at least once"
+              + (f"; most so far {whole.most_cycles}"
+                 if whole.most_cycles > 2 else "")) ),
+        tile("Gone on a repeat", f"{whole.gone_again:,}",
+             "of those still gone, had come back before"),
     ])
 
     return (
@@ -967,13 +1012,23 @@ def _comebacks(page: Page) -> str:
         'read at the <em>last</em> check, so a post taken down and reinstated '
         'is counted there as still up — true of its state, and why the '
         'removal it survived has to be counted here instead.</p>'
+        '<p class="note"><strong>Coming back is not the end of the '
+        'story.</strong> A post can be removed, restored, and removed '
+        'again, and the two tiles on the right count that: '
+        '<em>Removed again</em> is every post found gone more than '
+        'once, and <em>Gone on a repeat</em> is how much of the '
+        'currently-missing set had already been reinstated at least '
+        'once. Reading reinstatement as recovery, without these, '
+        'overstates how settled an outcome it is.</p>'
         + table(["Platform", "Ever found gone", "Came back", "Reinstated",
-                 "Median time down"], rows, "reinstatement by platform")
+                 "Removed again", "Median time down"], rows,
+                "reinstatement by platform")
         + '<p class="note">From the check that found the post gone to the one '
         'that found it back. The figure on the right is an upper bound on how '
         'long it was down, not a measurement of it.</p>'
         f'{intervals(spells, ident="back")}'
-        + table(["Platform", "Video", "Gone by", "Back by", "At most"],
+        + table(["Platform", "Video", "Gone by", "Back by", "At most",
+                 "Times down", "Now"],
                 flat, "removed then reinstated")
         + "</section>"
     )

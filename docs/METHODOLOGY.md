@@ -1348,6 +1348,48 @@ duplicate spends the contact rather than repeating it. And ¥50 is
 owed the moment an interview ends, including to someone who stopped
 halfway; a memory of having paid is not a record of having paid.
 
+### 14e. Reinstatement is not recovery, and may not be the end
+
+A post found gone can be found back, and then found gone again.
+`Finding.disappearances` has counted that since survival analysis was
+written; nothing reported it, so the page showed "came back" for a
+post whose reinstatement had already been reversed. The removal
+section now carries *Removed again* (posts found gone more than once)
+and *Gone on a repeat* (of the posts gone at the last check, those
+that had come back before), and the per-post table says how many
+times each went down and whether it is up or gone right now.
+
+**What the instrument sees, and what it does not.** All of the above
+is observation: a page that answered, then did not, then did. The
+mechanism behind it is not observable from outside, and three things
+the researcher reports from her own use of the platform are
+hypotheses this study cannot confirm by watching:
+
+- that a removal often arrives as a prompt to **edit** the post
+  rather than as a deletion, so the author is the one who puts it
+  back;
+- that a post restored this way is commonly **throttled** -- reachable
+  by its address, which is what this study checks, and not
+  distributed;
+- that some restored posts are **removed again**, and some content
+  never survives at all.
+
+Only the third is visible here, and only as a count. **Reach is not
+measurable by this instrument at all**: every check asks whether a
+post's own page still answers, which is a question about
+availability, not about whether anyone is being shown it. A post that
+is up and throttled and a post that is up and promoted are the same
+observation. This has to be said wherever reinstatement is reported,
+because "it came back" invites the reading "nothing was lost", and
+the data cannot support that reading either way.
+
+These are therefore interview questions, not measurements: whether
+there was a notice, what it asked for, whether the post was edited to
+get it back, and what happened to its views afterwards. The counts
+here say which authors to ask -- a *gone again* row is a
+reinstatement that did not hold, and its author is the person who
+knows what happened in between.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school
