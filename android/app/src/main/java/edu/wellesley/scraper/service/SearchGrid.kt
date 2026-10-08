@@ -190,7 +190,18 @@ object SearchGrid {
                 val belowChrome = bounds.top > screenHeight * TOP_BAND
                 val onScreen = bounds.bottom <= screenHeight && bounds.top >= 0
                 if (!belowChrome || !onScreen) {
-                    onReject?.invoke("off the grid area: $text")
+                    // With the box, because this is the rejection that
+                    // cannot be reasoned about from a label. The
+                    // clickable ancestor of a title is sometimes the
+                    // card and sometimes the whole scrolling list, and
+                    // those two look identical in a dump of names --
+                    // they differ only in how tall the box is.
+                    onReject?.invoke(
+                        "off the grid area (top=${bounds.top} " +
+                            "bottom=${bounds.bottom} of $screenHeight, " +
+                            "chrome ends at ${(screenHeight * TOP_BAND).toInt()}" +
+                            "): $text",
+                    )
                     return@walk true
                 }
                 if (!isCardSized(

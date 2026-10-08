@@ -343,9 +343,16 @@ class AutoCapture(private val service: AccessibilityService) {
                 // dump of the window is not the answer either; what
                 // is needed is which candidate labels were seen and
                 // which rule threw each one out.
+                // A wider dump than the default thirty. On the
+                // results page the first twenty-odd nodes are all
+                // chrome -- back, the query, 搜索, 筛选, 清空, then
+                // thirteen tab names, then the related-search chips
+                // -- so thirty lines reached barely two posts and the
+                // grid itself was never in the report.
                 CaptureStats.onAutoFailure(
                     whyNotTheGrid(),
-                    SearchGrid.describe(activeRoots()) + rejectedCards(),
+                    SearchGrid.describe(activeRoots(), limit = 80)
+                        + rejectedCards(),
                 )
                 stop("not started on the search results")
                 return
