@@ -218,6 +218,9 @@ ensure_note_profile() {
 }
 
 FAILURES=""
+#: Steps that did not run at all. Not a failure, and not nothing:
+#: the measurement for that platform is missing for the day.
+SKIPPED=""
 say "=== daily run starting"
 
 # Before anything writes: there is no other copy of this database.
@@ -241,17 +244,60 @@ if [[ "$ONLY" != "douyin" ]]; then
   run "recheck links" "$PY" -m app.recheck
 fi
 
+#: Is the Douyin profile held by a run that is actually working?
+#:
+#: `pgrep` on the profile path answers "is a browser open", which is
+#: not the same question. Twice now a Chromium has outlived the
+#: Python that started it -- an interrupted hand-run leaves the
+#: browser sitting at about:blank -- and the scheduled job stood down
+#: for a corpse. A whole day of Douyin went unchecked and the log
+#: still said "finished cleanly".
+#:
+#: So: the browser is evidence, the Python process is the answer. If
+#: a page-reading command is running, a person or a job is using that
+#: profile and this run must not touch it. If the browser is there
+#: and nothing is driving it, it is wreckage; say so, clear it, and
+#: carry on.
+#:
+#: The trailing space in the pattern matters. Without it
+#: `.browser-profile` also matches `.browser-profile-note` and
+#: `.browser-profile-tiktok`, so a TikTok run by hand would have made
+#: this stand down for a profile it was never going to touch.
+profile_held_by_a_run() {
+  local pattern="user-data-dir=$PWD/$PROFILE "
+  pgrep -f -- "$pattern" >/dev/null 2>&1 || return 1
+
+  if pgrep -f "python.* -m app\.(daily|fetch_videos|fetch_authors|login)" \
+      >/dev/null 2>&1; then
+    return 0
+  fi
+
+  say "-- douyin: a browser holds $PROFILE but nothing is driving it"
+  say "   (left behind by an interrupted run; clearing it)"
+  pkill -f -- "$pattern" 2>/dev/null
+  # Chromium's helpers go with the parent, but give them a moment
+  # before the next step tries to open the same directory.
+  sleep 3
+  if pgrep -f -- "$pattern" >/dev/null 2>&1; then
+    say "   could not clear it; standing down"
+    return 0
+  fi
+  return 1
+}
+
 # Douyin last, and never in the way of the rest. The steps above are
 # cheap, they are the measurement for three platforms, and a Douyin
 # run that sits at a verification screen must not be what stops them
 # from happening.
 if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
-  if pgrep -f "user-data-dir=.*$PROFILE" >/dev/null 2>&1; then
+  if profile_held_by_a_run; then
     # Two runs on one browser profile is a lost run and possibly a
     # lost session. A hand-run in another window wins; this one says
-    # so and stands down.
-    say "-- douyin: skipped, that browser profile is already open"
-    say "   (a run by hand is using it; this is not a failure)"
+    # so and stands down -- and says so loudly, because a skipped
+    # Douyin pass is a day of this study's main measurement missing.
+    say "-- douyin: SKIPPED, that browser profile is in use by a run"
+    say "   (a run by hand is using it; no Douyin check happened today)"
+    SKIPPED="${SKIPPED}douyin "
   else
     # A rehearsal reads two pages of each, which is enough to open the
     # browser, sign in, reach the video folder and write a row -- every
@@ -314,6 +360,11 @@ if [[ -d "$(dirname "$STATUS_DIR")" ]]; then
   {
     if [[ -n "$FAILURES" ]]; then
       echo "NEEDS A LOOK -- $FAILURES"
+    elif [[ -n "$SKIPPED" ]]; then
+      # Not "OK". Nothing broke, and the day's measurement is still
+      # missing -- which is the thing the person reads this page to
+      # find out.
+      echo "DID NOT RUN -- $SKIPPED"
     else
       echo "OK"
     fi
@@ -334,5 +385,9 @@ fi
 if [[ -n "$FAILURES" ]]; then
   say "=== finished with failures: $FAILURES"
   exit 1
+fi
+if [[ -n "$SKIPPED" ]]; then
+  say "=== finished, but did not run: $SKIPPED"
+  exit 0
 fi
 say "=== finished cleanly"
