@@ -339,8 +339,26 @@ profile_held_by_a_run() {
   local pattern="user-data-dir=$PWD/$PROFILE "
   pgrep -f -- "$pattern" >/dev/null 2>&1 || return 1
 
-  if pgrep -f "python.* -m app\.(daily|fetch_videos|fetch_authors|login)" \
-      >/dev/null 2>&1; then
+  local driver
+  driver=$(pgrep -f "python.* -m app\.(daily|fetch_videos|fetch_authors|login)" \
+      2>/dev/null | head -1)
+  if [[ -n "$driver" ]]; then
+    # Name it and say how old it is. Standing down for a working run
+    # is right; standing down every morning for a run that wedged on
+    # Tuesday is a week of missing data, and the two look identical
+    # in a log that only says "a run is using it".
+    #
+    # Not killed from here. A page read is a database write, and a
+    # python that is slow is not a python that is finished -- the
+    # judgement of whether a long run is still working belongs to
+    # the person, who now has the pid and the age to make it with.
+    local age
+    age=$(ps -o etime= -p "$driver" 2>/dev/null | tr -d ' ')
+    say "-- douyin: held by pid $driver, running for ${age:-?}"
+    if [[ "$age" == *-* ]]; then
+      say "   THAT IS OVER A DAY OLD. A run this old is wedged, not busy:"
+      say "   check it, then  kill $driver  and kickstart this job again"
+    fi
     return 0
   fi
 

@@ -34,7 +34,8 @@ def _function() -> str:
 
 
 def _run(tmp_path: Path, *, browser: bool, python: bool,
-         survives_kill: bool = False) -> subprocess.CompletedProcess:
+         survives_kill: bool = False,
+         age: str | None = None) -> subprocess.CompletedProcess:
     """Call the gate with a stubbed world. Returns the process.
 
     `browser` -- a Chromium holds the profile directory.
@@ -56,13 +57,24 @@ def _run(tmp_path: Path, *, browser: bool, python: bool,
         "        exit 1\n"
         "      fi\n"
         f"      exit {0 if browser else 1} ;;\n"
-        "    *app*) "
-        f"exit {0 if python else 1} ;;\n"
-        "  esac\n"
+        # The guard now reads a pid off this, not just an exit code.
+        "    *app*)\n"
+        + ("      echo 4242\n      exit 0 ;;\n" if python
+           else "      exit 1 ;;\n")
+        + "  esac\n"
         "done\n"
         "exit 1\n",
         encoding="utf-8",
     )
+    # `ps -o etime=` for the pretend driver. BSD prints DD-HH:MM:SS
+    # once a process is over a day old, and that dash is the signal
+    # the guard reads.
+    (bin_dir / "ps").write_text(
+        "#!/bin/bash\n"
+        f"cat {tmp_path}/age 2>/dev/null || echo '  04:11'\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "ps").chmod(0o755)
     (bin_dir / "pkill").write_text(
         f"#!/bin/bash\ntouch {tmp_path}/killed\nexit 0\n", encoding="utf-8")
     for name in ("pgrep", "pkill"):
@@ -70,6 +82,8 @@ def _run(tmp_path: Path, *, browser: bool, python: bool,
 
     if survives_kill:
         (tmp_path / "stubborn").touch()
+    if age is not None:
+        (tmp_path / "age").write_text(age + "\n", encoding="utf-8")
 
     script = tmp_path / "gate.sh"
     script.write_text(
@@ -260,3 +274,30 @@ def test_the_freed_browser_goes_to_the_other_half_of_the_notes() -> None:
     assert second - opened < 120
     # And only once the video pass has actually gone.
     assert 'if [[ -z "$pid_c" ]] && ! kill -0 "$pid_a" 2>/dev/null; then' in text
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_a_working_run_and_a_wedged_one_must_not_read_the_same() -> None:
+    """Standing down every morning for Tuesday's run is a week of nothing.
+
+    The guard defers to a live `app.*` process, which is right: a
+    page read is a database write and a slow run is not a finished
+    one, so nothing here kills it. But "a run is using it" was all
+    the log said, and a run that wedged yesterday looks exactly like
+    one that started an hour ago. The pid and the age are what tell
+    them apart, and the judgement stays with the person.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        busy = _run(Path(tmp), browser=True, python=True, age="  04:11")
+    assert "STOOD_DOWN" in busy.stdout
+    assert "held by pid 4242, running for 04:11" in busy.stdout
+    assert "OVER A DAY OLD" not in busy.stdout
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # BSD `ps` prints DD-HH:MM:SS once a process is over a day old.
+        wedged = _run(Path(tmp), browser=True, python=True, age="1-03:22:14")
+    assert "STOOD_DOWN" in wedged.stdout
+    assert "OVER A DAY OLD" in wedged.stdout
+    assert "kill 4242" in wedged.stdout
