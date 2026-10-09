@@ -106,6 +106,19 @@ DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-1}"
 #: wakes. Five minutes is often enough to tell a slow run from a
 #: stopped one, and rare enough not to bury the log.
 HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-300}"
+#: Seconds each 图文 worker waits between pages.
+#:
+#: Splitting 图文 across two browsers doubled the request rate
+#: against one endpoint, and the first run that did it read two
+#: thirds of nothing: median 21.8s against the previous day's 5.3s,
+#: 1,002 of 1,501 pages unreadable. The site had stopped returning
+#: the record and the pass was timing out on every page.
+#:
+#: Two workers at two seconds is about the rate one worker at no
+#: pause was already managing, which is the rate the site tolerated.
+#: Halving the wall time was never worth buying it back in pages
+#: that answer nothing.
+SHARD_PAUSE="${SHARD_PAUSE:-2}"
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -202,7 +215,7 @@ run_together() {
     >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
-    --shard 1/2 \
+    --shard 1/2 --pause "$SHARD_PAUSE" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
     >"$log_b" 2>&1 &
   local pid_b=$!
@@ -229,7 +242,7 @@ run_together() {
       say "   $label_a done; starting the second half of $label_b in its browser"
       set -m
       "$PY" -m app.daily --platform douyin_note --profile "$PROFILE" \
-        --shard 2/2 \
+        --shard 2/2 --pause "$SHARD_PAUSE" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
         >"$log_c" 2>&1 &
       pid_c=$!

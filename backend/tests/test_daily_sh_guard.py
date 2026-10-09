@@ -266,7 +266,8 @@ def test_the_freed_browser_goes_to_the_other_half_of_the_notes() -> None:
         line.strip() for line in text.splitlines()
         if "--shard" in line and not line.lstrip().startswith("#")
     ]
-    assert launches == ["--shard 1/2 \\", "--shard 2/2 \\"]
+    assert [line.split(" --pause")[0] for line in launches] == [
+        "--shard 1/2", "--shard 2/2"]
 
     # The second half takes over the video profile, not a third one.
     second = text.index("        --shard 2/2")
@@ -301,3 +302,30 @@ def test_a_working_run_and_a_wedged_one_must_not_read_the_same() -> None:
     assert "STOOD_DOWN" in wedged.stdout
     assert "OVER A DAY OLD" in wedged.stdout
     assert "kill 4242" in wedged.stdout
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_two_workers_on_one_endpoint_are_paced() -> None:
+    """Splitting 图文 in two doubled the request rate and broke the run.
+
+    One worker at no pause read 1,396 pages with 45 unreadable. The
+    first run with two workers, also at no pause, read 470 of 1,501
+    and timed out on the rest -- median 21.8s against 5.3s the day
+    before. The site had stopped returning the record.
+
+    So both shards carry a pause. Halving the wall time is not worth
+    buying back in pages that answer nothing, and a page that
+    answers nothing is not a free retry: it is a check that spent a
+    request and learnt nothing.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    launches = [
+        line.strip() for line in text.splitlines()
+        if "--shard" in line and not line.lstrip().startswith("#")
+    ]
+    assert launches == [
+        '--shard 1/2 --pause "$SHARD_PAUSE" \\',
+        '--shard 2/2 --pause "$SHARD_PAUSE" \\',
+    ]
+    assert 'SHARD_PAUSE="${SHARD_PAUSE:-2}"' in text
