@@ -658,3 +658,60 @@ def test_a_tab_is_thrown_away_between_reads_by_default() -> None:
     never._fresh_every = 0
     never._since_fresh = 10_000
     assert not due(never)
+
+
+def test_forgetting_keeps_the_tab_and_the_session() -> None:
+    """The cure for a stale tab must not cost the machine.
+
+    Discarding the tab works and raises Chromium to the front every
+    time on macOS, so a four-hour pass steals the keyboard every few
+    seconds. Headless would avoid that and cannot be used: the
+    session check comes back empty there, and a pass that cannot see
+    its own login is worse than one that interrupts typing.
+
+    `about:blank` is a fresh document in the same tab -- which is
+    where the app's caches live -- while the cookie jar belongs to
+    the context and is untouched.
+    """
+    from app.browser import Browser
+
+    went: list[str] = []
+    discarded: list[bool] = []
+
+    class _Page:
+        def is_closed(self):
+            return False
+
+        def goto(self, url, **kw):
+            went.append(url)
+
+    quiet = Browser.__new__(Browser)
+    quiet._page = _Page()
+    quiet._discard_page = lambda: discarded.append(True)
+
+    Browser._forget(quiet)
+
+    assert went == ["about:blank"], "the document goes, the tab stays"
+    assert not discarded, "and the slow way is not taken when it works"
+
+
+def test_a_blank_navigation_that_fails_falls_back_to_the_tab() -> None:
+    """Reading a cached page that answers nothing is the worse outcome."""
+    from app.browser import Browser
+
+    discarded: list[bool] = []
+
+    class _Stuck:
+        def is_closed(self):
+            return False
+
+        def goto(self, url, **kw):
+            raise RuntimeError("navigation failed")
+
+    stuck = Browser.__new__(Browser)
+    stuck._page = _Stuck()
+    stuck._discard_page = lambda: discarded.append(True)
+
+    Browser._forget(stuck)
+
+    assert discarded == [True]

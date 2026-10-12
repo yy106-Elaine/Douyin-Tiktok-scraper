@@ -378,6 +378,35 @@ class Browser:
         except Exception:  # noqa: BLE001 - already gone is the goal
             pass
 
+    def _forget(self) -> None:
+        """Drop the app's in-memory state, keeping the tab.
+
+        Throwing the tab away works and costs the window: on macOS a
+        new tab raises Chromium to the front, so a four-hour pass
+        steals the keyboard every few seconds and the machine cannot
+        be used for anything else. Headless would solve that and
+        does not: the session check comes back empty there, and a
+        pass that cannot see its own login is worse than one that
+        interrupts typing.
+
+        So the tab stays and the document goes. `about:blank` is a
+        fresh document in the same tab, which is where `JX_CACHE` and
+        `FEED_CACHE_INFO` live; the cookie jar belongs to the context
+        and is untouched, so the session survives.
+
+        If the blank navigation fails the tab is discarded instead --
+        the slow way, which is still better than reading a cached
+        page that answers nothing.
+        """
+        page = self._page
+        if page is None or page.is_closed():
+            return
+        try:
+            page.goto("about:blank", wait_until="domcontentloaded",
+                      timeout=5_000)
+        except Exception:  # noqa: BLE001 - fall back to the sure way
+            self._discard_page()
+
     def _read_once(self, url: str, settle_seconds: float = 2.5) -> PageRead:
         if self._read_any and self._pause:
             time.sleep(self._pause)
@@ -403,7 +432,7 @@ class Browser:
         # request spent to learn nothing and another one owed
         # tomorrow.
         if (self._fresh_every and self._since_fresh >= self._fresh_every):
-            self._discard_page()
+            self._forget()
             self._since_fresh = 0
         self._since_fresh += 1
 
