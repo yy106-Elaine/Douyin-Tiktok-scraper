@@ -250,34 +250,6 @@ def test_the_heartbeat_does_not_reach_the_phone_page() -> None:
 
 
 @pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
-def test_the_freed_browser_goes_to_the_other_half_of_the_notes() -> None:
-    """304 videos take twenty minutes; 1,384 图文 take hours.
-
-    The video browser used to sit idle for the rest of the run. Now
-    the 图文 list is halved from the start and the second half opens
-    in the video profile the moment it is free -- two browsers
-    throughout, never three, because the same account on more than
-    two is what a stolen account looks like.
-    """
-    text = SCRIPT.read_text(encoding="utf-8")
-
-    # The launch lines, not the comments that mention them.
-    launches = [
-        line.strip() for line in text.splitlines()
-        if "--shard" in line and not line.lstrip().startswith("#")
-    ]
-    assert [line.split(" --pause")[0] for line in launches] == [
-        "--shard 1/2", "--shard 2/2"]
-
-    # The second half takes over the video profile, not a third one.
-    second = text.index("        --shard 2/2")
-    opened = text.rindex('--profile "$PROFILE"', 0, second)
-    assert second - opened < 120
-    # And only once the video pass has actually gone.
-    assert 'if [[ -z "$pid_c" ]] && ! kill -0 "$pid_a" 2>/dev/null; then' in text
-
-
-@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
 def test_a_working_run_and_a_wedged_one_must_not_read_the_same() -> None:
     """Standing down every morning for Tuesday's run is a week of nothing.
 
@@ -304,28 +276,58 @@ def test_a_working_run_and_a_wedged_one_must_not_read_the_same() -> None:
     assert "kill 4242" in wedged.stdout
 
 
+
+
 @pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
-def test_two_workers_on_one_endpoint_are_paced() -> None:
-    """Splitting 图文 in two doubled the request rate and broke the run.
+def test_the_parallel_pass_runs_one_worker_per_endpoint() -> None:
+    """Two browsers on the 图文 endpoint read half of nothing.
 
-    One worker at no pause read 1,396 pages with 45 unreadable. The
-    first run with two workers, also at no pause, read 470 of 1,501
-    and timed out on the rest -- median 21.8s against 5.3s the day
-    before. The site had stopped returning the record.
+    10-08, one worker:      1,396 pages,    45 unreadable (3%), median 5.3s
+    10-09, two, no pause:   1,501 pages, 1,002 unreadable (67%)
+    10-12, two, 2s pause:   1,339 pages,   676 unreadable (50%), ~20s a page
 
-    So both shards carry a pause. Halving the wall time is not worth
-    buying back in pages that answer nothing, and a page that
-    answers nothing is not a free retry: it is a check that spent a
-    request and learnt nothing.
+    The pause did not fix it and could not. A worker with no pause
+    still takes about six seconds a page, so one worker was already
+    only managing a page every seven seconds; two at two seconds is
+    still roughly double that. By the third run the site was refusing
+    half the records even at twenty seconds a page — a quota over a
+    longer window than slowing down inside one run can reach.
+
+    The saving was never real either. A page that answers nothing is
+    read again another day, so splitting the list raised the total
+    work rather than halving the wall time.
+
+    The video pass keeps its own browser because it reads a different
+    endpoint. That pairing has worked since it was written.
     """
     text = SCRIPT.read_text(encoding="utf-8")
+    body = text[text.index("run_together() {"):text.index("ensure_note_profile()")]
 
-    launches = [
-        line.strip() for line in text.splitlines()
-        if "--shard" in line and not line.lstrip().startswith("#")
+    launched = [line.strip() for line in body.splitlines()
+                if "-m app.daily --platform" in line]
+    assert launched == [
+        '"$PY" -m app.daily --platform douyin \\',
+        '"$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \\',
     ]
-    assert launches == [
-        '--shard 1/2 --pause "$SHARD_PAUSE" \\',
-        '--shard 2/2 --pause "$SHARD_PAUSE" \\',
-    ]
-    assert 'SHARD_PAUSE="${SHARD_PAUSE:-2}"' in text
+    # The halving is gone from the scheduled job entirely.
+    assert "--shard" not in text
+    assert "note2.log" not in text
+    assert "SHARD_PAUSE" not in text
+
+
+@pytest.mark.skipif(not SCRIPT.exists(), reason="daily.sh is not here")
+def test_shard_stays_in_app_daily_for_separate_machines() -> None:
+    """Dropping it from the schedule is not deciding it was a bad idea.
+
+    Two workers on one endpoint from one address is what failed. The
+    flag still splits a list disjointly, which is what a second
+    machine on a second address would need, so it keeps its tests and
+    its place in the CLI.
+    """
+    from app.daily import shard_of
+
+    whole = [f"v{i}" for i in range(7)]
+    halves = [shard_of(whole, n, 2) for n in (1, 2)]
+
+    assert sorted(sum(halves, [])) == sorted(whole)
+    assert not set(halves[0]) & set(halves[1])

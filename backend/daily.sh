@@ -106,19 +106,6 @@ DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-1}"
 #: wakes. Five minutes is often enough to tell a slow run from a
 #: stopped one, and rare enough not to bury the log.
 HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-300}"
-#: Seconds each 图文 worker waits between pages.
-#:
-#: Splitting 图文 across two browsers doubled the request rate
-#: against one endpoint, and the first run that did it read two
-#: thirds of nothing: median 21.8s against the previous day's 5.3s,
-#: 1,002 of 1,501 pages unreadable. The site had stopped returning
-#: the record and the pass was timing out on every page.
-#:
-#: Two workers at two seconds is about the rate one worker at no
-#: pause was already managing, which is the rate the site tolerated.
-#: Halving the wall time was never worth buying it back in pages
-#: that answer nothing.
-SHARD_PAUSE="${SHARD_PAUSE:-2}"
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 LOG="$LOG_DIR/daily-$(date +%F).log"
@@ -197,17 +184,32 @@ run_together() {
   local label_a="$1" label_b="$2"; shift 2
   local log_a="$LOG_DIR/$(date +%F)-video.log"
   local log_b="$LOG_DIR/$(date +%F)-note.log"
-  local log_c="$LOG_DIR/$(date +%F)-note2.log"
 
-  # 图文 outnumber the videos five to one, so the two browsers used
-  # to finish an hour and a half apart: the video pass was done in
-  # twenty minutes and its browser then sat idle while 图文 ground on
-  # alone. The 图文 list is therefore halved from the start, and the
-  # second half begins in the video browser the moment it is free.
-  # Two browsers at a time throughout, which is what the account can
-  # afford -- the same account on more than that is what a stolen
-  # account looks like to a risk system.
-  say "-- $label_a, and $label_b in two halves"
+  # One worker per endpoint, and that is the whole rule.
+  #
+  # 图文 outnumber the videos five to one, so the video browser is
+  # free after twenty minutes while 图文 grinds on for hours. Filling
+  # it with the other half of the 图文 list was the obvious move and
+  # it was wrong: two workers on one endpoint read half of nothing.
+  #
+  # 10-08, one 图文 worker:   1,396 pages, 45 unreadable (3%), median 5.3s
+  # 10-09, two, no pause:     1,501 pages, 1,002 unreadable (67%)
+  # 10-12, two, 2s pause:     1,339 pages, 676 unreadable (50%), ~20s each
+  #
+  # The pause did not fix it, because the rate was never the thing
+  # being measured: a worker with no pause still takes ~6s a page, so
+  # one worker was already only managing a page every seven seconds.
+  # Two at two seconds is still roughly double that, and by 10-12 the
+  # site was refusing half the records even while each page took
+  # twenty seconds -- a quota over a longer window, which slowing
+  # down inside one run cannot buy back.
+  #
+  # And the saving was never real. A page that answers nothing has to
+  # be read again another day, so splitting the list did not halve
+  # the work, it increased it. The video pass keeps its own browser
+  # because it reads a different endpoint, which is the pairing that
+  # has always worked.
+  say "-- $label_a and $label_b, together"
 
   set -m
   "$PY" -m app.daily --platform douyin \
@@ -215,12 +217,10 @@ run_together() {
     >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
-    --shard 1/2 --pause "$SHARD_PAUSE" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
     >"$log_b" 2>&1 &
   local pid_b=$!
   set +m
-  local pid_c=""
 
   # A heartbeat into the main log while they run. Without it the
   # parallel passes write only to their own files, and the log a
@@ -228,49 +228,19 @@ run_together() {
   # exactly like a run that has hung, and twice now has been treated
   # as one. The counts come from the passes' own `[n/total]` lines,
   # so this reports what they report and invents nothing.
-  local code_a=0 code_b=0 code_c=0 waited=0
-  while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null \
-        || { [[ -n "$pid_c" ]] && kill -0 "$pid_c" 2>/dev/null; }; do
+  local code_a=0 code_b=0 waited=0
+  while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null; do
     sleep 15
     waited=$((waited + 15))
-
-    # The video pass is done and its browser is free: start the other
-    # half of 图文 in it. `--shard 2/2` is disjoint from the half
-    # already running, so neither worker has to know about the other.
-    if [[ -z "$pid_c" ]] && ! kill -0 "$pid_a" 2>/dev/null; then
-      wait "$pid_a" || code_a=$?
-      say "   $label_a done; starting the second half of $label_b in its browser"
-      set -m
-      "$PY" -m app.daily --platform douyin_note --profile "$PROFILE" \
-        --shard 2/2 --pause "$SHARD_PAUSE" \
-        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
-        >"$log_c" 2>&1 &
-      pid_c=$!
-      set +m
-    fi
-
     if (( waited % HEARTBEAT_SECONDS == 0 )); then
-      local line
-      line="$(furthest "$log_b" "$label_b 1/2")"
-      if [[ -n "$pid_c" ]]; then
-        line="$line | $(furthest "$log_c" "$label_b 2/2")"
-      else
-        line="$(furthest "$log_a" "$label_a") | $line"
-      fi
-      say "   ... $line"
+      say "   ... $(furthest "$log_a" "$label_a") | $(furthest "$log_b" "$label_b")"
     fi
   done
-  # Harmless when already reaped above; bash keeps the status.
-  kill -0 "$pid_a" 2>/dev/null && { wait "$pid_a" || code_a=$?; }
+  wait "$pid_a" || code_a=$?
   wait "$pid_b" || code_b=$?
-  [[ -n "$pid_c" ]] && { wait "$pid_c" || code_c=$?; }
 
-  # An array, because the labels have spaces in them and an
-  # unquoted list would split "图文 check 1/2" into three steps.
-  local finished=("$label_a:$code_a:$log_a" "$label_b 1/2:$code_b:$log_b")
-  [[ -n "$pid_c" ]] && finished+=("$label_b 2/2:$code_c:$log_c")
   local pair label rest code where
-  for pair in "${finished[@]}"; do
+  for pair in "$label_a:$code_a:$log_a" "$label_b:$code_b:$log_b"; do
     label="${pair%%:*}"; rest="${pair#*:}"
     code="${rest%%:*}"; where="${rest#*:}"
     cat "$where" >>"$LOG" 2>/dev/null
