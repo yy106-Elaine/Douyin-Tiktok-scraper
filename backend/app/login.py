@@ -93,7 +93,20 @@ def main() -> None:  # pragma: no cover - interactive by nature
                 )
         return
 
-    with open_browser(profile, headless=False, platform=site) as browser:
+    # The one window a person has to use, so it gets a whole browser.
+    #
+    # `light` blocks images and fonts, which is right for a pass that
+    # reads JSON and wrong here: the slider challenge *is* an image,
+    # and a blocked one renders as "图片加载失败，请刷新重试或换个网络"
+    # -- a message that reads exactly like the site refusing to serve
+    # a challenge, on the evening a session had to be renewed.
+    #
+    # `fresh_every` is off for the same reason. Blanking the document
+    # between reads keeps a pass from going stale; doing it to a
+    # window somebody is typing a verification code into would throw
+    # the code away.
+    with open_browser(profile, headless=False, platform=site,
+                      light=False, fresh_every=0) as browser:
         browser.read(home, settle_seconds=1.0)
         if browser.is_signed_in() and not args.force:
             found = ", ".join(browser.session_cookies())

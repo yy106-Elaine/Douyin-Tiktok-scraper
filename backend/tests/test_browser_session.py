@@ -715,3 +715,26 @@ def test_a_blank_navigation_that_fails_falls_back_to_the_tab() -> None:
     Browser._forget(stuck)
 
     assert discarded == [True]
+
+
+def test_the_sign_in_window_is_not_a_light_one() -> None:
+    """The slider challenge is an image, and `light` blocks images.
+
+    A blocked challenge renders as "图片加载失败，请刷新重试或换个网络",
+    which reads exactly like the site declining to issue one -- on
+    the evening a session had to be renewed, which is the worst
+    possible moment to be given a misleading refusal.
+
+    And the page must not recycle itself: blanking the document
+    between reads keeps a pass from going stale, and doing it to a
+    window somebody is typing a verification code into throws the
+    code away.
+    """
+    import inspect
+
+    from app import login
+
+    source = inspect.getsource(login.main)
+    opened = source[source.index("headless=False"):]
+    assert "light=False" in opened[:300]
+    assert "fresh_every=0" in opened[:300]
