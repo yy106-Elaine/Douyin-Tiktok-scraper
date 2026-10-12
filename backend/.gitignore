@@ -2,3 +2,6 @@ peeked/
 
 # The recruitment queue names real people and their accounts.
 outreach*.csv
+
+# Run logs name posts and accounts; they stay on the machine.
+logs/
