@@ -461,6 +461,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--fresh-every", type=int, default=1, metavar="N",
+        help=(
+            "open a new tab every N pages (default 1, a fresh tab each "
+            "time). 0 reuses one tab for the whole pass, which is what "
+            "this did until a reused tab was found to stop asking for "
+            "the record -- kept only to measure against"
+        ),
+    )
+    parser.add_argument(
         "--shard", type=_shard, default=None, metavar="N/M",
         help=(
             "this worker's share of the due videos, as 1/2, 2/2 and so "
@@ -682,6 +691,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             pause_seconds=0,
             platform=args.platform,
             light=not args.heavy,
+            fresh_every=args.fresh_every,
         ) as browser:
             # Checked once, here. A run that asks to sign in at each of
             # two hundred videos is a run with no session at all, and

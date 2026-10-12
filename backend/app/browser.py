@@ -232,6 +232,7 @@ class Browser:
         pause_seconds: float = 2.0,
         domain: str = "douyin.com",
         light: bool = True,
+        fresh_every: int = 1,
     ) -> None:
         self._context = context
         self._pause = pause_seconds
@@ -249,6 +250,12 @@ class Browser:
         self._domain = domain
         self._read_any = False
         self._page = None
+        #: Reads to take in one tab before throwing it away. 1 is a
+        #: fresh tab for every page; 0 never recycles, which is what
+        #: this did before and is kept only so the old behaviour can
+        #: be measured against the new one.
+        self._fresh_every = fresh_every
+        self._since_fresh = 0
         #: Set once a wall went unanswered. See `wait_for_person`.
         self._stopped_waiting = False
         #: When a list, every JSON response the page receives is
@@ -375,6 +382,30 @@ class Browser:
         if self._read_any and self._pause:
             time.sleep(self._pause)
         self._read_any = True
+
+        # A tab that has been somewhere stops asking for the next
+        # place properly.
+        #
+        # One tab was reused for a whole pass, and the pages it
+        # fetched grew steadily emptier: by the middle of a run half
+        # of them parsed to nothing. The audit says why. A page read
+        # in a fresh tab requests `aweme/post` or `aweme/detail` --
+        # the record, which is watched. The same page read in a tab
+        # that has already visited a hundred posts requests
+        # `aweme/related` and `tab/feed` instead and never asks for
+        # the record at all. Douyin's own client cache (`JX_CACHE`,
+        # `FEED_CACHE_INFO`, both in the markup) is doing its job:
+        # the app believes it already has what it needs.
+        #
+        # So the tab is thrown away and reopened. It costs a tab open
+        # per read, against half the pass coming back empty -- and a
+        # page that answers nothing is not a free retry, it is a
+        # request spent to learn nothing and another one owed
+        # tomorrow.
+        if (self._fresh_every and self._since_fresh >= self._fresh_every):
+            self._discard_page()
+            self._since_fresh = 0
+        self._since_fresh += 1
 
         try:
             if self._page is None or self._page.is_closed():
@@ -697,6 +728,7 @@ def open_browser(
     pause_seconds: float = 2.0,
     platform: str = "douyin",
     light: bool = True,
+    fresh_every: int = 1,
 ):
     """A browser using `profile`, created on first use.
 
@@ -756,6 +788,7 @@ def open_browser(
                 pause_seconds=pause_seconds,
                 domain=DOMAINS.get(platform, "douyin.com"),
                 light=light,
+                fresh_every=fresh_every,
             )
         finally:
             context.close()

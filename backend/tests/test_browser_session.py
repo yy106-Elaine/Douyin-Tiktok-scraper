@@ -618,3 +618,43 @@ def test_an_audit_that_is_off_must_not_read_as_an_empty_one() -> None:
 
     fresh.audit = []
     assert fresh.audit == [], "on and quiet is a different claim from off"
+
+
+def test_a_tab_is_thrown_away_between_reads_by_default() -> None:
+    """A tab that has been somewhere stops asking for the next place.
+
+    One tab was reused for a whole pass and the pages it fetched grew
+    emptier as it went: by the middle of a run half parsed to nothing.
+    The audit says why. A fresh tab requests `aweme/post` or
+    `aweme/detail` -- the record, which is watched. A tab that has
+    already visited a hundred posts requests `aweme/related` and
+    `tab/feed` instead, and never asks for the record at all:
+    Douyin's own client cache believes it already has what it needs.
+    """
+    from app.browser import Browser
+
+    recycles = Browser.__new__(Browser)
+    recycles._fresh_every = 1
+    recycles._since_fresh = 0
+
+    # The rule the read path applies, stated once here.
+    def due(browser) -> bool:
+        return bool(browser._fresh_every
+                    and browser._since_fresh >= browser._fresh_every)
+
+    assert not due(recycles), "the first read needs no discard"
+    recycles._since_fresh = 1
+    assert due(recycles), "and every read after it opens a new tab"
+
+    every_ten = Browser.__new__(Browser)
+    every_ten._fresh_every = 10
+    every_ten._since_fresh = 9
+    assert not due(every_ten)
+    every_ten._since_fresh = 10
+    assert due(every_ten)
+
+    # 0 is the old behaviour, kept only so it can be measured against.
+    never = Browser.__new__(Browser)
+    never._fresh_every = 0
+    never._since_fresh = 10_000
+    assert not due(never)
