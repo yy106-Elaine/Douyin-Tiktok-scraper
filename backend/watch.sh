@@ -71,8 +71,11 @@ while :; do
   # Whether anything is actually running, so a finished run does not
   # sit there looking like a stalled one.
   echo
-  if pgrep -f "python.* -m app\.daily" >/dev/null 2>&1; then
-    printf '  %s pass(es) running\n' "$(pgrep -fc "python.* -m app\.daily")"
+  # Counted with wc, because BSD pgrep has no -c and prints its
+  # usage instead -- which is what it did on the first real run.
+  running=$(pgrep -f "python.* -m app\.daily" 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "${running:-0}" -gt 0 ]]; then
+    printf '  %s pass(es) running\n' "$running"
   else
     printf '  no app.daily running — the passes above have finished\n'
   fi
