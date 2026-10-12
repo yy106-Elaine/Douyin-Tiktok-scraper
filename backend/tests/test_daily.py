@@ -623,3 +623,46 @@ def test_a_shard_that_is_not_a_share_of_anything_is_refused() -> None:
     for text in ("", "2", "0/2", "3/2", "a/b", "1/0"):
         with pytest.raises(Exception):
             _shard(text)
+
+
+def test_an_unreadable_page_says_what_it_did_get() -> None:
+    """"Nothing readable" is true of three different problems.
+
+    A record that moved to an endpoint nobody watches, a page the
+    site declined to serve, and a record that arrived after the wait
+    gave up all produce the same line — and four days went into
+    telling them apart by hand, wrongly, four times. The counts
+    separate them in the log itself.
+    """
+    from app.daily import _what_arrived
+    from app.pagedata import Fetched
+
+    quiet = Fetched(url="u", audit=[])
+    assert "no JSON at all" in _what_arrived(quiet)
+
+    busy = Fetched(url="u", payloads=[{"a": 1}], audit=[
+        "https://www.douyin.com/aweme/v1/web/aweme/post/?x=1",
+        "https://mcs.zijieapi.com/list",
+        "https://mon.zijieapi.com/monitor_web/settings/browser-settings",
+    ])
+    said = _what_arrived(busy)
+    assert "1 payload(s)" in said
+    assert "3 JSON" in said
+    # The site's own endpoint is named; the telemetry is not, because
+    # naming it buries the one line worth reading.
+    assert "aweme/post" in said
+    assert "zijieapi" not in said
+
+    # Telemetry only: the page talked, just not to the site about this.
+    telemetry = Fetched(url="u", audit=["https://mcs.zijieapi.com/list"])
+    assert "none from the site" in _what_arrived(telemetry)
+
+
+def test_an_audit_that_was_off_is_not_reported_as_quiet() -> None:
+    """None and [] are different claims; only one of them is evidence."""
+    from app.daily import _what_arrived
+    from app.pagedata import Fetched
+
+    said = _what_arrived(Fetched(url="u", payloads=[]))
+    assert "0 payload(s)" in said
+    assert "JSON" not in said, "nothing was being recorded, so say nothing"

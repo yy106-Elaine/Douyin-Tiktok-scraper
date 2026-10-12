@@ -381,6 +381,12 @@ class Browser:
         page = self._page
 
         payloads: list[dict] = []
+        # Per read, not per session: a takedown pass reads thousands
+        # of pages and the question the audit answers is always about
+        # one of them. Bounded this way it costs a page's worth of
+        # urls, which is what makes it affordable to leave on.
+        if self.audit is not None:
+            self.audit.clear()
 
         asked = _asked_for(url)
 
@@ -495,6 +501,8 @@ class Browser:
             Fetched(
                 url=url, html=html, http_status=status, payloads=payloads,
                 missing=gone_in_words,
+                audit=(None if self.audit is None
+                       else [where for where, _ in self.audit]),
             ),
             wall=self._is_wall(landed, text),
             missing=gone_in_words,

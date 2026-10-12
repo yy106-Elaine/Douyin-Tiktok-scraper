@@ -66,6 +66,33 @@ from .relevance import HIDDEN, classify
 SLOW_PAGE_SECONDS = 20.0
 
 
+def _what_arrived(page) -> str:
+    """A short account of the traffic behind an unreadable page.
+
+    Payload count comes from the page itself. The endpoint names come
+    from the audit when one is on, and when it is off this says so
+    rather than printing a zero -- an instrument that was not looking
+    must not report silence.
+    """
+    seen = getattr(page, "audit", None)
+    told = f"  [{len(page.payloads)} payload(s)"
+    if seen is None:
+        return told + "]"
+    if not seen:
+        return told + ", no JSON at all]"
+    # Only the douyin/tiktok endpoints: the rest of a page's JSON is
+    # telemetry (mcs.zijieapi, monitor_web) and naming it buries the
+    # one line worth reading.
+    ours = [where for where in seen
+            if "douyin.com" in where or "tiktok.com" in where]
+    tails = dict.fromkeys(
+        "/".join(where.split("?")[0].rstrip("/").split("/")[-2:])
+        for where in ours
+    )
+    named = ", ".join(tails)[:110] or "none from the site"
+    return f"{told}, {len(seen)} JSON, site: {named}]"
+
+
 def one(
     session: Session,
     read,
@@ -138,9 +165,17 @@ def one(
         # looked and the page said nothing. It is filed as telling us
         # nothing, never as a sighting.
         record_check(session, video_id, page, NOTHING_READ, url, site.platform)
+        # What the page did get, said on the line that says it got
+        # nothing. "Nothing readable" is true of a page whose record
+        # moved to an endpoint nobody watches, of a page the site
+        # declined to serve, and of a page whose record arrived after
+        # the wait gave up -- three different problems with three
+        # different fixes, and four days went into telling them apart
+        # by hand. The counts separate them in the log itself.
         return (
             "unreadable",
-            page.error or f"HTTP {page.http_status}: nothing readable",
+            (page.error or f"HTTP {page.http_status}: nothing readable")
+            + _what_arrived(page),
             0,
         )
 
@@ -651,6 +686,10 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             # Checked once, here. A run that asks to sign in at each of
             # two hundred videos is a run with no session at all, and
             # saying so once is the useful thing to do.
+            # On for the whole pass. It is cleared per page, so it
+            # holds one page's urls at a time, and it is what turns
+            # "nothing readable" from a dead end into a report.
+            browser.audit = []
             browser.read(HOMES[args.platform], settle_seconds=1.0)
             if not browser.is_signed_in():
                 message = (

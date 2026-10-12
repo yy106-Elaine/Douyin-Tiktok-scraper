@@ -53,6 +53,12 @@ class Fetched:
     http_status: int | None = None
     error: str | None = None
     payloads: list[dict] = field(default_factory=list)
+    #: Every JSON answer the page received, as urls, when the browser
+    #: was auditing. None when it was not -- and the difference
+    #: matters: an empty list says the page asked for nothing, None
+    #: says nobody was listening, and a pass that renders those the
+    #: same turns its own blind spot into a finding.
+    audit: list[str] | None = None
     #: The page said, in words, that the post is not there --
     #: "你要观看的视频不存在". A removal that leaves wording instead of
     #: handing over a different video. Carried here rather than only
