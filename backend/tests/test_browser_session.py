@@ -547,3 +547,54 @@ def test_a_profile_already_open_says_so_in_one_line(tmp_path, monkeypatch) -> No
     assert "pgrep" in said
     # A refusal for any other reason is not swallowed.
     assert "SingletonLock" not in said
+
+
+def test_the_audit_records_every_json_answer_not_only_the_watched_ones() -> None:
+    """`_WANTED_RESPONSES` is a list of endpoints that were true once.
+
+    When a site moves its record to a new one, the symptom is a page
+    that reads as empty — which from inside is indistinguishable from
+    a page the site declined to serve, and that ambiguity cost four
+    days of blaming rate limits for a 图文 page whose record had moved
+    off every endpoint being watched.
+
+    So the audit keeps the url of every JSON answer, and the watched
+    list keeps deciding what gets parsed.
+    """
+    from app.browser import _WANTED_RESPONSES
+
+    audit: list[tuple[str, int]] = []
+
+    class _Response:
+        def __init__(self, url, kind="application/json"):
+            self.url = url
+            self.status = 200
+            self.headers = {"content-type": kind}
+
+        def json(self):
+            return {"ok": True}
+
+    # The listener's two jobs, as the code does them in order.
+    def keep(response, payloads):
+        kind = (response.headers or {}).get("content-type", "")
+        if "json" in kind.lower():
+            audit.append((response.url, response.status))
+        if not any(part in response.url for part in _WANTED_RESPONSES):
+            return
+        payloads.append(response.json())
+
+    payloads: list[dict] = []
+    keep(_Response("https://www.douyin.com/aweme/v1/web/aweme/detail/?x=1"),
+         payloads)
+    keep(_Response("https://www.douyin.com/aweme/v1/web/note/fetch/?x=1"),
+         payloads)
+    keep(_Response("https://www.douyin.com/thing.css", "text/css"), payloads)
+
+    # Only the watched one is parsed...
+    assert len(payloads) == 1
+    # ...and both JSON answers are on the record, so the one that was
+    # not watched can be found and named.
+    assert [u for u, _ in audit] == [
+        "https://www.douyin.com/aweme/v1/web/aweme/detail/?x=1",
+        "https://www.douyin.com/aweme/v1/web/note/fetch/?x=1",
+    ]

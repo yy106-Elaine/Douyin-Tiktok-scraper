@@ -17,7 +17,12 @@ import argparse
 import json
 from pathlib import Path
 
-from .browser import HOMES, PROFILES, open_browser
+from .browser import (
+    HOMES,
+    PROFILES,
+    _WANTED_RESPONSES,
+    open_browser,
+)
 from .fetch_videos import SITES
 
 
@@ -69,6 +74,27 @@ def main() -> None:  # pragma: no cover - a looking tool
                     encoding="utf-8",
                 )
             print(f"  written to {where}")
+
+            # What the page actually asked for. When the record is
+            # missing, the question stops being "why did parsing
+            # fail" and becomes "which of these was it supposed to be
+            # in" -- and that cannot be answered without the list.
+            # `_WANTED_RESPONSES` is a set of endpoints that were true
+            # on the day it was written; a site that moves its record
+            # to a new one produces a page that reads as empty, which
+            # from inside is indistinguishable from a page the site
+            # declined to serve.
+            seen = browser.audit or []
+            watched = [
+                (u, code) for u, code in seen
+                if any(part in u for part in _WANTED_RESPONSES)
+            ]
+            others = [row for row in seen if row not in watched]
+            print(f"  {len(seen)} JSON response(s), {len(watched)} watched")
+            for who, rows in (("watched", watched), ("not watched", others)):
+                for u, code in rows[:12]:
+                    print(f"    [{who}] {code} {u.split('?')[0]}")
+            browser.audit = []
 
 
 if __name__ == "__main__":  # pragma: no cover

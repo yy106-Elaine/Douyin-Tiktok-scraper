@@ -251,6 +251,12 @@ class Browser:
         self._page = None
         #: Set once a wall went unanswered. See `wait_for_person`.
         self._stopped_waiting = False
+        #: When a list, every JSON response the page receives is
+        #: appended as (url, status). Off in a run -- a takedown pass
+        #: reads thousands of pages and does not need the traffic --
+        #: and turned on by `app.peek`, which exists for the days the
+        #: site has moved something.
+        self.audit: list[tuple[str, int]] | None = None
         #: Seconds the last read spent in each stage. Kept because two
         #: rounds of guessing at where a check's twenty seconds go
         #: bought five percent between them. `app.measure` reads it.
@@ -379,6 +385,17 @@ class Browser:
         asked = _asked_for(url)
 
         def keep(response) -> None:
+            if self.audit is not None:
+                # Every JSON answer the page got, watched or not.
+                # `_WANTED_RESPONSES` is a list of endpoints that were
+                # true when it was written, and when a site moves its
+                # record to a new one the symptom is a page that reads
+                # as empty -- indistinguishable, from inside, from a
+                # page the site declined to serve. The only way to
+                # tell those apart is to look at what did arrive.
+                kind = (response.headers or {}).get("content-type", "")
+                if "json" in kind.lower():
+                    self.audit.append((response.url, response.status))
             if not any(part in response.url for part in _WANTED_RESPONSES):
                 return
             try:
