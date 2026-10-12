@@ -51,6 +51,7 @@ def main() -> None:  # pragma: no cover - a looking tool
         # remember to switch it on. The home page's own traffic is
         # cleared below rather than mixed into the first id's.
         browser.audit = []
+        browser.keep_bodies = []
         browser.read(HOMES[args.platform], settle_seconds=1.0)
         print(f"signed in: {browser.is_signed_in()}")
         browser.audit = []
@@ -110,6 +111,28 @@ def main() -> None:  # pragma: no cover - a looking tool
             for who, rows in (("watched", watched), ("not watched", others)):
                 for u, code in rows[:12]:
                     print(f"    [{who}] {code} {u.split('?')[0]}")
+            # Which of the site's own answers, if any, carries the
+            # id that was asked for. This is the question the url
+            # list cannot answer: it says the record was on none of
+            # the watched endpoints, not which one it is on now.
+            holds = []
+            for where, body in (browser.keep_bodies or []):
+                if video_id in json.dumps(body, ensure_ascii=False):
+                    holds.append(where.split("?")[0])
+            if holds:
+                print(f"  the id appears in {len(holds)} site response(s):")
+                for where in dict.fromkeys(holds):
+                    print(f"    *** {where}")
+            elif browser.keep_bodies:
+                print(f"  the id appears in NONE of "
+                      f"{len(browser.keep_bodies)} site response(s)")
+            if browser.keep_bodies:
+                every = args.dir / f"{video_id}.responses.json"
+                every.write_text(json.dumps(
+                    [{"url": u, "body": b} for u, b in browser.keep_bodies],
+                    ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"  bodies written to {every}")
+
             browser.audit = []
 
 

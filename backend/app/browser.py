@@ -257,6 +257,11 @@ class Browser:
         #: and turned on by `app.peek`, which exists for the days the
         #: site has moved something.
         self.audit: list[tuple[str, int]] | None = None
+        #: When a list, the bodies of the site's own JSON answers are
+        #: kept here as (url, parsed). Capped, and off in a run: a
+        #: record is a few kilobytes and a pass reads thousands of
+        #: pages. `app.peek` turns it on for one page at a time.
+        self.keep_bodies: list[tuple[str, object]] | None = None
         #: Seconds the last read spent in each stage. Kept because two
         #: rounds of guessing at where a check's twenty seconds go
         #: bought five percent between them. `app.measure` reads it.
@@ -387,6 +392,8 @@ class Browser:
         # urls, which is what makes it affordable to leave on.
         if self.audit is not None:
             self.audit.clear()
+        if self.keep_bodies is not None:
+            self.keep_bodies.clear()
 
         asked = _asked_for(url)
 
@@ -402,6 +409,19 @@ class Browser:
                 kind = (response.headers or {}).get("content-type", "")
                 if "json" in kind.lower():
                     self.audit.append((response.url, response.status))
+                    # The body too, for the site's own endpoints only
+                    # and only while `keep_bodies` is on. Naming which
+                    # endpoint a page talked to says the record was
+                    # not on any of them; it does not say which one it
+                    # moved to. That needs what came back.
+                    if (self.keep_bodies is not None
+                            and len(self.keep_bodies) < 60
+                            and self._domain in response.url):
+                        try:
+                            self.keep_bodies.append(
+                                (response.url, response.json()))
+                        except Exception:  # noqa: BLE001 - not JSON
+                            pass
             if not any(part in response.url for part in _WANTED_RESPONSES):
                 return
             try:
