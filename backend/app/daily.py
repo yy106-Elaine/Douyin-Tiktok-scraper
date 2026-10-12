@@ -25,7 +25,9 @@ touches it.
 from __future__ import annotations
 
 import argparse
+import signal
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -365,6 +367,51 @@ def authors(session: Session, read_profile) -> "object":
     return visit
 
 
+@contextmanager
+def stop_on_interrupt():
+    """Make one Ctrl+C end the pass between videos, not inside one.
+
+    Ctrl+C used to raise straight through Playwright's dispatcher,
+    which left the browser mid-call: closing the context then threw
+    too, so the only way out was a second Ctrl+C, and the second one
+    killed Chromium before it had flushed its profile. That is how a
+    signed-in session was lost -- the one part of this collection
+    that cannot be replaced -- on an evening whose only ambition was
+    to stop a pass early.
+
+    So the first Ctrl+C sets a flag and nothing else. The loop
+    notices it after the video in hand, returns normally, and the
+    browser closes the way it does at the end of any run. A second
+    Ctrl+C still works the old way, for a pass that is genuinely
+    stuck -- but it should never be needed, and if it is, that is a
+    bug rather than the procedure.
+    """
+    asked = {"stop": False}
+    previous = None
+
+    def note(signum, frame):  # noqa: ARG001
+        asked["stop"] = True
+        print("\n-- stopping after this page; the browser is closing "
+              "cleanly. Ctrl+C again only if it hangs.", flush=True)
+        # Back to the default at once, so a second press is the hard
+        # stop a person pressing twice is asking for.
+        if previous is not None:
+            signal.signal(signal.SIGINT, previous)
+
+    try:
+        previous = signal.signal(signal.SIGINT, note)
+    except ValueError:  # pragma: no cover - not the main thread
+        yield asked
+        return
+    try:
+        yield asked
+    finally:
+        try:
+            signal.signal(signal.SIGINT, previous)
+        except (ValueError, TypeError):  # pragma: no cover
+            pass
+
+
 def run(
     session: Session,
     video_ids: list[str],
@@ -382,29 +429,34 @@ def run(
     handle_for = handle_for or {}
     report = {"read": 0, "saved": 0, "gone": 0, "unreadable": 0, "bytes": 0}
     total = len(video_ids)
-    for index, video_id in enumerate(video_ids):
-        if index and pause_seconds:
-            time.sleep(pause_seconds)
-        outcome, said, kept = one(
-            session,
-            read,
-            download,
-            video_id,
-            site,
-            handle_for.get(video_id),
-            directory,
-            redownload=redownload,
-            keep_all=keep_all,
-            author=author,
-        )
-        report[outcome] = report.get(outcome, 0) + 1
-        report["bytes"] += kept
-        # A saved video was also read: the page visit that produced the
-        # file is the same visit that confirmed the id.
-        if outcome == "saved":
-            report["read"] += 1
-        if on_progress:
-            on_progress(index + 1, total, said)
+    with stop_on_interrupt() as asked:
+        for index, video_id in enumerate(video_ids):
+            if asked["stop"]:
+                print(f"-- stopped by hand after {index} of {total}",
+                      flush=True)
+                break
+            if index and pause_seconds:
+                time.sleep(pause_seconds)
+            outcome, said, kept = one(
+                session,
+                read,
+                download,
+                video_id,
+                site,
+                handle_for.get(video_id),
+                directory,
+                redownload=redownload,
+                keep_all=keep_all,
+                author=author,
+            )
+            report[outcome] = report.get(outcome, 0) + 1
+            report["bytes"] += kept
+            # A saved video was also read: the page visit that produced
+            # the file is the same visit that confirmed the id.
+            if outcome == "saved":
+                report["read"] += 1
+            if on_progress:
+                on_progress(index + 1, total, said)
     return report
 
 

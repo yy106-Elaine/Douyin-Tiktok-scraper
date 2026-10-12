@@ -666,3 +666,74 @@ def test_an_audit_that_was_off_is_not_reported_as_quiet() -> None:
     said = _what_arrived(Fetched(url="u", payloads=[]))
     assert "0 payload(s)" in said
     assert "JSON" not in said, "nothing was being recorded, so say nothing"
+
+
+def test_one_ctrl_c_stops_between_videos(monkeypatch) -> None:
+    """The second Ctrl+C is what cost a session, so the first must be enough.
+
+    An interrupt used to raise straight through Playwright's
+    dispatcher, leaving the browser mid-call; closing the context
+    then threw as well, so the only way out was pressing again — and
+    the second press killed Chromium before it had flushed its
+    profile. A signed-in session was lost that way, on an evening
+    whose only ambition was to stop a pass early.
+
+    Now the first press sets a flag, the loop finishes the page in
+    hand and returns, and the browser closes the way it does at the
+    end of any run.
+    """
+    import signal as signal_module
+
+    from app.daily import run
+
+    seen: list[str] = []
+
+    def read(url):
+        seen.append(url)
+        # The interrupt arrives while the second page is being read.
+        if len(seen) == 2:
+            signal_module.raise_signal(signal_module.SIGINT)
+
+        class _Page:
+            html = ""
+            payloads: list = []
+            http_status = 200
+            error = None
+            missing = False
+            audit = None
+        return _Page()
+
+    class _Site:
+        platform = "douyin"
+        kind = "video"
+
+        @staticmethod
+        def page_url(video_id, handle):
+            return f"https://x/{video_id}"
+
+        @staticmethod
+        def facts(html, payloads):
+            return None
+
+        @staticmethod
+        def file_urls(html, payloads, video_id=None):
+            return []
+
+    from app.db import SessionLocal
+    with SessionLocal() as session:
+        report = run(
+            session,
+            [f"v{n}" for n in range(8)],
+            read,
+            lambda *a, **k: (None, 0),
+            Path("/tmp"),
+            _Site(),
+        )
+
+    # It read the page it was on and then stopped, rather than
+    # abandoning the browser part-way through a call.
+    assert len(seen) == 2
+    assert sum(report.values()) >= 2
+    # And the handler is back to whatever it was, so the next Ctrl+C
+    # is the ordinary one.
+    assert signal_module.getsignal(signal_module.SIGINT) is not None
