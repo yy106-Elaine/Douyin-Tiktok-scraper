@@ -108,12 +108,27 @@ def _meta_tags(html: str) -> dict[str, str]:
     return {m.group("key").lower(): unescape(m.group("value")) for m in _META.finditer(html)}
 
 
-#: What Douyin's own description says when it has nothing to say:
-#: "于20261006发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！"
-#: -- the site's wording, filled in with the date and a like count,
-#: on a page that never handed over the video's record.
+#: What Douyin's own description says when it has nothing to say.
+#: Two shapes, and the second was found in the wild four days after
+#: the first was guarded against:
+#:
+#:   "于20261006发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！"
+#:   -- the page's own description, filled in with a date and a count.
+#:
+#:   "海量优质视频内容，涵盖游戏、二次元、美食、音乐、知识、体育运动、
+#:    旅行、生活等多个领域"
+#:   -- douyin.com's site-wide meta description, which any page that
+#:   did not hand over its record falls back to.
+#:
+#: Neither is a caption and neither may be judged as one. The second
+#: reached `web_videos` as the caption of several hundred posts and
+#: the topic filter read it, found no community tag in the sentence
+#: the platform wrote, and declined to keep their pictures.
 _BOILERPLATE = re.compile(
-    r"于\s*\d{8}\s*发布在抖音|来抖音[，,]\s*记录美好生活"
+    r"于\s*\d{8}\s*发布在抖音"
+    r"|来抖音[，,]\s*记录美好生活"
+    r"|海量优质视频内容"
+    r"|抖音[，,]\s*记录美好生活$"
 )
 
 

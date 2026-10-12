@@ -76,6 +76,19 @@ while :; do
   running=$(pgrep -f "python.* -m app\.daily" 2>/dev/null | wc -l | tr -d ' ')
   if [[ "${running:-0}" -gt 0 ]]; then
     printf '  %s pass(es) running\n' "$running"
+    # Only the scheduled job redirects into a log; a run started by
+    # hand prints to its own terminal and leaves nothing here. The
+    # bars above then belong to this morning's finished job and sit
+    # perfectly still while real work goes by -- which has already
+    # been read once as "it is stuck".
+    # -mmin rather than -newermt: BSD find has the first everywhere
+    # and the second only on some versions.
+    if (( ${#logs[@]} == 0 )) || [[ -z "$(find logs -name "$day-*.log" \
+          -mmin -3 2>/dev/null)" ]]; then
+      echo "  NOTE: no log has been written in the last 3 minutes, so a"
+      echo "  pass running now is one started by hand. Its progress is in"
+      echo "  its own terminal; the bars above are an earlier run."
+    fi
   else
     printf '  no app.daily running — the passes above have finished\n'
   fi
