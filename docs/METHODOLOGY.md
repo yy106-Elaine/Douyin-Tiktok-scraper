@@ -1390,6 +1390,28 @@ here say which authors to ask -- a *gone again* row is a
 reinstatement that did not hold, and its author is the person who
 knows what happened in between.
 
+### 12b. Three posts were never archived, because of a sentence the platform wrote
+
+A Douyin page that does not hand over its record still carries a
+description, and it is the site's own: "海量优质视频内容，涵盖游戏、
+二次元、美食…". The surface parser stored that as the post's caption
+on 214 rows before the guard was taught to refuse it (2026-10-12).
+
+The caption is what the topic filter reads. It found no community tag
+in a sentence the platform wrote, filed those posts as off topic, and
+did not keep their pictures. The rows were repaired -- the captions
+set back to NULL, which the passes treat as "cannot tell" and so keep
+-- and re-read. **Three had been removed in the meantime, and for
+those the pictures are gone.** They are recorded as collected, with no
+local copy, and that is the whole of the loss.
+
+Small, and worth stating anyway, because the gap is not random. It
+falls exactly on the posts whose page did not return a record, which
+is the same population that reads as "unreadable" elsewhere in this
+log. Any count of archived-versus-collected should expect a slight
+deficit there rather than treating the archive as a uniform sample of
+the corpus.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school
