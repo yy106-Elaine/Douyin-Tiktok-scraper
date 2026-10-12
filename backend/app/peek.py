@@ -28,13 +28,18 @@ def main() -> None:  # pragma: no cover - a looking tool
     parser.add_argument("--heavy", action="store_true",
                         help="let the page fetch the video and the pictures")
     parser.add_argument("--dir", type=Path, default=Path("peeked"))
+    parser.add_argument("--profile", type=Path, default=None,
+                        help="browser profile directory; defaults to this "
+                             "platform's own. A run already holds that one, "
+                             "so pass a copy to look while one is going")
     args = parser.parse_args()
 
     site = SITES[args.platform]
     args.dir.mkdir(parents=True, exist_ok=True)
 
     with open_browser(
-        PROFILES[args.platform], headless=False, pause_seconds=0,
+        args.profile or PROFILES[args.platform],
+        headless=False, pause_seconds=0,
         platform=args.platform, light=not args.heavy,
     ) as browser:
         browser.read(HOMES[args.platform], settle_seconds=1.0)

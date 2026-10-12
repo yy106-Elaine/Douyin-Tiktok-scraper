@@ -672,14 +672,39 @@ def open_browser(
 
     profile.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            str(profile),
-            headless=headless,
-            locale="zh-CN" if chinese else "en-US",
-            timezone_id="Asia/Shanghai" if chinese else "America/New_York",
-            viewport={"width": 1280, "height": 900},
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        try:
+            context = playwright.chromium.launch_persistent_context(
+                str(profile),
+                headless=headless,
+                locale="zh-CN" if chinese else "en-US",
+                timezone_id="Asia/Shanghai" if chinese else "America/New_York",
+                viewport={"width": 1280, "height": 900},
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+        except Exception as refused:
+            # Chromium locks a user-data-dir and aborts rather than
+            # open it twice, which is right: two browsers on one
+            # signed-in profile is how that session gets corrupted,
+            # and the session is the part of this collection that
+            # cannot be replaced.
+            #
+            # What it is not is readable. The refusal arrives as forty
+            # lines of Playwright traceback with the sentence that
+            # matters -- "Failed to create SingletonLock: File exists"
+            # -- buried in the middle, and the question it answers
+            # ("is a run already going?") is one the person can
+            # answer in a second if asked plainly.
+            if "SingletonLock" not in str(refused):
+                raise
+            raise SystemExit(
+                f"{profile.name} is already open in another run.\n"
+                "Chromium will not open one profile twice, because two "
+                "browsers on one signed-in session can corrupt it.\n\n"
+                "See what is using it:\n"
+                f"    pgrep -fl 'user-data-dir=.*{profile.name} '\n"
+                "    pgrep -fl 'python.* -m app\\.'\n\n"
+                "Wait for it, or use another profile with --profile."
+            ) from None
         try:
             yield Browser(
                 context,

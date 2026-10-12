@@ -492,3 +492,58 @@ def test_a_note_s_record_ends_the_wait_whatever_endpoint_it_came_on():
     )
 
     assert read.fetched.payloads
+
+
+def test_a_profile_already_open_says_so_in_one_line(tmp_path, monkeypatch) -> None:
+    """Chromium's refusal is right; its explanation is forty lines long.
+
+    It will not open one user-data-dir twice -- two browsers on one
+    signed-in session can corrupt it, and that session is the part of
+    this collection that cannot be replaced. But the refusal arrives
+    as a Playwright traceback with "Failed to create SingletonLock:
+    File exists" buried in the middle, and the question it answers --
+    is a run already going? -- takes a second to answer when asked
+    plainly.
+    """
+    import pytest
+
+    from app import browser as browser_module
+
+    class _Refuses:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @property
+        def chromium(self):
+            class _Type:
+                @staticmethod
+                def launch_persistent_context(*a, **kw):
+                    raise RuntimeError(
+                        "BrowserType.launch_persistent_context: Target page, "
+                        "context or browser has been closed\n"
+                        "[err] Failed to create "
+                        "/x/.browser-profile/SingletonLock: File exists (17)"
+                    )
+            return _Type()
+
+    monkeypatch.setattr(browser_module, "sync_playwright", _Refuses,
+                        raising=False)
+    monkeypatch.setitem(
+        __import__("sys").modules, "playwright.sync_api",
+        type("m", (), {"sync_playwright": _Refuses}),
+    )
+
+    with pytest.raises(SystemExit) as refused:
+        with browser_module.open_browser(tmp_path / ".browser-profile"):
+            pass
+
+    said = str(refused.value)
+    assert "already open in another run" in said
+    assert "--profile" in said
+    # And it still says how to find out what is holding it.
+    assert "pgrep" in said
+    # A refusal for any other reason is not swallowed.
+    assert "SingletonLock" not in said
