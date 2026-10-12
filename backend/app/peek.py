@@ -47,8 +47,13 @@ def main() -> None:  # pragma: no cover - a looking tool
         headless=False, pause_seconds=0,
         platform=args.platform, light=not args.heavy,
     ) as browser:
+        # On before the first page is read, so nothing has to
+        # remember to switch it on. The home page's own traffic is
+        # cleared below rather than mixed into the first id's.
+        browser.audit = []
         browser.read(HOMES[args.platform], settle_seconds=1.0)
         print(f"signed in: {browser.is_signed_in()}")
+        browser.audit = []
         for video_id in args.video_id:
             url = site.page_url(video_id, None)
             seen = browser.read(url)
@@ -84,7 +89,18 @@ def main() -> None:  # pragma: no cover - a looking tool
             # to a new one produces a page that reads as empty, which
             # from inside is indistinguishable from a page the site
             # declined to serve.
-            seen = browser.audit or []
+            # None and [] mean different things here and the first
+            # run of this printed "0 JSON response(s)" for the
+            # second: the switch had never been set, and an
+            # instrument that was not looking reported the same
+            # number as a page that asked for nothing. That is the
+            # confusion this whole day was spent on, reproduced in
+            # the tool built to end it.
+            if browser.audit is None:
+                print("  (response audit is OFF -- this says nothing "
+                      "about what the page asked for)")
+                continue
+            seen = browser.audit
             watched = [
                 (u, code) for u, code in seen
                 if any(part in u for part in _WANTED_RESPONSES)

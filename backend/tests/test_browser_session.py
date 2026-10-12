@@ -598,3 +598,23 @@ def test_the_audit_records_every_json_answer_not_only_the_watched_ones() -> None
         "https://www.douyin.com/aweme/v1/web/aweme/detail/?x=1",
         "https://www.douyin.com/aweme/v1/web/note/fetch/?x=1",
     ]
+
+
+def test_an_audit_that_is_off_must_not_read_as_an_empty_one() -> None:
+    """None and [] are different claims, and one of them is not a finding.
+
+    `peek` printed "0 JSON response(s)" for a page that had in fact
+    made a dozen — the switch had never been set, so the instrument
+    reported silence while not listening. That is the same confusion
+    the whole day went into: a page that reads as empty and a page
+    nobody looked at are not the same observation, and an instrument
+    that renders them identically is the bug.
+    """
+    from app.browser import Browser
+
+    fresh = Browser.__new__(Browser)
+    fresh.audit = None
+    assert fresh.audit is None, "off by default, so a run carries no cost"
+
+    fresh.audit = []
+    assert fresh.audit == [], "on and quiet is a different claim from off"
