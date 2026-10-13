@@ -604,7 +604,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 if not browser.is_signed_in():
                     print(
                         "No saved session in "
-                        f"{args.profile}. Sign in once first:\n"
+                        f"{args.profile} — {browser.session_report()}.\n"
+                        "Sign in once first:\n"
                         "    ./.venv/bin/python -m app.login\n"
                         "Or pass --anonymous to read what the share host "
                         "gives without one."

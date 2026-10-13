@@ -47,6 +47,14 @@ def main() -> None:  # pragma: no cover - interactive by nature
         help="report whether the saved session still opens the site",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help=(
+            "with --check or --show-cookies: no window. Off by default "
+            "because a headless check has read a live session as absent"
+        ),
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help=(
@@ -68,7 +76,8 @@ def main() -> None:  # pragma: no cover - interactive by nature
     site = args.platform
 
     if args.show_cookies:
-        with open_browser(profile, headless=True, platform=site) as browser:
+        with open_browser(profile, headless=args.headless,
+                          platform=site) as browser:
             browser.read(home, settle_seconds=2.0)
             print(f"{profile}:")
             for name, domain in browser.cookie_names():
@@ -80,7 +89,13 @@ def main() -> None:  # pragma: no cover - interactive by nature
         return
 
     if args.check:
-        with open_browser(profile, headless=True, platform=site) as browser:
+        # Windowed, not headless. A headless check reported no session
+        # on 10-13 minutes after a windowed run had used the same
+        # profile, and the answer to "is the session still there" is
+        # worth nothing if it can be a false negative. --headless is
+        # there for anyone who wants the old behaviour back.
+        with open_browser(profile, headless=args.headless,
+                          platform=site) as browser:
             # Cookies for a domain reach the jar only once something
             # from it has loaded.
             browser.read(home, settle_seconds=1.0)
@@ -88,7 +103,7 @@ def main() -> None:  # pragma: no cover - interactive by nature
                 print(f"{profile}: the session still opens {site}")
             else:
                 print(
-                    f"{profile}: the site is asking to sign in.\n"
+                    f"{profile}: no session — {browser.session_report()}.\n"
                     "Run this without --check and sign in by hand."
                 )
         return

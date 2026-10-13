@@ -587,7 +587,9 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 browser.read(HOMES[args.platform], settle_seconds=1.0)
                 if not browser.is_signed_in():
                     message = (
-                        f"No saved session in {profile}. Sign in once first:\n"
+                        f"No saved session in {profile} — "
+                        f"{browser.session_report()}.\n"
+                        "Sign in once first:\n"
                         f"    ./.venv/bin/python -m app.login "
                         f"--platform {args.platform}"
                     )

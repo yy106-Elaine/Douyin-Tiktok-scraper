@@ -302,6 +302,14 @@ class Browser:
                 found.append(name)
         return found
 
+    def _value_of(self, name: str) -> str | None:
+        """One cookie's value, for this domain. Never returned outward."""
+        for cookie in self._context.cookies():
+            if cookie.get("name") == name and self._domain in (
+                    cookie.get("domain") or ""):
+                return cookie.get("value")
+        return None
+
     def cookie_names(self) -> list[tuple[str, str]]:
         """Every cookie's name and domain, for checking the list above.
 
@@ -312,6 +320,65 @@ class Browser:
                 (cookie.get("name") or "", cookie.get("domain") or "")
                 for cookie in self._context.cookies()
             }
+        )
+
+    def session_report(self) -> str:
+        """Why `is_signed_in` said what it said, in one line.
+
+        A negative session check has now been wrong at least once --
+        a headless run reported no session minutes after a windowed
+        run had used it -- and a bare "No saved session" cannot tell
+        the two cases apart. They want opposite things done: an empty
+        jar means sign in again, a full one means the check is at
+        fault and signing in again would be spending a working
+        session to chase a bug.
+
+        So the message carries the jar with it. Names and domains
+        only; a cookie's value *is* the session and is never printed,
+        logged, or returned from anywhere in this file.
+        """
+        every = self.cookie_names()
+        if not every:
+            return (
+                "the cookie jar is empty — nothing at all has been "
+                "written to this profile, so it was never signed in, or "
+                "the browser opened a different directory than this one"
+            )
+
+        mine = [name for name, domain in every if self._domain in domain]
+        wanted = [name for name in _SESSION_COOKIES if name in mine]
+        if wanted:
+            # A name with nothing behind it is how a site ends a
+            # session: it sets the same cookie to the empty string.
+            # `session_cookies` drops those, which is right, and makes
+            # this the one case where the name being there means the
+            # session is over rather than present.
+            emptied = [
+                name for name in wanted
+                if not (self._value_of(name) or "").strip()
+            ]
+            if emptied and len(emptied) == len(wanted):
+                return (
+                    f"{self._domain} holds {', '.join(wanted)} but every "
+                    "one of them is empty — that is the site ending the "
+                    "session, so signing in again is the right move"
+                )
+            return (
+                f"but {self._domain} does hold {', '.join(wanted)} with a "
+                "value — the session looks present and the check "
+                "disagrees, so do NOT sign in again until that is "
+                "understood"
+            )
+        if mine:
+            shown = ", ".join(sorted(mine)[:8])
+            return (
+                f"{len(every)} cookie(s) in the jar, {len(mine)} for "
+                f"{self._domain} ({shown}), none of them a sign-in "
+                "cookie — this is what a signed-out visit leaves"
+            )
+        return (
+            f"{len(every)} cookie(s) in the jar, none for {self._domain} — "
+            "the home page did not load, or loaded from somewhere else"
         )
 
     def is_signed_in(self) -> bool:

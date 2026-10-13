@@ -462,7 +462,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             browser.read(HOMES[args.platform], settle_seconds=1.0)
             if not browser.is_signed_in():
                 message = (
-                    "Not signed in. Run: ./.venv/bin/python -m app.login "
+                    f"Not signed in — {browser.session_report()}.\n"
+                    "Run: ./.venv/bin/python -m app.login "
                     f"--platform {args.platform}"
                 )
                 # Douyin serves a download wall to a request with no

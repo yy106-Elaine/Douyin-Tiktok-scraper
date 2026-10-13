@@ -816,3 +816,61 @@ def test_forget_by_storage_clears_only_the_session_store() -> None:
     assert "localStorage" not in ran[0]
     assert went == [], "no navigation, so no new tab and no window raised"
     assert not discarded
+
+
+def test_a_refusal_says_which_kind_of_refusal_it_is():
+    """"No saved session" has meant two opposite things in one evening.
+
+    On 10-13 a headless run reported no session minutes after a
+    windowed run had read pages with it. One of those needs a fresh
+    sign-in; the other needs the check fixed, and signing in again
+    would spend a working session chasing a bug. The message now
+    carries the jar, so the next occurrence is evidence.
+    """
+    # Nothing at all: never signed in, or the wrong directory.
+    assert "cookie jar is empty" in _browser().session_report()
+
+    # A signed-out visit still leaves plenty behind.
+    anonymous = _browser([
+        {"name": "__ac_nonce", "value": "x", "domain": ".douyin.com"},
+        {"name": "s_v_web_id", "value": "y", "domain": ".douyin.com"},
+    ])
+    assert "none of them a sign-in cookie" in anonymous.session_report()
+
+    # The site ending a session: the names stay, the values go.
+    ended = _browser([
+        {"name": "__ac_nonce", "value": "x", "domain": ".douyin.com"},
+        {"name": "sessionid", "value": "", "domain": ".douyin.com"},
+        {"name": "sid_guard", "value": "  ", "domain": ".douyin.com"},
+    ])
+    assert not ended.is_signed_in()
+    assert "signing in again is the right move" in ended.session_report()
+
+    # Nothing from this site at all: the home page never loaded, so
+    # the check was asked before there was anything to ask about.
+    elsewhere = _browser([
+        {"name": "sessionid", "value": "abc", "domain": ".tiktok.com"},
+    ])
+    assert "none for douyin.com" in elsewhere.session_report()
+
+
+def test_a_live_session_read_as_absent_says_do_not_sign_in_again():
+    """The case that cost a session once already.
+
+    If the cookie is there with a value and the check still says no,
+    the check is what is wrong. The message has to say so loudly,
+    because the obvious response -- sign in again -- is the one that
+    throws the session away.
+    """
+    class _Jar(_FakeContext):
+        pass
+
+    browser = _browser([
+        {"name": "sessionid", "value": "abc123", "domain": ".douyin.com"},
+    ])
+    # Force the disagreement the message is for.
+    browser.is_signed_in = lambda: False  # type: ignore[method-assign]
+
+    said = browser.session_report()
+    assert "do NOT sign in again" in said
+    assert "abc123" not in said  # the value is the session
