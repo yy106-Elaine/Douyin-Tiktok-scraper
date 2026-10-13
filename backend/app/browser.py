@@ -319,6 +319,10 @@ class Browser:
             {
                 (cookie.get("name") or "", cookie.get("domain") or "")
                 for cookie in self._context.cookies()
+                # Chromium keeps a nameless cookie or two. Printed,
+                # it shows up as a stray comma at the head of the
+                # list and reads like a bug in the listing.
+                if (cookie.get("name") or "").strip()
             }
         )
 
