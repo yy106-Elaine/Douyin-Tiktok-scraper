@@ -7,6 +7,7 @@ from datetime import timedelta
 from app.clock import now as utc_now
 from app.db import SessionLocal
 from app.models import LinkCheck
+from app.recheck import ID_CONFIRMED, NOTHING_READ, SERVED_ANOTHER
 from app.unreadable import unreadable_since
 
 
@@ -29,11 +30,11 @@ def test_only_the_pages_whose_latest_word_was_nothing(db: None) -> None:
     """
     with SessionLocal() as session:
         session.add_all([
-            _check("still-blank", "NOTHING_READ", 2),
-            _check("answered-later", "NOTHING_READ", 3),
-            _check("answered-later", "ID_CONFIRMED", 1),
-            _check("gone", "SERVED_ANOTHER", 2),
-            _check("yesterday", "NOTHING_READ", 30),
+            _check("still-blank", NOTHING_READ, 2),
+            _check("answered-later", NOTHING_READ, 3),
+            _check("answered-later", ID_CONFIRMED, 1),
+            _check("gone", SERVED_ANOTHER, 2),
+            _check("yesterday", NOTHING_READ, 30),
         ])
         session.commit()
 
@@ -48,9 +49,9 @@ def test_a_different_platform_is_a_different_run(db: None) -> None:
     mixing their ids would compare an arm against both at once."""
     with SessionLocal() as session:
         session.add_all([
-            _check("note", "NOTHING_READ", 1),
+            _check("note", NOTHING_READ, 1),
         ])
-        video = _check("video", "NOTHING_READ", 1)
+        video = _check("video", NOTHING_READ, 1)
         video.platform = "douyin"
         session.add(video)
         session.commit()
@@ -59,3 +60,19 @@ def test_a_different_platform_is_a_different_run(db: None) -> None:
                                 utc_now() - timedelta(hours=12)) == ["note"]
         assert unreadable_since(session, "douyin",
                                 utc_now() - timedelta(hours=12)) == ["video"]
+
+
+def test_the_evidence_word_is_the_one_the_passes_actually_write(db: None) -> None:
+    """The first version of this module spelled the constant's name.
+
+    `NOTHING_READ` is "read, nothing on the page"; the query asked for
+    the string "NOTHING_READ". Nothing raised and nothing failed --
+    it matched no row and printed an empty list, which reads exactly
+    like "every page was read in the end". A list of ids that is
+    wrong by being empty is the worst shape this can fail in, so the
+    vocabulary is imported and this pins it.
+    """
+    from app import unreadable
+
+    assert unreadable.NOTHING_READ == NOTHING_READ
+    assert unreadable.NOTHING_READ != "NOTHING_READ"

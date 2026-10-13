@@ -30,12 +30,12 @@ from sqlalchemy.orm import Session
 
 from .clock import now as utc_now
 from .models import LinkCheck
-
-#: What a page that answered but said nothing is filed as. Never
-#: GONE: a page that could not be read is not evidence of a removal,
-#: and conflating the two would turn a bad afternoon of scraping into
-#: a spike in the study's own finding.
-NOTHING_READ = "NOTHING_READ"
+# Imported, never re-spelled. The first version of this module wrote
+# the literal "NOTHING_READ", which is the constant's *name*; its
+# value is a sentence. Nothing raised, nothing failed -- the query
+# simply matched no row and printed an empty list, which reads
+# exactly like "every page was read in the end".
+from .recheck import NOTHING_READ
 
 
 def unreadable_since(session: Session, platform: str,
@@ -75,10 +75,25 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     init_db()
     with SessionLocal() as session:
-        for video_id in unreadable_since(
-                session, args.platform,
-                utc_now() - timedelta(hours=args.hours)):
+        found = unreadable_since(
+            session, args.platform,
+            utc_now() - timedelta(hours=args.hours))
+        for video_id in found:
             print(video_id)
+
+    # On stderr, so it is visible without getting into the pipe. An
+    # empty list here is the one answer that looks like good news and
+    # usually is not: the first version of this printed nothing
+    # because it was asking for a string no row holds.
+    if not found:
+        import sys
+
+        print(
+            f"no {args.platform} page read nothing in the last "
+            f"{args.hours:g}h. If a pass just reported unreadable "
+            "pages, this is a fault here, not an empty backlog.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover
