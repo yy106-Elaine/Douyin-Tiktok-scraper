@@ -773,3 +773,46 @@ def test_forget_by_tab_throws_the_tab_away() -> None:
 
     assert discarded == [True]
     assert went == [], "the tab goes without being navigated first"
+
+
+def test_forget_by_storage_clears_only_the_session_store() -> None:
+    """sessionStorage is the one thing a new tab starts empty.
+
+    It belongs to the tab, so navigating to about:blank and back
+    finds it exactly as it was — which is a candidate for the whole
+    difference between the two arms measured so far, and is testable
+    without opening a tab and so without the window jumping to the
+    front every few seconds.
+
+    localStorage is left alone on purpose. It may carry parts of the
+    sign-in on this origin, and the session has already been lost
+    once this week.
+    """
+    from app.browser import Browser
+
+    ran: list[str] = []
+    went: list[str] = []
+    discarded: list[bool] = []
+
+    class _Page:
+        def is_closed(self):
+            return False
+
+        def evaluate(self, script):
+            ran.append(script)
+
+        def goto(self, url, **kw):
+            went.append(url)
+
+    light = Browser.__new__(Browser)
+    light._forget_by = "storage"
+    light._page = _Page()
+    light._discard_page = lambda: discarded.append(True)
+
+    Browser._forget(light)
+
+    assert len(ran) == 1
+    assert "sessionStorage.clear()" in ran[0]
+    assert "localStorage" not in ran[0]
+    assert went == [], "no navigation, so no new tab and no window raised"
+    assert not discarded

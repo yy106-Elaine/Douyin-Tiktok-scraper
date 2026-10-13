@@ -306,7 +306,7 @@ def test_the_parallel_pass_runs_one_worker_per_endpoint() -> None:
     launched = [line.strip() for line in body.splitlines()
                 if "-m app.daily --platform" in line]
     assert launched == [
-        '"$PY" -m app.daily --platform douyin \\',
+        '"$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \\',
         '"$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \\',
     ]
     # The halving is gone from the scheduled job entirely.

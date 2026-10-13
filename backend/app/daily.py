@@ -513,7 +513,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
-        "--forget-by", default="blank", choices=("blank", "tab"),
+        "--forget-by", default="blank",
+        choices=("blank", "tab", "storage"),
         help=(
             "how to drop the app's cached state between pages: "
             "'blank' navigates the tab to about:blank, 'tab' throws "

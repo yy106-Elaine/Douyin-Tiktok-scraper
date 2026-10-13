@@ -258,7 +258,8 @@ class Browser:
         self._fresh_every = fresh_every
         self._since_fresh = 0
         #: How to forget: "blank" navigates the tab to about:blank,
-        #: "tab" throws the tab away and opens another.
+        #: "tab" throws the tab away and opens another, "storage"
+        #: clears the tab's sessionStorage and keeps everything else.
         #:
         #: These are not known to be equivalent and were treated as
         #: though they were. The only sample taken with "tab" read 18
@@ -415,6 +416,25 @@ class Browser:
             return
         if self._forget_by == "tab":
             self._discard_page()
+            return
+        if self._forget_by == "storage":
+            # `sessionStorage` is the one thing a new tab starts
+            # empty and `about:blank` does not: it belongs to the
+            # tab, so navigating away and back finds it exactly as it
+            # was. If Douyin's page caches live there, that is the
+            # whole difference between the two arms measured so far.
+            #
+            # Only sessionStorage. `localStorage` on this origin may
+            # be carrying parts of the sign-in, and the session is
+            # the one thing here that cannot be replaced -- it has
+            # already been lost once this week, to a stop procedure.
+            try:
+                page.evaluate(
+                    "() => { try { sessionStorage.clear(); } "
+                    "catch (e) {} }"
+                )
+            except Exception:  # noqa: BLE001 - not on the site yet
+                pass
             return
         try:
             page.goto("about:blank", wait_until="domcontentloaded",

@@ -118,6 +118,19 @@ NOTE_PROFILE=.browser-profile-note
 #: earlier and left the work behind. But it is a precaution, not a
 #: fix, and the cause is still open.
 DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
+#: How the passes drop the app's cached state between pages.
+#:
+#: `tab` here, and `blank` for a run by hand, because they differ in
+#: a way that only matters when somebody is at the machine: a new
+#: tab raises Chromium to the front on macOS, which makes the laptop
+#: unusable for the hours a pass takes. At three in the morning
+#: nobody is typing, so the scheduled job gets the arm with the
+#: better reading -- 1 unreadable in 8, and 1 in 18 before that,
+#: against 119 in 150 for `blank` on the same corpus the same day.
+#:
+#: Two samples against one is not settled, which is why this is a
+#: variable and not a constant.
+FORGET_BY="${FORGET_BY:-tab}"
 #: How often the parallel passes report into the main log, in
 #: seconds. A multiple of 15, which is how often the wait loop
 #: wakes. Five minutes is often enough to tell a slow run from a
@@ -229,11 +242,12 @@ run_together() {
   say "-- $label_a and $label_b, together"
 
   set -m
-  "$PY" -m app.daily --platform douyin \
+  "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
     >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
+    --forget-by "$FORGET_BY" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
     >"$log_b" 2>&1 &
   local pid_b=$!
@@ -401,10 +415,10 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
       run_together "douyin video check" "douyin 图文 check"
     else
       run_limited "douyin video check" "$DOUYIN_BUDGET" \
-        "$PY" -m app.daily --platform douyin \
+        "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
       run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
-        "$PY" -m app.daily --platform douyin_note \
+        "$PY" -m app.daily --platform douyin_note --forget-by "$FORGET_BY" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
     fi
     # The handle is what an interview request is addressed to, and an
