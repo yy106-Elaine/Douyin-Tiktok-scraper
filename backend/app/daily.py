@@ -518,8 +518,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         help=(
             "how to drop the app's cached state between pages: "
             "'blank' navigates the tab to about:blank, 'tab' throws "
-            "the tab away. Not known to be equivalent -- 'tab' is the "
-            "arm with one clean sample and 'blank' the arm in use"
+            "the tab away and opens another, 'storage' clears the "
+            "tab's sessionStorage and opens nothing. Not known to be "
+            "equivalent: 'tab' is the only arm measured clean so far, "
+            "'blank' is the arm in use and the one losing pages, and "
+            "'storage' is untested"
         ),
     )
     parser.add_argument(
