@@ -513,6 +513,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--only-from",
+        metavar="FILE",
+        help=(
+            "read the video ids from a file, one per line, blank lines "
+            "and # comments ignored. For re-reading exactly the pages "
+            "that failed: an arm comparison on different targets is "
+            "not a comparison of the arms"
+        ),
+    )
+    parser.add_argument(
         "--forget-by", default="blank",
         choices=("blank", "tab", "storage"),
         help=(
@@ -648,8 +658,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     with SessionLocal() as session:
         targets = wanted(session, args.platform, refresh=not args.new_only)
 
-        if args.only:
-            asked = set(args.only)
+        asked_for: list[str] = list(args.only or [])
+        if args.only_from:
+            from pathlib import Path as _Path
+
+            for line in _Path(args.only_from).read_text(
+                    encoding="utf-8").splitlines():
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    asked_for.append(line)
+            if not asked_for:
+                raise SystemExit(f"{args.only_from} named no video ids")
+
+        if asked_for:
+            asked = set(asked_for)
             targets = [v for v in targets if v in asked]
             missing = asked - set(targets)
             if missing:
