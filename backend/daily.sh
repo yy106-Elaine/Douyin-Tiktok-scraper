@@ -99,8 +99,26 @@ PROFILE=.browser-profile
 #: what a stolen account looks like to a risk system and the account
 #: is the one part of this collection that cannot be replaced.
 NOTE_PROFILE=.browser-profile-note
-#: 0 runs 视频 and 图文 one after the other, as before.
-DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-1}"
+#: 1 runs 视频 and 图文 at once, 0 one after the other.
+#:
+#: Off, on the only clean comparison there has been. The same code,
+#: the same day, the same profile:
+#:
+#:   one pass at a time   241 pages, median 2.9s,  ~4% unreadable
+#:   two passes at once   674 pages,               39% unreadable
+#:                         39 pages,               72% unreadable
+#:
+#: The stale-tab fix is real -- the first row is what it bought --
+#: and it was never the whole story. Concurrency is the variable
+#: that was never tested on its own: the earlier run that paired
+#: 视频 with 图文 happily (3% unreadable, 10-08) did it with a reused
+#: tab, which is a different machine from this one.
+#:
+#: Sequential costs wall time and nothing else. A page that answers
+#: nothing has to be read again tomorrow, so the parallel run was
+#: never finishing sooner -- it was finishing earlier and leaving
+#: the work behind.
+DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
 #: How often the parallel passes report into the main log, in
 #: seconds. A multiple of 15, which is how often the wait loop
 #: wakes. Five minutes is often enough to tell a slow run from a
