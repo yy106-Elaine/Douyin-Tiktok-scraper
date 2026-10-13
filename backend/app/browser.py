@@ -233,6 +233,7 @@ class Browser:
         domain: str = "douyin.com",
         light: bool = True,
         fresh_every: int = 1,
+        forget_by: str = "blank",
     ) -> None:
         self._context = context
         self._pause = pause_seconds
@@ -256,6 +257,17 @@ class Browser:
         #: be measured against the new one.
         self._fresh_every = fresh_every
         self._since_fresh = 0
+        #: How to forget: "blank" navigates the tab to about:blank,
+        #: "tab" throws the tab away and opens another.
+        #:
+        #: These are not known to be equivalent and were treated as
+        #: though they were. The only sample taken with "tab" read 18
+        #: pages and failed on one; every sample since has used
+        #: "blank" and failed on 20%, 39% and 79%. That is three
+        #: readings of one arm and one of the other, which settles
+        #: nothing -- but it is the difference that was changed
+        #: without being measured, so it is the one to measure.
+        self._forget_by = forget_by
         #: Set once a wall went unanswered. See `wait_for_person`.
         self._stopped_waiting = False
         #: When a list, every JSON response the page receives is
@@ -400,6 +412,9 @@ class Browser:
         """
         page = self._page
         if page is None or page.is_closed():
+            return
+        if self._forget_by == "tab":
+            self._discard_page()
             return
         try:
             page.goto("about:blank", wait_until="domcontentloaded",
@@ -758,6 +773,7 @@ def open_browser(
     platform: str = "douyin",
     light: bool = True,
     fresh_every: int = 1,
+    forget_by: str = "blank",
 ):
     """A browser using `profile`, created on first use.
 
@@ -818,6 +834,7 @@ def open_browser(
                 domain=DOMAINS.get(platform, "douyin.com"),
                 light=light,
                 fresh_every=fresh_every,
+                forget_by=forget_by,
             )
         finally:
             context.close()

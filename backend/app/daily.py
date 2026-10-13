@@ -513,6 +513,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--forget-by", default="blank", choices=("blank", "tab"),
+        help=(
+            "how to drop the app's cached state between pages: "
+            "'blank' navigates the tab to about:blank, 'tab' throws "
+            "the tab away. Not known to be equivalent -- 'tab' is the "
+            "arm with one clean sample and 'blank' the arm in use"
+        ),
+    )
+    parser.add_argument(
         "--fresh-every", type=int, default=1, metavar="N",
         help=(
             "open a new tab every N pages (default 1, a fresh tab each "
@@ -744,6 +753,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             platform=args.platform,
             light=not args.heavy,
             fresh_every=args.fresh_every,
+            forget_by=args.forget_by,
         ) as browser:
             # Checked once, here. A run that asks to sign in at each of
             # two hundred videos is a run with no session at all, and

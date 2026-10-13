@@ -686,6 +686,7 @@ def test_forgetting_keeps_the_tab_and_the_session() -> None:
             went.append(url)
 
     quiet = Browser.__new__(Browser)
+    quiet._forget_by = "blank"
     quiet._page = _Page()
     quiet._discard_page = lambda: discarded.append(True)
 
@@ -709,6 +710,7 @@ def test_a_blank_navigation_that_fails_falls_back_to_the_tab() -> None:
             raise RuntimeError("navigation failed")
 
     stuck = Browser.__new__(Browser)
+    stuck._forget_by = "blank"
     stuck._page = _Stuck()
     stuck._discard_page = lambda: discarded.append(True)
 
@@ -738,3 +740,36 @@ def test_the_sign_in_window_is_not_a_light_one() -> None:
     opened = source[source.index("headless=False"):]
     assert "light=False" in opened[:300]
     assert "fresh_every=0" in opened[:300]
+
+
+def test_forget_by_tab_throws_the_tab_away() -> None:
+    """The two ways of forgetting were treated as equivalent untested.
+
+    The only sample taken with a real new tab read 18 pages and
+    failed on one. Every sample since has navigated to about:blank
+    instead, and failed on 20%, 39% and 79%. Three readings of one
+    arm and one of the other settles nothing — but it is the
+    difference that was changed without being measured, so both arms
+    have to be reachable to measure it.
+    """
+    from app.browser import Browser
+
+    went: list[str] = []
+    discarded: list[bool] = []
+
+    class _Page:
+        def is_closed(self):
+            return False
+
+        def goto(self, url, **kw):
+            went.append(url)
+
+    hard = Browser.__new__(Browser)
+    hard._forget_by = "tab"
+    hard._page = _Page()
+    hard._discard_page = lambda: discarded.append(True)
+
+    Browser._forget(hard)
+
+    assert discarded == [True]
+    assert went == [], "the tab goes without being navigated first"
