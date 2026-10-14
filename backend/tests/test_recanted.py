@@ -125,3 +125,37 @@ def test_platforms_do_not_mix(db: None) -> None:
         assert recanted_by_day(session, "douyin", _since())[0].said_gone == 1
         assert recanted_by_day(
             session, "douyin_note", _since())[0].said_gone == 1
+
+
+def test_the_ids_still_standing_on_bad_evidence(db: None) -> None:
+    """What a quarantine needs: the removals nothing has corrected yet.
+
+    A removal a later check already undid needs nothing done to it;
+    the record corrected itself. These are the ones still standing
+    on evidence from days when that evidence was wrong about two
+    thirds of the time.
+    """
+    from app.recanted import still_standing
+
+    window_start = datetime(2026, 10, 9)
+    window_end = datetime(2026, 10, 14)
+
+    with SessionLocal() as session:
+        session.add_all([
+            # In the window, never undone -- needs looking at again.
+            _check("suspect", SERVED_ANOTHER, 0),
+            # In the window but already corrected.
+            _check("corrected", SERVED_ANOTHER, 1),
+            _check("corrected", ID_CONFIRMED, 60),
+            # In the window, but on Douyin's own wording, which held
+            # up all week.
+            _check("stated", PAGE_SAYS_GONE, 2),
+            # Outside the window.
+            _check("before", SERVED_ANOTHER, -48),
+            _check("after", SERVED_ANOTHER, 24 * 6),
+        ])
+        session.commit()
+
+        found = still_standing(session, "douyin", window_start, window_end)
+
+    assert found == ["suspect"]

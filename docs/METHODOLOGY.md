@@ -1446,8 +1446,9 @@ So for any post whose check falls in this window:
   the number of consecutive affected days — at worst eight. Lifetimes
   computed from it are biased **long**, and the Kaplan–Meier curves
   over this window are optimistic.
-- Whether removals were also **invented** is open, and the first
-  morning's numbers say it may be. `NOTHING_READ` never becomes GONE,
+- Removals were also **invented**, on `douyin`, from 10-09 to 10-13.
+  This is a *second* fault with a different date and a different
+  cause, and it was found by the measurement set up for the first. `NOTHING_READ` never becomes GONE,
   so that path is safe — but `SERVED_ANOTHER`, which is how most
   removals here are detected, is *inferred* from the record that came
   back belonging to a different post. A page that failed to load its
@@ -1460,11 +1461,48 @@ So for any post whose check falls in this window:
 
   `app.recanted` measures it: per day, what share of that day's
   removals a later check undid, split by which of the two evidences
-  the removal rested on. If `SERVED_ANOTHER` is undone far more often
-  than `PAGE_SAYS_GONE`, and only inside the window, those removals
-  are the instrument and the days must be refused rather than
-  adjusted. **Until that table is read, no removal dated 10-06 to
-  10-14 on `douyin` should be reported.**
+  the removal rested on.
+
+  | day | served-another undone | Douyin's own wording undone |
+  | --- | --- | --- |
+  | 09-30 → 10-05 | 2/31, 2/29, 5/46, 3/39, 5/92, 3/64 — **5–11%** | — |
+  | 10-07, 10-08 | 0/0, 1/1 | 1/21, 0/22 |
+  | **10-09** | **65/101 — 64%** | 0/3 |
+  | **10-10** | **40/63 — 63%** | 0/15 |
+  | **10-12** | **28/39 — 72%** | 1/28 |
+  | **10-13** | **34/54 — 63%** | 0/21 |
+  | 10-14 | 0/0 | 0/61 |
+
+  One evidence collapsed and the other did not move, on the same
+  pages, in the same pass, on the same days. So roughly **two thirds
+  of the `SERVED_ANOTHER` removals dated 10-09 to 10-13 on `douyin`
+  are the instrument, not the platform.**
+
+  The cause is not the image blocking: that began on 10-06, and
+  10-07 and 10-08 are clean. It is `f48a9d1` (10-08 13:08), which
+  ran the 图文 list as two workers, the second in the video
+  profile — first nightly pass with it, 10-09. It was reverted in
+  `9c1bcc9` (10-13 12:35), and the first nightly pass without it,
+  10-14, recorded 61 removals, every one on Douyin's own wording
+  and none on `SERVED_ANOTHER`. (10-14's own 0% undone is not yet
+  evidence: nothing has had time to be undone.)
+
+  Two browsers signed into one account is also what a stolen account
+  looks like to a risk system, and the commit that added it said so
+  in its own message while adding it anyway. The visible cost was a
+  20% slowdown per worker. The invisible one was this.
+
+  **Repair, not adjustment.** `app.recanted --ids-between` lists the
+  removals from that window that no later check has undone; they are
+  re-read, and whatever they say now is what is known. The ones
+  already undone need nothing — the record corrected itself. What
+  cannot be recovered is the removal *date* of a post that really
+  did go during the window, so any `first_gone_at` on `douyin`
+  between 10-09 and 10-13 is reported as an interval, and the
+  per-day hazard figures for those days are not reported at all.
+
+  `PAGE_SAYS_GONE` held through both faults, at 0–6% undone
+  throughout. Where the two disagree, it is the one to believe.
 
 A first morning after the fix: 图文 came back to 1% unreadable
 (2,308 pages, 23 failures) and TikTok to 0%, both from 40–70%. The

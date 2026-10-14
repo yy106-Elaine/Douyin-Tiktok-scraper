@@ -103,15 +103,62 @@ def recanted_by_day(session: Session, platform: str,
     return [days[key] for key in sorted(days)]
 
 
+def still_standing(session: Session, platform: str,
+                   since: datetime, until: datetime,
+                   evidence: str = SERVED_ANOTHER) -> list[str]:
+    """Removals recorded in a window that nothing has since undone.
+
+    For quarantining a window the instrument cannot be trusted over.
+    The ones a later check already undid need nothing: the record
+    corrected itself. These are the ones still standing on evidence
+    from days when that evidence was wrong about two thirds of the
+    time, and the only way to know which is to look again.
+    """
+    rows = list(session.execute(
+        select(LinkCheck.video_id, LinkCheck.checked_at, LinkCheck.evidence)
+        .where(LinkCheck.platform == platform,
+               LinkCheck.video_id.isnot(None))
+        .order_by(LinkCheck.checked_at)
+    ))
+
+    said_gone: dict[str, datetime] = {}
+    for video_id, when, found in rows:
+        if found == evidence and since <= when < until:
+            said_gone.setdefault(video_id, when)
+
+    for video_id, when, found in rows:
+        if found == ID_CONFIRMED and video_id in said_gone:
+            if when > said_gone[video_id]:
+                del said_gone[video_id]
+    return sorted(said_gone)
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", default="douyin")
     parser.add_argument("--days", type=int, default=40)
+    parser.add_argument(
+        "--ids-between", nargs=2, metavar=("FROM", "TO"),
+        help=(
+            "print the ids, one per line and nothing else, of "
+            "removals recorded in [FROM, TO) that no later check has "
+            "undone. For re-reading a window the instrument cannot "
+            "be trusted over: pipe to a file and hand it to "
+            "app.daily --only-from"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
+    if args.ids_between:
+        start, end = (datetime.fromisoformat(d) for d in args.ids_between)
+        with SessionLocal() as session:
+            for video_id in still_standing(session, args.platform, start, end):
+                print(video_id)
+        return
+
     with SessionLocal() as session:
         table = recanted_by_day(
             session, args.platform,
