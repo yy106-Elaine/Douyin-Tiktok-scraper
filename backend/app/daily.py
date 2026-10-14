@@ -666,15 +666,19 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument("--profile", type=Path, default=None)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
-        "--heavy",
+        "--light",
         action="store_true",
         help=(
-            "let the page fetch the video and the pictures, as it did "
-            "before. A check reads the JSON record and the document, so "
-            "this is normally waste -- but it is the one thing to try "
-            "when a page starts coming back [surface only], because "
-            "that would mean the record depends on something blocked"
+            "block the page's own images, video and fonts. OFF, and "
+            "there is no known reason to turn it on: it was the "
+            "default from 10-05 to 10-14 and it cost between 5%% and "
+            "60%% of every pass, including removals the page states "
+            "in words. Kept only so the regression can be reproduced"
         ),
+    )
+    parser.add_argument(
+        "--heavy", action="store_true",
+        help="accepted and ignored; this is now what happens anyway",
     )
     parser.add_argument(
         "--report",
@@ -815,7 +819,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             headless=args.headless,
             pause_seconds=0,
             platform=args.platform,
-            light=not args.heavy,
+            light=args.light,
             fresh_every=args.fresh_every,
             forget_by=args.forget_by,
             minimise=args.minimise,

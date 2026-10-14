@@ -231,7 +231,7 @@ class Browser:
         context,
         pause_seconds: float = 2.0,
         domain: str = "douyin.com",
-        light: bool = True,
+        light: bool = False,
         fresh_every: int = 1,
         forget_by: str = "blank",
         profile: Path | None = None,
@@ -251,13 +251,32 @@ class Browser:
         #: person needs their keyboard.
         self._minimise = minimise
         self._pause = pause_seconds
-        #: Whether to let the page fetch the video and the pictures it
-        #: is about. It never needs to: what this reads is the JSON
-        #: record and the document, and the archive's own copies are
-        #: fetched separately through the request context, which this
-        #: does not touch. Downloading a video in order to decide
-        #: whether the video is still there is most of a check's time
-        #: and all of its bandwidth.
+        #: Block the page's own images, video and fonts. Off, and it
+        #: should stay off.
+        #:
+        #: It was introduced on 10-05 on the reasoning that a check
+        #: reads the JSON record and the document, so fetching the
+        #: video it is asking about is most of a check's time and all
+        #: of its bandwidth. The reasoning was sound and the effect
+        #: was not: from the first nightly pass that ran with it, the
+        #: unreadable rate went from about 0% to between 5% and 60%,
+        #: every day, and stayed there for eight days.
+        #:
+        #: Sixteen pages that had been unreadable all evening were
+        #: re-read with it off: sixteen read, none unreadable, and
+        #: *twelve of them turned out to say in words that the post
+        #: was gone*. So this did not only cost pages. It turned
+        #: removals -- the thing this study measures -- into
+        #: "the page told us nothing", which is recorded as unknown.
+        #:
+        #: It was not even faster: median 2.3s with it off against
+        #: 3.6s and 4.3s with it on, because a page that cannot load
+        #: what it wants retries.
+        #:
+        #: The same mechanism had already been caught once, in
+        #: `app.login`: the slider challenge *is* an image, and with
+        #: this on it rendered as 图片加载失败 -- a sign-in that
+        #: could not be completed.
         self._light = light
         #: Which site's cookies count as a session here. Both sites are
         #: the same company's and use the same cookie names, so without
@@ -994,7 +1013,7 @@ def open_browser(
     headless: bool = False,
     pause_seconds: float = 2.0,
     platform: str = "douyin",
-    light: bool = True,
+    light: bool = False,
     fresh_every: int = 1,
     forget_by: str = "blank",
     minimise: bool = False,

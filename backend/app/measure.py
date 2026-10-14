@@ -37,8 +37,9 @@ def main() -> None:  # pragma: no cover - a measuring tool
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
-        "--heavy", action="store_true",
-        help="let the page fetch the video and the pictures, as it used to",
+        "--light", action="store_true",
+        help="block the page's own images, video and fonts -- the 10-05 "
+             "regression, kept only so it can be reproduced",
     )
     args = parser.parse_args()
 
@@ -54,7 +55,7 @@ def main() -> None:  # pragma: no cover - a measuring tool
     timings: dict[str, list[float]] = {stage: [] for stage in STAGES}
     with open_browser(
         PROFILES[args.platform], headless=args.headless, pause_seconds=0,
-        platform=args.platform, light=not args.heavy,
+        platform=args.platform, light=args.light,
     ) as browser:
         browser.read(HOMES[args.platform], settle_seconds=1.0)
         for index, video_id in enumerate(targets, start=1):

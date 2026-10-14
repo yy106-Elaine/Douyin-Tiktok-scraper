@@ -228,14 +228,25 @@ def test_it_does_not_keep_opening_tabs():
     assert len(context.pages) == 2
 
 
-def test_a_check_does_not_download_the_video_it_is_checking():
-    """Most of a check's time, and all of its bandwidth, for nothing.
+def test_a_check_no_longer_blocks_what_the_page_asks_for():
+    """This test used to assert the opposite, and the reasoning was good.
 
-    What the check reads is the site's JSON record and the document.
-    The archive's own copy is fetched separately, through the request
-    context, which this routing does not touch -- so a page that
-    streams the video while being asked whether the video exists is
-    pure cost.
+    What a check reads is the site's JSON record and the document;
+    the archive's own copy is fetched separately through the request
+    context. So a page streaming the video while being asked whether
+    the video exists looked like pure cost, and from 10-05 the
+    media, images and fonts were routed away.
+
+    What followed: the unreadable rate went from about 0% to between
+    5% and 60% on every pass for eight days, and sixteen pages
+    unreadable all evening read perfectly with the blocking off --
+    twelve of them stating in words that the post was gone. The cost
+    was not bandwidth. It was removals recorded as "the page told us
+    nothing", which is unknown, which is a silent undercount of the
+    one thing being measured.
+
+    The routing is still there behind --light, so the regression can
+    be reproduced. Nothing turns it on.
     """
     from app.browser import Browser
 
@@ -244,7 +255,11 @@ def test_a_check_does_not_download_the_video_it_is_checking():
 
     browser.read("https://www.douyin.com/video/1", settle_seconds=0)
 
-    assert context.pages[0].routed == ["**/*"]
+    assert context.pages[0].routed == []
+
+    blocking = Browser(_FlakyContext(failures=0), pause_seconds=0, light=True)
+    blocking.read("https://www.douyin.com/video/1", settle_seconds=0)
+    assert blocking._context.pages[0].routed == ["**/*"]
 
 
 def test_the_media_kinds_are_dropped_and_the_record_is_not():
@@ -982,3 +997,37 @@ def test_minimising_is_off_unless_asked(monkeypatch):
 
     browser = Browser(_Context(), pause_seconds=0)
     browser._out_of_the_way(object())
+
+
+def test_the_page_is_allowed_its_own_images_by_default():
+    """The 10-05 regression, pinned.
+
+    Blocking images, video and fonts was introduced to save a check's
+    bandwidth. From the first nightly pass that ran with it, the
+    unreadable rate went from about 0% to between 5% and 60% and
+    stayed there for eight days. Sixteen pages unreadable all evening
+    were re-read with it off: sixteen read, none unreadable, and
+    twelve of them said in words that the post was gone.
+
+    So it did not only cost pages. It turned removals -- what this
+    study measures -- into "the page told us nothing", which is
+    recorded as unknown and is therefore a silent undercount.
+    """
+    assert Browser(_FakeContext(), pause_seconds=0)._light is False
+
+
+def test_the_page_is_allowed_its_own_images_by_default():
+    """The 10-05 regression, pinned.
+
+    Blocking images, video and fonts was introduced to save a check's
+    bandwidth. From the first nightly pass that ran with it, the
+    unreadable rate went from about 0% to between 5% and 60% and
+    stayed there for eight days. Sixteen pages unreadable all evening
+    were re-read with it off: sixteen read, none unreadable, and
+    twelve of them said in words that the post was gone.
+
+    So it did not only cost pages. It turned removals -- what this
+    study measures -- into "the page told us nothing", which is
+    recorded as unknown and is therefore a silent undercount.
+    """
+    assert Browser(_FakeContext(), pause_seconds=0)._light is False

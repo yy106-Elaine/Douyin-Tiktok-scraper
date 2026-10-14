@@ -1412,6 +1412,73 @@ log. Any count of archived-versus-collected should expect a slight
 deficit there rather than treating the archive as a uniform sample of
 the corpus.
 
+### 8b. Eight days of checks under-report removals, and the dates are late
+
+Between **2026-10-06 and 2026-10-14** the takedown pass blocked the
+page's own images, video and fonts, on the reasoning that a check
+reads the JSON record and the HTML and never needs the video it is
+asking about. The reasoning was sound and the effect was not.
+
+What it did, measured from the pass logs:
+
+| period | pages | unreadable |
+| --- | --- | --- |
+| 09-20 → 10-05 | ~9,000 | 0–1% |
+| 10-06 → 10-13 | ~15,000 | 5%, 10%, 15%, 20%, 40%, 43%, 49% |
+
+The change landed at 15:01 on 10-05. The nightly pass of 10-05 ran
+before it and read 1,837 pages with one failure; the pass of 10-06
+was the first to run with it and lost 15%.
+
+**This is not only missing pages.** On 10-14, sixteen posts that had
+been unreadable all evening were re-read with the blocking off: all
+sixteen read, and **twelve of them carried the page's own wording
+that the post was gone**. Under the blocking those twelve were filed
+as `NOTHING_READ`, which the analysis treats as *unknown* — correctly,
+since a page that said nothing is not evidence of anything. The
+consequence is that for eight days a removal that the platform stated
+in words was recorded as "we looked and learned nothing".
+
+So for any post whose check falls in this window:
+
+- A removal may have been **missed entirely** on a given day.
+- `first_gone_at` may therefore be **later than the truth**, by up to
+  the number of consecutive affected days — at worst eight. Lifetimes
+  computed from it are biased **long**, and the Kaplan–Meier curves
+  over this window are optimistic.
+- No removal was **invented**: `NOTHING_READ` never becomes GONE, so
+  the error runs in one direction only, and it is the direction that
+  under-states the study's own finding.
+
+The honest repair is a re-read, not an adjustment: every id whose
+latest check in the window is `NOTHING_READ` is re-checked with the
+blocking off, and the current state recovered. What cannot be
+recovered is *when* a post went during the window, for a post that
+had already gone and whose page now says so. Those dates are
+left as the interval they are, and any survival figure that spans
+10-06 to 10-14 says so next to itself.
+
+The blocking survives as `--light`, turned on by nothing, so that
+the regression can be reproduced rather than only described.
+
+Two smaller things worth recording, because both cost days:
+
+- It was **not faster**. Median page time was 2.3s with the blocking
+  off against 3.6s and 4.3s with it on: a page that cannot load what
+  it wants retries.
+- The same mechanism had already been caught once and not generalised.
+  In `app.login` the slider challenge *is* an image, and with the
+  blocking on it rendered as 图片加载失败, which reads exactly like
+  the site refusing to serve a challenge.
+
+Four other explanations for the unreadable pages were proposed and
+withdrawn before this one — two browsers on one endpoint, an
+account-level limit, the researcher's IP, and the session ending
+mid-pass. Each was stated with more confidence than it had earned.
+The one that held was found by asking *when* it started rather than
+*why*, and the answer was in logs that had been on disk the whole
+time.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school

@@ -30,8 +30,9 @@ def main() -> None:  # pragma: no cover - a looking tool
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("video_id", nargs="+")
     parser.add_argument("--platform", default="douyin", choices=sorted(SITES))
-    parser.add_argument("--heavy", action="store_true",
-                        help="let the page fetch the video and the pictures")
+    parser.add_argument("--light", action="store_true",
+                        help="block the page's own images, video and fonts (the "
+                             "10-05 regression)")
     parser.add_argument("--dir", type=Path, default=Path("peeked"))
     parser.add_argument("--profile", type=Path, default=None,
                         help="browser profile directory; defaults to this "
@@ -45,7 +46,7 @@ def main() -> None:  # pragma: no cover - a looking tool
     with open_browser(
         args.profile or PROFILES[args.platform],
         headless=False, pause_seconds=0,
-        platform=args.platform, light=not args.heavy,
+        platform=args.platform, light=args.light,
     ) as browser:
         # On before the first page is read, so nothing has to
         # remember to switch it on. The home page's own traffic is
