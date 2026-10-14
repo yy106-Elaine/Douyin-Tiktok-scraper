@@ -36,10 +36,12 @@ complete with scripting off.
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from html import escape
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import labels
@@ -1475,9 +1477,253 @@ def tabs(panels: list[tuple[str, str, str]]) -> str:
             f'{"".join(blocks)}</div>')
 
 
+#: A hashtag as Douyin writes it in a caption: "#wlw", "#拉拉日常".
+#: Kept simple on purpose -- this is used to spread the recruiting
+#: across subject matter, not to classify anything, and the content
+#: coding is what will do that properly after the window closes.
+_HASHTAG = re.compile(r"#([^\s#＃，,。.!！?？]{1,24})")
+
+
+def hashtags_of(caption: str | None) -> list[str]:
+    return [m.group(1) for m in _HASHTAG.finditer(caption or "")]
+
+
+#: How Douyin's own word for a filtered post reads. Not a conclusion
+#: -- `status_self_see` is most of them and is genuinely ambiguous --
+#: but the split between author-shaped and platform-shaped words is
+#: the first thing this collection has that narrows section 8's claim
+#: that it measures unwatchability rather than moderation.
+REASON_GLOSS: dict[str, str] = {
+    "status_deleted": "已删除 (deleted)",
+    "status_audit_self_see": "审核后仅自己可见 (after review)",
+    "status_self_see": "仅自己可见 (self only)",
+    "status_friend_see": "仅好友可见 (friends only)",
+    "author_secret": "账号已设私密 (account private)",
+    "unstated": "抖音未说明 (no reason given)",
+}
+
+
+def reasons_seen(session: Session) -> list[tuple[str, int]]:
+    """Every `filter_reason` recorded, commonest first.
+
+    One row per *post*, not per check: a post re-read on five days
+    would otherwise count five times and the commonest reason would
+    be whichever posts were checked most.
+    """
+    from .models import LinkCheck
+    from .recheck import API_FILTERED
+
+    latest: dict[str, tuple[datetime, str]] = {}
+    rows = session.execute(
+        select(LinkCheck.video_id, LinkCheck.checked_at,
+               LinkCheck.filter_reason)
+        .where(LinkCheck.evidence == API_FILTERED,
+               LinkCheck.video_id.isnot(None))
+    )
+    for video_id, when, reason in rows:
+        seen = latest.get(video_id)
+        if seen is None or when >= seen[0]:
+            latest[video_id] = (when, reason or "unstated")
+
+    counted: dict[str, int] = {}
+    for _, reason in latest.values():
+        counted[reason] = counted.get(reason, 0) + 1
+    return sorted(counted.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _why(session: Session, page: Page) -> str:
+    """What Douyin said, when it said anything.
+
+    Only the posts whose removal was established this way. The other
+    two evidences carry no reason at all, so putting them in the
+    chart would draw a slice called "unknown" that is really "a
+    different question was asked".
+    """
+    counted = reasons_seen(session)
+    if not counted:
+        return ""
+
+    total = sum(n for _, n in counted)
+    slices = [
+        Slice(label=REASON_GLOSS.get(reason, reason), value=float(n),
+              hover=f"{REASON_GLOSS.get(reason, reason)}: {n} post(s)")
+        for reason, n in counted
+    ]
+    rows = [[REASON_GLOSS.get(reason, reason), f"{n}", _pct(n / total)]
+            for reason, n in counted]
+
+    return (
+        '<section><h2>下架时抖音给出的理由 (what Douyin said)</h2>'
+        '<p class="note">'
+        'Douyin refuses a removed post three ways, and only one of '
+        'them carries a reason: the API answers with an empty record '
+        'and a <code>filter_detail</code> naming the post. This is '
+        f'the {total} post(s) refused that way, by the word used. '
+        'Posts whose removal was established the other two ways are '
+        'not here, because no reason was given for them.</p>'
+        '<p class="note"><strong>Read it carefully.</strong> '
+        '<em>仅自己可见</em> is most of them and is ambiguous: an '
+        'author who restricts a post after a warning looks exactly '
+        'like one who changed their mind. <em>审核后仅自己可见</em> '
+        'names a review and <em>已删除</em> is a deletion; those are '
+        'the platform. This is the first thing in the collection that '
+        'separates the two at all, and it does not separate them '
+        'cleanly.</p>'
+        + pie(slices, ident="why", title="Reason given")
+        + table(["Reason", "Posts", "Share"], rows,
+                "每个理由的帖子数 (one row per post, latest reading)")
+        + "</section>"
+    )
+
+
+#: Why this account is on the list, in the words of what was
+#: observed -- never in the words of what will be said to them.
+#:
+#: The message does not say "I saw this post of yours come down".
+#: Three of this week's findings were wrong, two of them about
+#: removals, and telling somebody their post was taken down when it
+#: was an instrument fault is not a correction you can make
+#: afterwards. The approach describes the study and asks about their
+#: experience; this column is for deciding who to write to, and
+#: stays in the researcher's own notes.
+WHY_CONTACT: dict[str, str] = {
+    "still-gone/several":
+        "several posts still down — an account-level experience",
+    "still-gone/one":
+        "one post still down",
+    "came-back/several":
+        "several posts went and came back — reinstatement, which "
+        "almost nothing in the literature follows",
+    "came-back/one":
+        "a post went and came back",
+}
+
+
+def _tags_of(person) -> list[str]:
+    """The hashtags on this account's removed posts, commonest first.
+
+    Shown so the recruiting can be spread across subject matter
+    rather than filling up with whichever topic happens to be
+    removed most. It is a rough guide and not the content coding,
+    which runs after the collection window closes.
+    """
+    counted: dict[str, int] = {}
+    for post in person.posts:
+        if not post.ever_gone:
+            continue
+        for tag in hashtags_of(post.caption):
+            counted[tag] = counted.get(tag, 0) + 1
+    ordered = sorted(counted.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [tag for tag, _ in ordered[:6]]
+
+
+def _an_example(person) -> tuple[str, str] | None:
+    """One removed post of theirs: its address and its caption.
+
+    One, not all: the list is for deciding who to approach, and a
+    row carrying forty links is a row nobody reads. The post chosen
+    is the most recently removed, which is the one they are most
+    likely to remember.
+    """
+    gone = [p for p in person.posts if p.ever_gone]
+    if not gone:
+        return None
+    gone.sort(key=lambda p: (p.first_gone_at or datetime.min), reverse=True)
+    post = gone[0]
+    base = ("https://www.douyin.com/note/" if post.platform == "douyin_note"
+            else "https://www.douyin.com/video/")
+    return base + post.video_id, (post.caption or "")[:80]
+
+
+def _reach_out(session: Session, page: Page) -> str:
+    """Who to write to, in the order the sampling decision says.
+
+    The order is `app.outreach`: four cells -- still-gone or
+    came-back, one post or several -- shuffled on a fixed seed and
+    read round-robin, so stopping at any point leaves the four
+    roughly balanced. Worked from the top of `interviews.candidates`
+    instead, every quotation in the thesis would come from the most
+    heavily removed accounts, which is a sample of nothing.
+    """
+    from .interviews import candidates
+    from .outreach import already, next_to_contact
+
+    people = candidates(session, "douyin")
+    if not people:
+        return ""
+    queue = next_to_contact(session, people, count=400)
+    written = already(session, "douyin")
+
+    rows = []
+    for index, item in enumerate(queue, start=1):
+        person = item.person
+        example = _an_example(person)
+        link = (f'<a href="{_e(example[0])}" rel="noreferrer">这条</a>'
+                if example else "—")
+        caption = _e(example[1]) if example else ""
+        tags = " ".join(f"#{_e(t)}" for t in _tags_of(person)) or "—"
+        rows.append([
+            str(index),
+            f'<a href="{_e(person.profile_url)}" rel="noreferrer">'
+            f'{_e(person.handle or person.sec_uid[:10])}</a>',
+            _e(item.stratum),
+            _e(WHY_CONTACT.get(item.stratum, "")),
+            f"{person.removed} / {person.still_gone} / {person.came_back}",
+            tags,
+            f"{link}<div class=\"muted\">{caption}</div>",
+        ])
+
+    unreachable = [p for p in people if not p.reachable]
+    return (
+        '<section><h2>可联系的作者 (who to write to)</h2>'
+        '<p class="note"><strong>This page names real people who post '
+        'queer content.</strong> It is written only when '
+        '<code>--outreach</code> is passed, it is ignored by the '
+        'repository, and it does not belong in a shared folder, an '
+        'email, or a chat.</p>'
+        '<p class="note">The order is the sampling decision, not a '
+        'ranking: four cells — still down or came back, one post or '
+        'several — shuffled on a fixed seed and read round-robin, so '
+        'stopping at any point leaves the four roughly balanced. '
+        'Worked from the top of the removals list instead, every '
+        'quotation would come from the worst-hit accounts.</p>'
+        '<p class="note"><strong>The tags column is for spreading the '
+        'sample, not for choosing it.</strong> Take the next person in '
+        'the order; use the tags only to notice when the people said '
+        'yes so far are all posting about one thing.</p>'
+        '<p class="note"><strong>What the message does not say.</strong> '
+        'It does not tell anyone that a particular post of theirs was '
+        'taken down. Two of this week\'s three instrument faults '
+        'produced wrong removals, and telling somebody their post was '
+        'removed when it was a bug is not a correction that can be '
+        'made afterwards. The approach describes the study and asks '
+        'about their experience; the "why" column below is for '
+        'deciding who to write to and stays in your notes.</p>'
+        f'<p class="note">{len(queue)} not yet written to; '
+        f'{len(written)} already contacted; {len(unreachable)} '
+        'unreachable — no 抖音号 on file, which usually means the '
+        'account itself is gone. That last number is a finding, not a '
+        'shortfall.</p>'
+        + table(
+            ["#", "抖音号 / profile", "Cell", "Why (your notes only)",
+             "gone / still / back", "Tags on their removed posts",
+             "One removed post"],
+            rows,
+            "Contact order. Record each with "
+            "app.outreach --mark &lt;抖音号&gt; sent")
+        + "</section>"
+    )
+
+
 def build(session: Session, *, reveal: bool = False,
-          generated: datetime | None = None) -> str:
-    """The whole page, as one string."""
+          generated: datetime | None = None,
+          outreach: bool = False) -> str:
+    """The whole page, as one string.
+
+    `outreach` adds the contact list, which names real people and
+    links to their profiles. Off by default and off in every
+    scheduled run: the page is otherwise safe to leave on a desk.
+    """
     page = Page(
         held={p: own(session, p) for p in PLATFORMS},
         generated=local(generated or clock_now()),
@@ -1486,11 +1732,13 @@ def build(session: Session, *, reveal: bool = False,
     stamp = page.generated.strftime("%Y-%m-%d %H:%M") if page.generated else "—"
     overview = "".join([
         _douyin(session, page),
+        _why(session, page),
         _cohorts(page),
         _comebacks(page),
         _context(page),
     ])
     analysis = _content(session, page)
+    contacts = _reach_out(session, page) if outreach else ""
     body = "".join([
         "<header><h1>Takedown observatory</h1>",
         '<p class="sub">Chinese-language WLW posts, watched daily for '
@@ -1498,6 +1746,7 @@ def build(session: Session, *, reveal: bool = False,
         tabs([
             ("overview", "Overview 总览", overview),
             ("analysis", "抖音内容分析 (Douyin content)", analysis),
+            ("reach", "访谈名单 (who to write to)", contacts),
         ]),
         _method(),
     ])
@@ -1524,16 +1773,30 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         "--identifiers", action="store_true",
         help="print whole video ids instead of their last four digits",
     )
+    parser.add_argument(
+        "--outreach", action="store_true",
+        help=(
+            "add the contact list: 抖音号, profile links, one removed "
+            "post each, and the tags on their removed posts. This "
+            "names real people posting queer content -- keep the file "
+            "off shared drives"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
     with SessionLocal() as session:
-        html = build(session, reveal=args.identifiers)
+        html = build(session, reveal=args.identifiers,
+                     outreach=args.outreach)
     with open(args.out, "w", encoding="utf-8") as handle:
         handle.write(html)
     print(f"{len(html) / 1024:.0f} KB written to {args.out}")
     if args.identifiers:
         print("Whole video ids are in this file. Do not post it anywhere.")
+    if args.outreach:
+        print("This file names real people posting queer content, with "
+              "links to their profiles.\nKeep it off shared drives, out "
+              "of email, and off any machine but your own.")
 
 
 if __name__ == "__main__":  # pragma: no cover
