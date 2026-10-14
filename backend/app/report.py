@@ -1370,6 +1370,13 @@ text { font: 12px system-ui, -apple-system, sans-serif; }
 .sw.s4 { background: var(--s4); }
 .twin { margin-top: 14px; }
 .scroll { overflow-x: auto; max-width: 100%; }
+/* The contact list is worked, not glanced at: it is the one
+   table on the page that is open by default, so its rows get
+   room and its links stay reachable. */
+table.contacts td { vertical-align: top; }
+table.contacts .muted { color: var(--muted, #666); font-size: .85em;
+  max-width: 28ch; }
+table.contacts a { font-weight: 600; }
 .twin summary {
   cursor: pointer; font-size: 12.5px; color: var(--text-secondary);
   padding: 4px 0;
@@ -1545,7 +1552,7 @@ def _why(session: Session, page: Page) -> str:
 
     total = sum(n for _, n in counted)
     slices = [
-        Slice(label=REASON_GLOSS.get(reason, reason), value=float(n),
+        Slice(label=REASON_GLOSS.get(reason, reason), count=n,
               hover=f"{REASON_GLOSS.get(reason, reason)}: {n} post(s)")
         for reason, n in counted
     ]
@@ -1635,6 +1642,28 @@ def _an_example(person) -> tuple[str, str] | None:
     return base + post.video_id, (post.caption or "")[:80]
 
 
+def contact_table(headers: list[str], rows: list[list[str]],
+                  caption: str) -> str:
+    """The contact list, open and with its links live.
+
+    `table()` escapes every cell and hides the whole thing behind a
+    closed <details>, which is right for the twin of a chart and
+    wrong for this: the links are the point, and a working list
+    nobody can see without clicking is a list nobody works.
+
+    So cells arrive already escaped, field by field, by the caller.
+    """
+    head = "".join(f"<th>{_e(h)}</th>" for h in headers)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+        for row in rows
+    )
+    return (f'<p class="note">{_e(caption)}</p>'
+            f'<div class="scroll"><table class="contacts">'
+            f"<thead><tr>{head}</tr></thead>"
+            f"<tbody>{body}</tbody></table></div>")
+
+
 def _reach_out(session: Session, page: Page) -> str:
     """Who to write to, in the order the sampling decision says.
 
@@ -1663,12 +1692,13 @@ def _reach_out(session: Session, page: Page) -> str:
         caption = _e(example[1]) if example else ""
         tags = " ".join(f"#{_e(t)}" for t in _tags_of(person)) or "—"
         rows.append([
-            str(index),
+            _e(str(index)),
             f'<a href="{_e(person.profile_url)}" rel="noreferrer">'
             f'{_e(person.handle or person.sec_uid[:10])}</a>',
             _e(item.stratum),
             _e(WHY_CONTACT.get(item.stratum, "")),
-            f"{person.removed} / {person.still_gone} / {person.came_back}",
+            _e(f"{person.removed} / {person.still_gone} / "
+               f"{person.came_back}"),
             tags,
             f"{link}<div class=\"muted\">{caption}</div>",
         ])
@@ -1704,13 +1734,13 @@ def _reach_out(session: Session, page: Page) -> str:
         'unreachable — no 抖音号 on file, which usually means the '
         'account itself is gone. That last number is a finding, not a '
         'shortfall.</p>'
-        + table(
+        + contact_table(
             ["#", "抖音号 / profile", "Cell", "Why (your notes only)",
              "gone / still / back", "Tags on their removed posts",
              "One removed post"],
             rows,
-            "Contact order. Record each with "
-            "app.outreach --mark &lt;抖音号&gt; sent")
+            "Contact order. Record each with: "
+            "./.venv/bin/python -m app.outreach --mark <抖音号> sent")
         + "</section>"
     )
 

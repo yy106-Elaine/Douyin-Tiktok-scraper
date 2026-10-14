@@ -103,3 +103,62 @@ def test_the_contact_panel_is_off_unless_asked(db: None) -> None:
 
     with SessionLocal() as session:
         assert "访谈名单" not in build(session)
+
+
+def test_the_panels_actually_render(db: None) -> None:
+    """Build the page, not just the numbers behind it.
+
+    The first version of this file tested `reasons_seen` and never
+    rendered anything, so a wrong keyword in the `Slice` call passed
+    every test and failed on her machine the moment she ran it. A
+    panel is not covered until something has drawn it.
+    """
+    from datetime import datetime
+
+    from app.models import AuthorPost, SharedLink, WebAuthor, WebVideo
+    from app.report import build
+
+    with SessionLocal() as session:
+        session.add(SharedLink(
+            participant_id="p1", platform="douyin", video_id="v1",
+            raw_text="https://www.douyin.com/video/v1",
+            canonical_url="https://www.douyin.com/video/v1",
+            shared_at=datetime(2026, 10, 1)))
+        session.add(WebVideo(
+            platform="douyin", video_id="v1", sec_uid="acct",
+            caption="好久不见 #wlw #拉拉日常",
+            posted_on=datetime(2026, 10, 1)))
+        session.add(AuthorPost(sec_uid="acct", video_id="v1",
+                               platform="douyin"))
+        session.add(WebAuthor(sec_uid="acct", author_handle="热拉xyz",
+                              author_name="someone"))
+        record_check(session, "v1", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/v1", "douyin",
+                     filter_reason="status_audit_self_see")
+        session.commit()
+
+        with_list = build(session, outreach=True)
+        without = build(session)
+
+    # The reason panel draws, in both.
+    assert "审核后仅自己可见" in with_list
+    assert "审核后仅自己可见" in without
+    # And the contact list only when asked for.
+    assert "访谈名单" in with_list
+    assert "访谈名单" not in without
+
+
+def test_the_contact_links_are_live_and_the_list_is_open(db: None) -> None:
+    """`table()` escapes every cell and hides it behind a closed
+    <details>. That is right for the twin of a chart and wrong here:
+    the links are the point, and a working list nobody can see
+    without clicking is a list nobody works."""
+    from app.report import contact_table
+
+    drawn = contact_table(
+        ["Who"],
+        [['<a href="https://www.douyin.com/user/x">热拉xyz</a>']],
+        "contact order")
+
+    assert '<a href="https://www.douyin.com/user/x">' in drawn
+    assert "<details" not in drawn
