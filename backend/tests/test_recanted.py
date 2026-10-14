@@ -159,3 +159,34 @@ def test_the_ids_still_standing_on_bad_evidence(db: None) -> None:
         found = still_standing(session, "douyin", window_start, window_end)
 
     assert found == ["suspect"]
+
+
+def test_the_filtered_posts_whose_reason_nobody_wrote_down(db: None) -> None:
+    """The column arrived after the evidence did.
+
+    Those posts are already known gone; what is missing is the word,
+    and the word is the only thing in this collection that begins to
+    separate the platform acting from the author acting. So they are
+    worth a few minutes of re-reading rather than a wait for the
+    next full pass.
+    """
+    from app.recanted import without_reason
+    from app.recheck import API_FILTERED
+
+    with SessionLocal() as session:
+        session.add_all([
+            _check("no-word", API_FILTERED, 0),
+            _check("has-word", API_FILTERED, 0),
+            _check("other-evidence", SERVED_ANOTHER, 0),
+            # Filtered on Monday, read alive on Tuesday: not waiting
+            # for anything.
+            _check("came-back", API_FILTERED, 0),
+            _check("came-back", ID_CONFIRMED, 30),
+        ])
+        session.flush()
+        for row in session.query(LinkCheck).filter_by(
+                video_id="has-word").all():
+            row.filter_reason = "status_deleted"
+        session.commit()
+
+        assert without_reason(session, "douyin") == ["no-word"]

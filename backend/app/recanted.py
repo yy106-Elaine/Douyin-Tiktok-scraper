@@ -39,7 +39,12 @@ from sqlalchemy.orm import Session
 
 from .clock import now as utc_now
 from .models import LinkCheck
-from .recheck import ID_CONFIRMED, PAGE_SAYS_GONE, SERVED_ANOTHER
+from .recheck import (
+    API_FILTERED,
+    ID_CONFIRMED,
+    PAGE_SAYS_GONE,
+    SERVED_ANOTHER,
+)
 
 #: The two ways a check can say "gone", kept apart because they are
 #: different claims. `PAGE_SAYS_GONE` is Douyin's own wording and is
@@ -133,6 +138,35 @@ def still_standing(session: Session, platform: str,
     return sorted(said_gone)
 
 
+def without_reason(session: Session, platform: str) -> list[str]:
+    """Posts last found filtered, whose reason nobody wrote down.
+
+    The reason column was added on 2026-10-14, after the re-read that
+    first used this evidence, so every post filtered before that
+    afternoon has the fact without the word. They are already known
+    to be gone; re-reading them costs a few minutes and fills in the
+    one thing this collection has that begins to separate the
+    platform acting from the author acting.
+
+    Latest check only. A post filtered on Monday and read alive on
+    Tuesday is not waiting for anything.
+    """
+    rows = list(session.execute(
+        select(LinkCheck.video_id, LinkCheck.checked_at,
+               LinkCheck.evidence, LinkCheck.filter_reason)
+        .where(LinkCheck.platform == platform,
+               LinkCheck.video_id.isnot(None))
+        .order_by(LinkCheck.checked_at)
+    ))
+    latest: dict[str, tuple[str | None, str | None]] = {}
+    for video_id, _, evidence, reason in rows:
+        latest[video_id] = (evidence, reason)
+    return sorted(
+        video_id for video_id, (evidence, reason) in latest.items()
+        if evidence == API_FILTERED and not reason
+    )
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     from .db import SessionLocal, init_db
 
@@ -149,9 +183,24 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "app.daily --only-from"
         ),
     )
+    parser.add_argument(
+        "--ids-without-reason", action="store_true",
+        help=(
+            "print the ids of posts last found filtered whose reason "
+            "was never stored. Re-reading them fills in the word "
+            "Douyin used, which is the one thing here that begins to "
+            "separate the platform acting from the author acting"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
+    if args.ids_without_reason:
+        with SessionLocal() as session:
+            for video_id in without_reason(session, args.platform):
+                print(video_id)
+        return
+
     if args.ids_between:
         start, end = (datetime.fromisoformat(d) for d in args.ids_between)
         with SessionLocal() as session:
