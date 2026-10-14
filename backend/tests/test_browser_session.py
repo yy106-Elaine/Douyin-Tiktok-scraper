@@ -874,3 +874,60 @@ def test_a_live_session_read_as_absent_says_do_not_sign_in_again():
     said = browser.session_report()
     assert "do NOT sign in again" in said
     assert "abc123" not in said  # the value is the session
+
+
+def test_a_browser_that_is_not_using_this_profile_says_so(tmp_path):
+    """The 10-14 case: four cookies where thirty-three were stored.
+
+    A jar does not shrink from 33 to 4. Four is what a brand-new
+    profile holds after one visit, so the browser had fallen back to
+    a directory nobody asked for -- and "No saved session" was then a
+    true statement about the wrong profile. The response that message
+    invites, signing in again, writes a second session into a
+    directory while the one you have sits unused.
+    """
+    import sqlite3
+
+    profile = tmp_path / ".browser-profile"
+    (profile / "Default").mkdir(parents=True)
+    jar = profile / "Default" / "Cookies"
+    connection = sqlite3.connect(jar)
+    connection.execute(
+        "CREATE TABLE cookies (name TEXT, host_key TEXT, value TEXT)")
+    connection.execute(
+        "INSERT INTO cookies VALUES ('sessionid', '.douyin.com', 'secret')")
+    connection.execute(
+        "INSERT INTO cookies VALUES ('sid_guard', '.douyin.com', 'secret')")
+    connection.commit()
+    connection.close()
+
+    # What the phantom profile sees: one visit's worth of anonymous
+    # cookies, which is exactly what was reported.
+    phantom = Browser(
+        _FakeContext([
+            {"name": "__ac_nonce", "value": "x", "domain": ".douyin.com"},
+            {"name": "s_v_web_id", "value": "y", "domain": ".douyin.com"},
+        ]),
+        pause_seconds=0,
+        profile=profile,
+    )
+
+    said = phantom.session_report()
+    assert "NOT using this profile" in said
+    assert "Do not sign in again" in said
+    assert "sessionid" in said
+    assert "secret" not in said  # the value is the session
+
+
+def test_the_disk_check_stays_quiet_when_it_cannot_read(tmp_path):
+    """No jar on disk, or one Chromium has locked, must not invent a verdict.
+
+    The report falls back to describing the cookies it can see, which
+    is what it did before any of this existed.
+    """
+    empty = Browser(_FakeContext(), pause_seconds=0, profile=tmp_path)
+    assert empty.cookies_on_disk() is None
+    assert "cookie jar is empty" in empty.session_report()
+
+    # And with no profile named at all -- every test above this one.
+    assert Browser(_FakeContext(), pause_seconds=0).cookies_on_disk() is None

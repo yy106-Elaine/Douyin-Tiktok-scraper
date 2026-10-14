@@ -234,8 +234,15 @@ class Browser:
         light: bool = True,
         fresh_every: int = 1,
         forget_by: str = "blank",
+        profile: Path | None = None,
     ) -> None:
         self._context = context
+        #: The user-data-dir this browser was asked for. Kept so the
+        #: jar it has can be checked against the jar on disk: Chromium
+        #: does not always refuse a directory it cannot lock, and a
+        #: silent fall back to an empty temporary profile looks from
+        #: here exactly like a session that has expired.
+        self._profile = profile
         self._pause = pause_seconds
         #: Whether to let the page fetch the video and the pictures it
         #: is about. It never needs to: what this reads is the JSON
@@ -302,6 +309,37 @@ class Browser:
                 found.append(name)
         return found
 
+    def cookies_on_disk(self) -> list[tuple[str, str]] | None:
+        """What the profile directory itself holds. None if unreadable.
+
+        Chromium keeps its jar in a SQLite file inside the profile.
+        Reading it is the only way to answer the question that
+        matters when a check says no: is the session gone, or is this
+        browser not looking at this profile? Opened read-only, and
+        the value column is never selected -- the names and hosts
+        answer the question and the values are the session.
+        """
+        if self._profile is None:
+            return None
+        for name in ("Default/Cookies", "Cookies", "Default/Network/Cookies"):
+            path = self._profile / name
+            if not path.exists():
+                continue
+            try:
+                import sqlite3
+
+                connection = sqlite3.connect(
+                    f"file:{path}?mode=ro", uri=True, timeout=2.0)
+                try:
+                    rows = connection.execute(
+                        "SELECT name, host_key FROM cookies").fetchall()
+                finally:
+                    connection.close()
+            except Exception:  # noqa: BLE001 - locked, or a newer schema
+                return None
+            return [(str(a or ""), str(b or "")) for a, b in rows]
+        return None
+
     def _value_of(self, name: str) -> str | None:
         """One cookie's value, for this domain. Never returned outward."""
         for cookie in self._context.cookies():
@@ -342,6 +380,32 @@ class Browser:
         logged, or returned from anywhere in this file.
         """
         every = self.cookie_names()
+
+        # Asked first, because it changes what every other answer
+        # means. On 10-14 a headless run reported four cookies for
+        # douyin.com; a windowed check hours earlier, on the same
+        # directory, had reported thirty-three. A jar does not shrink
+        # like that. Four is what a brand-new profile holds after one
+        # visit -- so the browser was not using this profile at all,
+        # and "no saved session" was a statement about a directory
+        # nobody asked for.
+        on_disk = self.cookies_on_disk()
+        if on_disk is not None:
+            stored = {
+                name for name, host in on_disk
+                if name in _SESSION_COOKIES and self._domain in host
+            }
+            if stored and not self.session_cookies():
+                return (
+                    f"the profile directory itself holds "
+                    f"{', '.join(sorted(stored))} for {self._domain}, and "
+                    f"this browser sees {len(every)} cookie(s) and none of "
+                    "them — so it is NOT using this profile. Do not sign "
+                    "in again: that would write a second session into a "
+                    "directory, while the one you have sits unused. Look "
+                    "for a run that has not exited yet"
+                )
+
         if not every:
             return (
                 "the cookie jar is empty — nothing at all has been "
@@ -926,6 +990,7 @@ def open_browser(
                 light=light,
                 fresh_every=fresh_every,
                 forget_by=forget_by,
+                profile=profile,
             )
         finally:
             context.close()
