@@ -281,6 +281,22 @@ class LinkCheck(Base):
     #: else's id, which is a fact about the exchange.
     evidence: Mapped[str | None] = mapped_column(String(64))
 
+    #: When `evidence` is API_FILTERED, the word Douyin used for it.
+    #:
+    #: Kept because these words separate the two things this study
+    #: has to keep apart and could not, until 10-14, tell apart at
+    #: all. `status_deleted` and `status_audit_self_see` are the
+    #: platform acting; `author_secret` and `status_friend_see` are
+    #: the author acting; `status_self_see` is either, and is by far
+    #: the most common. Section 8 says this instrument measures
+    #: unwatchability rather than moderation -- that stays true, and
+    #: this is the first column that narrows it.
+    #:
+    #: Stored raw, never mapped to a conclusion here. The mapping is
+    #: a judgement that belongs in the analysis, where it can be
+    #: argued with, and Douyin may add words nobody here has seen.
+    filter_reason: Mapped[str | None] = mapped_column(String(64))
+
 
 class AuthorIdentity(Base):
     """An account's stable id, learned from its profile page.

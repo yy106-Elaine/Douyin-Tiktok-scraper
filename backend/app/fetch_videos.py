@@ -189,6 +189,7 @@ def record_check(
     evidence: str,
     url: str,
     platform: str = "douyin",
+    filter_reason: str | None = None,
 ) -> None:
     """File this fetch as a check, so removals reach the findings.
 
@@ -209,6 +210,7 @@ def record_check(
             final_url=None,
             error=page.error,
             evidence=evidence,
+            filter_reason=filter_reason,
         )
     )
     session.commit()

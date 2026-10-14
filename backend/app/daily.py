@@ -166,7 +166,7 @@ def one(
             why = filtered_out(page.payloads, video_id)
         if why is not None:
             record_check(session, video_id, page, API_FILTERED, url,
-                         site.platform)
+                         site.platform, filter_reason=why)
             gone_author = _account(session, video_id)
             wipe(session, video_id, page, site.platform)
             said = f"gone -- the site filtered it out ({why})"
@@ -983,7 +983,10 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         print(
             f"\nread {report['read']}; saved {report['saved']} file(s) "
             f"({report['bytes'] / 1_000_000_000:.2f} GB); "
-            f"{report['gone']} gone (the site served another video); "
+            # Not "the site served another video" any more. That is
+            # one of three ways a removal is established, and on the
+            # re-read of 10-14 it was none of the eighty-five.
+            f"{report['gone']} gone; "
             f"{report['unreadable']} unreadable\n"
             f"of those, {new_gone} first found gone today"
             + (f"; {back} came back today" if back else "")

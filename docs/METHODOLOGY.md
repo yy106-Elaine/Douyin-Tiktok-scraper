@@ -1453,13 +1453,34 @@ make:
   own script, which a check that reads the markup early never sees
   run. That is also why this went unnoticed — the pages looked blank.
 
-`filter_reason` is sometimes the empty string: filtered, with no
-reason given. Recorded as `unstated` rather than dropped, because
-"Douyin would not say" is itself a finding, and the reasons that *are*
-given (`status_self_see` so far) are worth tabulating separately —
-"the author made it private" and "the platform removed it" arrive
-through the same door, and section 8 already says this instrument
-measures unwatchability rather than moderation.
+**The reason is the unexpected part.** The re-read of 109 posts on
+10-14 turned up six words, and they begin to separate the two things
+this study most needs apart:
+
+| `filter_reason` | count on 10-14 | reads as |
+| --- | --- | --- |
+| `status_self_see` | ~70 | either — the commonest, and ambiguous |
+| `status_deleted` | 13 | the platform, or the author deleting |
+| `unstated` | 6 | Douyin would not say |
+| `status_friend_see` | 3 | the author narrowing the audience |
+| `status_audit_self_see` | 1 | the platform, **after a review** |
+| `author_secret` | 1 | the author making the account private |
+
+Section 8 says this instrument measures unwatchability rather than
+moderation. That stays true — `status_self_see`, the bulk of them, is
+genuinely ambiguous, and an author who restricts a post after a
+warning is not distinguishable here from one who simply changed their
+mind. But `status_audit_self_see` names a review, and the split
+between author-shaped and platform-shaped words is the first thing
+this collection has that narrows the claim at all. It is worth a table
+of its own in the results.
+
+The word is stored raw in `link_checks.filter_reason`, never mapped to
+a conclusion in the collector: the mapping above is a judgement, it
+belongs in the analysis where it can be argued with, and Douyin will
+use words nobody here has seen. An empty reason is recorded as
+`unstated` rather than dropped, because "Douyin would not say" is
+itself a finding.
 
 **Counts before 10-14 are low by this amount**, on `douyin` most of
 all. The re-read repairs the current state; the dates of removals
