@@ -52,12 +52,22 @@ def test_the_other_evidences_are_not_drawn_as_unknown(db: None) -> None:
         assert reasons_seen(session) == []
 
 
-def test_a_missing_reason_is_called_unstated(db: None) -> None:
+def test_unstated_means_douyin_said_nothing(db: None) -> None:
+    """"unstated" is what `filtered_out` returns when Douyin sends an
+    empty reason. A null column is a different thing -- see
+    test_a_reason_nobody_recorded_is_not_a_reason_nobody_gave."""
+    from app.report import NOT_RECORDED
+
     with SessionLocal() as session:
         record_check(session, "v1", _Page(), API_FILTERED,
                      "https://www.douyin.com/video/v1", "douyin",
-                     filter_reason=None)
+                     filter_reason="unstated")
         assert reasons_seen(session) == [("unstated", 1)]
+
+        record_check(session, "v2", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/v2", "douyin",
+                     filter_reason=None)
+        assert dict(reasons_seen(session))[NOT_RECORDED] == 1
     assert "no reason given" in REASON_GLOSS["unstated"]
 
 
@@ -162,3 +172,75 @@ def test_the_contact_links_are_live_and_the_list_is_open(db: None) -> None:
 
     assert '<a href="https://www.douyin.com/user/x">' in drawn
     assert "<details" not in drawn
+
+
+def test_a_reason_nobody_recorded_is_not_a_reason_nobody_gave(db: None) -> None:
+    """The two look alike in a null column and mean opposite things.
+
+    `filtered_out` returns the literal "unstated" when Douyin gives
+    an empty reason, so that is a fact about Douyin. A null is this
+    instrument not having stored anything -- true of every post found
+    filtered before the column existed, which is the first hundred of
+    them. Putting both in one wedge would report a gap in the
+    collection as a finding about the platform.
+    """
+    from app.report import NOT_RECORDED, _why, reasons_seen
+
+    with SessionLocal() as session:
+        record_check(session, "old", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/old", "douyin",
+                     filter_reason=None)
+        record_check(session, "new", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/new", "douyin",
+                     filter_reason="unstated")
+        session.commit()
+
+        counted = dict(reasons_seen(session))
+        assert counted == {NOT_RECORDED: 1, "unstated": 1}
+
+        drawn = _why(session, None)
+
+    # The one Douyin would not explain is in the chart.
+    assert "no reason given" in drawn
+    # The one nobody wrote down is named, and said not to be that.
+    assert "1 post(s) are not in this chart" in drawn
+    assert 'not "none given"' in drawn
+
+
+def test_the_panel_still_appears_when_nothing_has_a_reason_yet(db: None) -> None:
+    """The state her collection is in right now: a hundred filtered
+    posts, none of their reasons stored. A silent empty panel would
+    read as "Douyin never refuses this way"."""
+    from app.report import _why
+
+    with SessionLocal() as session:
+        record_check(session, "old", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/old", "douyin",
+                     filter_reason=None)
+        session.commit()
+        drawn = _why(session, None)
+
+    assert "1 post(s) are not in this chart" in drawn
+
+
+def test_every_tab_can_actually_be_opened() -> None:
+    """A tab whose panel has no rule is a label you can click that
+    shows nothing.
+
+    The rules were written by hand for the two tabs that existed, so
+    adding a third produced exactly that: a working tab strip above
+    a blank page. They are generated from the panel list now, and
+    this walks the list rather than naming the tabs, so a fourth
+    cannot repeat it.
+    """
+    from app.report import tabs
+
+    panels = [("overview", "A", "<p>a</p>"),
+              ("analysis", "B", "<p>b</p>"),
+              ("reach", "C", "<p>c</p>")]
+    drawn = tabs(panels)
+
+    for key, _, _ in panels:
+        assert f"#tab-{key}:checked ~ .panel-{key} {{ display: block; }}" \
+            in drawn
+        assert f'<div class="panel-{key}">' in drawn
