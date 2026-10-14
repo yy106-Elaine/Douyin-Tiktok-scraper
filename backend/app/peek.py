@@ -33,6 +33,9 @@ def main() -> None:  # pragma: no cover - a looking tool
     parser.add_argument("--light", action="store_true",
                         help="block the page's own images, video and fonts (the "
                              "10-05 regression)")
+    parser.add_argument(
+        "--minimise", "--minimize", action="store_true", dest="minimise",
+        help="keep the window in the Dock while it looks")
     parser.add_argument("--dir", type=Path, default=Path("peeked"))
     parser.add_argument("--profile", type=Path, default=None,
                         help="browser profile directory; defaults to this "
@@ -46,7 +49,7 @@ def main() -> None:  # pragma: no cover - a looking tool
     with open_browser(
         args.profile or PROFILES[args.platform],
         headless=False, pause_seconds=0,
-        platform=args.platform, light=args.light,
+        platform=args.platform, light=args.light, minimise=args.minimise,
     ) as browser:
         # On before the first page is read, so nothing has to
         # remember to switch it on. The home page's own traffic is
