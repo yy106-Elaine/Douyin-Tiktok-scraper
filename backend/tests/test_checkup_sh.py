@@ -16,14 +16,17 @@ def test_it_opens_no_browser_and_writes_nothing() -> None:
     profile would stop the pass it was called to look at."""
     text = SCRIPT.read_text(encoding="utf-8")
 
+    # Named in prose (the log names mention them) but never run:
+    # what matters is that no line executes one.
+    runs = [line for line in text.splitlines()
+            if line.strip().startswith("$PY -m")]
     for forbidden in ("app.daily", "app.fetch_videos", "app.fetch_authors",
-                      "app.download_videos", "app.resolve", "--apply"):
-        assert forbidden not in text, forbidden
+                      "app.download_videos", "app.resolve"):
+        assert all(forbidden not in line for line in runs), forbidden
+    assert "--apply" not in text
 
     # `app.login --check` is named only inside the closing note that
     # explains why it is NOT run here.
-    runs = [line for line in text.splitlines()
-            if line.strip().startswith("$PY -m")]
     assert all("login" not in line for line in runs)
 
 

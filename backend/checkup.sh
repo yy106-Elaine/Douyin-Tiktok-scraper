@@ -32,14 +32,36 @@ if (( ${#logs[@]} == 0 )); then
 else
   for log in "${logs[@]}"; do
     name=$(basename "$log" .log)
-    # The summary block each pass ends with. If it is missing the
-    # pass did not finish, which is itself the answer.
+    # Only an app.daily pass ends with a "read N; ..." summary.
+    # `resolve` and `fetch_authors` are different programs with
+    # different last words, and judging them by daily's made the
+    # first run of this script report two finished steps as DID NOT
+    # FINISH -- a false alarm in the one place that exists to raise
+    # true ones.
     tail=$(grep -E "^read [0-9]+;" "$log" | tail -1)
-    if [[ -z "$tail" ]]; then
-      last=$(grep -o '\[[0-9]\{1,\}/[0-9]\{1,\}\]' "$log" | tail -1)
-      printf '  %-34s DID NOT FINISH  (last %s)\n' "$name" "${last:-nothing}"
-    else
+    if [[ -n "$tail" ]]; then
       printf '  %-34s %s\n' "$name" "$tail"
+      continue
+    fi
+    last=$(grep -o '\[[0-9]\{1,\}/[0-9]\{1,\}\]' "$log" | tail -1)
+    if [[ -n "$last" ]]; then
+      # It counted pages to the end and simply does not print
+      # daily's summary.
+      done_n=${last#[}; done_n=${done_n%%/*}
+      total=${last##*/}; total=${total%]}
+      if [[ "$done_n" == "$total" ]]; then
+        printf '  %-34s finished %s\n' "$name" "$last"
+      else
+        printf '  %-34s DID NOT FINISH  (stopped at %s)\n' "$name" "$last"
+      fi
+      continue
+    fi
+    # No page counter at all: resolve and the like. The only thing
+    # that can be said is whether it ran and said nothing alarming.
+    if grep -qiE "traceback|error|refused|SystemExit" "$log"; then
+      printf '  %-34s ERRORS — read the log\n' "$name"
+    else
+      printf '  %-34s ran, no page counter (ok)\n' "$name"
     fi
   done
 fi
@@ -63,6 +85,17 @@ for platform in douyin douyin_note tiktok; do
 done
 echo "  (these are ids whose LATEST check read nothing; re-read with"
 echo "   --only-from after ./.venv/bin/python -m app.unreadable > file)"
+
+rule "5b. removals a later check undid"
+# The other half of the 10-05 regression, if there is one. A
+# removal here is inferred from the record that came back belonging
+# to a different post -- which a page that failed to load its own
+# content and fell through to a recommendation also produces.
+for platform in douyin douyin_note; do
+  $PY -m app.recanted --platform "$platform" --days 14 2>&1 \
+    | sed "s/^/  /" | head -24
+  echo
+done
 
 rule "6. recruitment"
 $PY -m app.outreach --status 2>&1 | sed 's/^/  /'

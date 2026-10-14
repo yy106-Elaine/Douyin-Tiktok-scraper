@@ -1446,9 +1446,33 @@ So for any post whose check falls in this window:
   the number of consecutive affected days — at worst eight. Lifetimes
   computed from it are biased **long**, and the Kaplan–Meier curves
   over this window are optimistic.
-- No removal was **invented**: `NOTHING_READ` never becomes GONE, so
-  the error runs in one direction only, and it is the direction that
-  under-states the study's own finding.
+- Whether removals were also **invented** is open, and the first
+  morning's numbers say it may be. `NOTHING_READ` never becomes GONE,
+  so that path is safe — but `SERVED_ANOTHER`, which is how most
+  removals here are detected, is *inferred* from the record that came
+  back belonging to a different post. A page that failed to load its
+  own content and fell through to a recommendation produces exactly
+  that. On the video platform the daily removal hazard over the window
+  reads 33.6% (10-09), 19.7% (10-10), 28.9% (10-12), 30.8% (10-13)
+  against 0–8% on every day before 10-06, and dozens of those posts
+  were later read alive in single batches minutes apart. Douyin does
+  not reinstate fifty videos in half an hour.
+
+  `app.recanted` measures it: per day, what share of that day's
+  removals a later check undid, split by which of the two evidences
+  the removal rested on. If `SERVED_ANOTHER` is undone far more often
+  than `PAGE_SAYS_GONE`, and only inside the window, those removals
+  are the instrument and the days must be refused rather than
+  adjusted. **Until that table is read, no removal dated 10-06 to
+  10-14 on `douyin` should be reported.**
+
+A first morning after the fix: 图文 came back to 1% unreadable
+(2,308 pages, 23 failures) and TikTok to 0%, both from 40–70%. The
+**video** pass did not: 304 pages, 48 unreadable, 16%. So blocking
+the images was the whole of the 图文 problem and only part of the
+video one, and `douyin` has a second fault still unidentified. It
+was also the platform with the higher unreadable rate on every day
+of the window, which is where to start.
 
 The honest repair is a re-read, not an adjustment: every id whose
 latest check in the window is `NOTHING_READ` is re-checked with the
