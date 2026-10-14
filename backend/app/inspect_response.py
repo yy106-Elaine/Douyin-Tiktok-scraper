@@ -56,16 +56,39 @@ def summarise(blob, depth: int = 0, limit: int = 3) -> list[str]:
     return out
 
 
+def _pairs(saved) -> list[tuple[str, object]]:
+    """(url, body) out of whatever peek wrote.
+
+    It writes `[{"url": …, "body": …}, …]`. The other shapes are
+    tolerated because the alternative is a reader that answers
+    confidently about a file it did not understand.
+    """
+    out: list[tuple[str, object]] = []
+    if isinstance(saved, dict):
+        return [(str(key), value) for key, value in saved.items()]
+    if not isinstance(saved, list):
+        return out
+    for entry in saved:
+        if isinstance(entry, dict) and "url" in entry and "body" in entry:
+            out.append((str(entry["url"]), entry["body"]))
+        elif (isinstance(entry, (list, tuple)) and len(entry) == 2
+                and isinstance(entry[0], str)):
+            out.append((entry[0], entry[1]))
+    return out
+
+
 def report(path: Path) -> list[str]:
     lines: list[str] = []
     saved = json.loads(path.read_text(encoding="utf-8"))
-    # peek writes a list of [url, body] pairs, or a dict of them.
-    items = saved.items() if isinstance(saved, dict) else saved
-    for entry in items:
-        try:
-            url, body = entry
-        except (TypeError, ValueError):
-            continue
+    pairs = _pairs(saved)
+    # Counted, and reported below if nothing matched. The first
+    # version of this read peek's `[{"url":…, "body":…}]` as a list
+    # of two-element sequences, unpacked each dict into its two key
+    # *names*, matched no endpoint, and printed "no aweme/detail
+    # body in this file" -- which reads as an answer about Douyin
+    # and was an answer about my own guess at a file format.
+    seen = len(pairs)
+    for url, body in pairs:
         if "aweme/detail" not in str(url) and "aweme/post" not in str(url):
             continue
         lines.append(f"\n=== {url}")
@@ -101,7 +124,14 @@ def report(path: Path) -> list[str]:
                     lines.append(
                         f"  {key}: object ({len(value)} keys) — present")
     if not lines:
-        lines.append("no aweme/detail or aweme/post body in this file")
+        if not seen:
+            lines.append(
+                "nothing could be read out of this file -- it is not a "
+                "shape this knows. That is a fault here, not a finding.")
+        else:
+            lines.append(
+                f"{seen} response(s) in this file, none of them "
+                "aweme/detail or aweme/post")
     return lines
 
 

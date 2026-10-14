@@ -46,13 +46,13 @@ def test_the_telemetry_bodies_are_skipped(tmp_path) -> None:
     """A peeked page holds thirty-odd responses and three matter."""
     path = tmp_path / "z.responses.json"
     path.write_text(json.dumps([
-        ["https://mcs.zijieapi.com/list", {"ok": 1}],
-        ["https://mon.zijieapi.com/monitor_web/settings/browser-settings",
-         {"settings": {}}],
+        {"url": "https://mcs.zijieapi.com/list", "body": {"ok": 1}},
+        {"url": "https://mon.zijieapi.com/monitor_web/settings/"
+                "browser-settings", "body": {"settings": {}}},
     ]), encoding="utf-8")
 
     said = "\n".join(report(path))
-    assert "no aweme/detail or aweme/post body" in said
+    assert "2 response(s) in this file, none of them" in said
 
 
 def test_long_values_are_summarised_not_dumped(tmp_path) -> None:
@@ -65,3 +65,33 @@ def test_long_values_are_summarised_not_dumped(tmp_path) -> None:
 
     said = "\n".join(report(path))
     assert len(said) < 1000
+
+
+def test_the_shape_peek_actually_writes(tmp_path) -> None:
+    """peek writes `[{"url": …, "body": …}]`, not pairs.
+
+    The first version of this reader assumed pairs, unpacked each
+    dict into its two key *names*, matched no endpoint, and printed
+    "no aweme/detail body in this file" -- which reads as a fact
+    about Douyin and was a fact about my guess at a file format.
+    Same failure as asking for the constant's name instead of its
+    value: an empty result that looks like an answer.
+    """
+    path = tmp_path / "real.responses.json"
+    path.write_text(json.dumps([
+        {"url": "https://www.douyin.com/aweme/v1/web/aweme/detail/",
+         "body": {"status_code": 0, "aweme_detail": None}},
+    ], ensure_ascii=False), encoding="utf-8")
+
+    said = "\n".join(report(path))
+    assert "NULL — the record is not here" in said
+
+
+def test_an_unreadable_file_says_it_is_a_fault_here(tmp_path) -> None:
+    """"Nothing matched" and "I could not read this" are different,
+    and only one of them is about the data."""
+    path = tmp_path / "odd.responses.json"
+    path.write_text(json.dumps(["just", "strings"]), encoding="utf-8")
+
+    said = "\n".join(report(path))
+    assert "a fault here, not a finding" in said
