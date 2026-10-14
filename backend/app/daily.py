@@ -425,7 +425,21 @@ def run(
     keep_all: bool = False,
     author=None,
     on_progress=None,
+    watch=None,
 ) -> dict[str, int]:
+    """...
+
+    `watch`, if given, is asked before each page whether to carry on.
+    It returns a reason to stop, or None. It exists for one thing: a
+    pass whose session ends mid-way does not crash. It walks the rest
+    of the list reading page shells, files every one of them as "read,
+    nothing on the page", and reports an unreadable *rate* -- which
+    all five of this week's measurements may have been. Those rows are
+    not wrong (a page that said nothing is recorded as telling us
+    nothing, never as a removal), but they spend the day's checks on
+    a browser that cannot see anything, and they bury the moment it
+    happened in a percentage.
+    """
     handle_for = handle_for or {}
     report = {"read": 0, "saved": 0, "gone": 0, "unreadable": 0, "bytes": 0}
     total = len(video_ids)
@@ -435,6 +449,12 @@ def run(
                 print(f"-- stopped by hand after {index} of {total}",
                       flush=True)
                 break
+            if watch is not None:
+                why = watch(index)
+                if why:
+                    print(f"-- stopping after {index} of {total}: {why}",
+                          flush=True)
+                    break
             if index and pause_seconds:
                 time.sleep(pause_seconds)
             outcome, said, kept = one(
@@ -510,6 +530,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "this video and no other. Repeatable. For going back to one "
             "video on purpose -- a reinstatement to re-download and "
             "compare against the archived copy before it goes again"
+        ),
+    )
+    parser.add_argument(
+        "--session-every", type=int, default=25, metavar="N",
+        help=(
+            "check every N pages that the session is still there, and "
+            "stop the pass when it is not (default 25, 0 to turn off). "
+            "A pass that loses its session goes on reading page shells "
+            "and reports them as unreadable"
         ),
     )
     parser.add_argument(
@@ -840,9 +869,35 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                     if spent >= SLOW_PAGE_SECONDS:
                         pace["slow"] += 1
 
+            # Asked every `--session-every` pages. A session that
+            # ends mid-pass is invisible from inside the loop: the
+            # pages keep answering, they just stop carrying records.
+            # Checking the cookie jar costs a millisecond and turns
+            # that into a line with a page number on it.
+            lost = {"at": 0}
+
+            def still_signed_in(index: int) -> str | None:
+                if args.session_every <= 0 or index == 0:
+                    return None
+                if index % args.session_every:
+                    return None
+                if browser.is_signed_in():
+                    return None
+                lost["at"] = index
+                return (
+                    f"the {args.platform} session is gone. Every page "
+                    "from here would answer and carry no record, which "
+                    "is filed as unreadable and is not evidence of "
+                    "anything.\n   Sign in again:  "
+                    f"./.venv/bin/python -m app.login --platform "
+                    f"{args.platform}\n   Then pick up where this "
+                    "stopped; nothing before this page is affected."
+                )
+
             report = run(
                 session,
                 targets,
+                watch=still_signed_in,
                 read=timed,
                 download=lambda address, referer: browser.download(
                     address, referer=referer

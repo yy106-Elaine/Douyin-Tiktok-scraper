@@ -737,3 +737,66 @@ def test_one_ctrl_c_stops_between_videos(monkeypatch) -> None:
     # And the handler is back to whatever it was, so the next Ctrl+C
     # is the ordinary one.
     assert signal_module.getsignal(signal_module.SIGINT) is not None
+
+
+def test_a_pass_stops_when_its_session_goes(tmp_path, monkeypatch) -> None:
+    """A lost session does not crash a pass; it hollows it out.
+
+    The pages keep answering, they just stop carrying records, and
+    every one is filed as "read, nothing on the page". The run then
+    reports an unreadable rate, which is really the position where
+    the session ended -- and spends the rest of the day's checks on
+    a browser that cannot see anything.
+    """
+    from app import daily
+
+    read: list[str] = []
+
+    def fake_one(session, read_fn, download, video_id, *args, **kwargs):
+        read.append(video_id)
+        return "read", "alive -- id confirmed", 0
+
+    monkeypatch.setattr(daily, "one", fake_one)
+
+    def watch(index: int) -> str | None:
+        return "the session is gone" if index >= 3 else None
+
+    report = daily.run(
+        session=None,
+        video_ids=["a", "b", "c", "d", "e", "f"],
+        read=lambda url: None,
+        download=None,
+        directory=tmp_path,
+        site=None,
+        watch=watch,
+    )
+
+    # Three pages read, then the pass ends. The other three are left
+    # due, which is the right state: they were never looked at.
+    assert read == ["a", "b", "c"]
+    assert report["read"] == 3
+
+
+def test_a_pass_with_no_watch_reads_everything(tmp_path, monkeypatch) -> None:
+    """The check is additive. Every caller that does not pass a watch
+    -- and every test written before it existed -- behaves as before."""
+    from app import daily
+
+    read: list[str] = []
+
+    def fake_one(session, read_fn, download, video_id, *args, **kwargs):
+        read.append(video_id)
+        return "read", "alive -- id confirmed", 0
+
+    monkeypatch.setattr(daily, "one", fake_one)
+
+    daily.run(
+        session=None,
+        video_ids=["a", "b", "c"],
+        read=lambda url: None,
+        download=None,
+        directory=tmp_path,
+        site=None,
+    )
+
+    assert read == ["a", "b", "c"]
