@@ -931,3 +931,54 @@ def test_the_disk_check_stays_quiet_when_it_cannot_read(tmp_path):
 
     # And with no profile named at all -- every test above this one.
     assert Browser(_FakeContext(), pause_seconds=0).cookies_on_disk() is None
+
+
+def test_the_window_comes_back_when_a_person_is_needed(monkeypatch):
+    """A window in the Dock, under the words "deal with it in the
+    browser window", is a trap. Minimising is for the hours nobody is
+    needed; a challenge is the minute somebody is."""
+    import threading
+
+    shown: list[str] = []
+
+    class _Cdp:
+        def send(self, method, params=None):
+            if method == "Browser.getWindowForTarget":
+                return {"windowId": 1}
+            if method == "Browser.setWindowBounds":
+                shown.append(params["bounds"]["windowState"])
+            return {}
+
+        def detach(self):
+            pass
+
+    class _Page:
+        def is_closed(self):
+            return False
+
+        def bring_to_front(self):
+            shown.append("front")
+
+    class _Context(_FakeContext):
+        def new_cdp_session(self, page):
+            return _Cdp()
+
+    browser = Browser(_Context(), pause_seconds=0, minimise=True)
+    browser._page = _Page()
+
+    browser._out_of_the_way(browser._page)
+    assert shown == ["minimized"]
+
+    browser.show_window()
+    assert shown == ["minimized", "normal", "front"]
+
+
+def test_minimising_is_off_unless_asked(monkeypatch):
+    """A browser that hides itself by default is one nobody can watch
+    while they are still working out what it does."""
+    class _Context(_FakeContext):
+        def new_cdp_session(self, page):  # pragma: no cover - not reached
+            raise AssertionError("asked to minimise without being told to")
+
+    browser = Browser(_Context(), pause_seconds=0)
+    browser._out_of_the_way(object())

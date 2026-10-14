@@ -533,6 +533,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         ),
     )
     parser.add_argument(
+        "--minimise", "--minimize", action="store_true", dest="minimise",
+        help=(
+            "send the browser window to the Dock and keep it there. "
+            "The pass still needs a real window -- headless cannot "
+            "read the saved session -- but a minimised one is never "
+            "raised, so the keyboard stays where you are typing"
+        ),
+    )
+    parser.add_argument(
         "--session-every", type=int, default=25, metavar="N",
         help=(
             "check every N pages that the session is still there, and "
@@ -809,6 +818,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             light=not args.heavy,
             fresh_every=args.fresh_every,
             forget_by=args.forget_by,
+            minimise=args.minimise,
         ) as browser:
             # Checked once, here. A run that asks to sign in at each of
             # two hundred videos is a run with no session at all, and

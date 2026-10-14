@@ -235,6 +235,7 @@ class Browser:
         fresh_every: int = 1,
         forget_by: str = "blank",
         profile: Path | None = None,
+        minimise: bool = False,
     ) -> None:
         self._context = context
         #: The user-data-dir this browser was asked for. Kept so the
@@ -243,6 +244,12 @@ class Browser:
         #: silent fall back to an empty temporary profile looks from
         #: here exactly like a session that has expired.
         self._profile = profile
+        #: Send the window to the Dock as soon as there is one, and
+        #: again after every new tab. A minimised window cannot come
+        #: to the front, which is the only property wanted here: the
+        #: pass needs a real browser with a real session, and the
+        #: person needs their keyboard.
+        self._minimise = minimise
         self._pause = pause_seconds
         #: Whether to let the page fetch the video and the pictures it
         #: is about. It never needs to: what this reads is the JSON
@@ -516,6 +523,35 @@ class Browser:
         # describes the page rather than the retry.
         return first
 
+    def _out_of_the_way(self, page) -> None:
+        """Minimise the window this page is in. Best effort, never fatal.
+
+        Through the DevTools protocol rather than AppleScript: it
+        needs no Accessibility permission, prompts for nothing, and
+        asks the browser rather than the window server. A minimised
+        window is not merely behind -- macOS will not raise it for a
+        new tab, which is the thing that made the machine unusable.
+
+        Chromium throttles timers in a window it thinks nobody is
+        looking at, and the page's own JavaScript is what fetches the
+        record here, so the flags that turn that off are set at
+        launch whenever this is on.
+        """
+        if not self._minimise:
+            return
+        try:
+            cdp = self._context.new_cdp_session(page)
+            try:
+                found = cdp.send("Browser.getWindowForTarget")
+                cdp.send("Browser.setWindowBounds", {
+                    "windowId": found["windowId"],
+                    "bounds": {"windowState": "minimized"},
+                })
+            finally:
+                cdp.detach()
+        except Exception:  # noqa: BLE001 - a nicety, never the task
+            pass
+
     def _discard_page(self) -> None:
         """Throw the tab away, so the next read opens a new one."""
         page, self._page = self._page, None
@@ -611,6 +647,9 @@ class Browser:
                 self._page = self._context.new_page()
                 if self._light:
                     self._page.route("**/*", _skip_heavy)
+                # Right after the tab exists, before the page has had
+                # time to be looked at.
+                self._out_of_the_way(self._page)
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
         page = self._page
@@ -801,6 +840,30 @@ class Browser:
         except Exception as problem:  # noqa: BLE001 - reported by the caller
             return None, type(problem).__name__
 
+    def show_window(self) -> None:
+        """Bring the window back from the Dock. Best effort.
+
+        Only ever called when a person is being asked to do something
+        in it -- a sign-in, a slider. Minimising is for the hours
+        nobody is needed; this is the minute somebody is.
+        """
+        page = self._page
+        if page is None or page.is_closed():
+            return
+        try:
+            cdp = self._context.new_cdp_session(page)
+            try:
+                found = cdp.send("Browser.getWindowForTarget")
+                cdp.send("Browser.setWindowBounds", {
+                    "windowId": found["windowId"],
+                    "bounds": {"windowState": "normal"},
+                })
+            finally:
+                cdp.detach()
+            page.bring_to_front()
+        except Exception:  # noqa: BLE001 - the message still prints
+            pass
+
     def wait_for_person(self, message: str, timeout_seconds: float = 300.0) -> bool:
         """Let the operator deal with what is on screen -- but not all night.
 
@@ -842,6 +905,11 @@ class Browser:
         # Twenty-two of them in one night's run, each followed by
         # reads of a page that was still asking.
         was_signed_in = self.is_signed_in()
+        # The one moment a minimised window has to come back: there
+        # is a challenge on it and it is being asked to be solved by
+        # hand. A window in the Dock with "deal with it in the
+        # browser window" printed under it is a trap.
+        self.show_window()
         print(f"\n  {message}")
         minutes = timeout_seconds / 60
         print(
@@ -929,6 +997,7 @@ def open_browser(
     light: bool = True,
     fresh_every: int = 1,
     forget_by: str = "blank",
+    minimise: bool = False,
 ):
     """A browser using `profile`, created on first use.
 
@@ -956,7 +1025,24 @@ def open_browser(
                 locale="zh-CN" if chinese else "en-US",
                 timezone_id="Asia/Shanghai" if chinese else "America/New_York",
                 viewport={"width": 1280, "height": 900},
-                args=["--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    # A minimised window is one Chromium would
+                    # otherwise treat as nobody's business: it
+                    # throttles its timers and backgrounds its
+                    # renderer. The page's own JavaScript is what
+                    # fetches the record here, so throttling it would
+                    # trade a usable keyboard for emptier pages --
+                    # which is the bug being chased, not a fix for it.
+                    *(
+                        [
+                            "--disable-background-timer-throttling",
+                            "--disable-backgrounding-occluded-windows",
+                            "--disable-renderer-backgrounding",
+                        ]
+                        if minimise else []
+                    ),
+                ],
             )
         except Exception as refused:
             # Chromium locks a user-data-dir and aborts rather than
@@ -991,6 +1077,7 @@ def open_browser(
                 fresh_every=fresh_every,
                 forget_by=forget_by,
                 profile=profile,
+                minimise=minimise,
             )
         finally:
             context.close()
