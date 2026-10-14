@@ -1412,6 +1412,60 @@ log. Any count of archived-versus-collected should expect a slight
 deficit there rather than treating the archive as a uniform sample of
 the corpus.
 
+### 8c. Douyin states a removal three ways, and this read two of them
+
+For its first month this instrument knew two:
+
+1. the page carries the words 你要观看的视频不存在 — `PAGE_SAYS_GONE`
+2. the site hands over a different post's record — `SERVED_ANOTHER`
+
+There is a third, and it is the most explicit of them. `aweme/detail`
+answers 200 with `status_code: 0`, a **null** `aweme_detail`, and a
+`filter_detail` naming the id that was asked for:
+
+```json
+"filter_detail": {
+  "aweme_id": "7686427432119291057",
+  "filter_reason": "status_self_see",
+  "detail_msg": "因作品权限或已被删除，无法观看，去看看其他作品吧",
+  "notice": "抱歉，作品不见了"
+}
+```
+
+Nothing in the pass looked at that object, so the page was filed as
+`NOTHING_READ` — recorded as **unknown**. On the video platform this
+was 16% of the pass on 10-14, the morning after the other two faults
+were fixed, and it is the one of the three that runs in the direction
+of **under-reporting** removals.
+
+It is now `API_FILTERED`, and it is GONE. Three guards, because an
+over-eager removal verdict is the worst error this instrument can
+make:
+
+- matched on `filter_detail.aweme_id`, never on position — a page
+  carries a dozen posts' records and a notice about one says nothing
+  about the others;
+- only when the record beside it is absent — a `filter_detail` next
+  to a populated `aweme_detail` is the site annotating a post it is
+  still serving;
+- checked before the page wording, because a filtered page often has
+  no wording: the notice is rendered *from this object* by the site's
+  own script, which a check that reads the markup early never sees
+  run. That is also why this went unnoticed — the pages looked blank.
+
+`filter_reason` is sometimes the empty string: filtered, with no
+reason given. Recorded as `unstated` rather than dropped, because
+"Douyin would not say" is itself a finding, and the reasons that *are*
+given (`status_self_see` so far) are worth tabulating separately —
+"the author made it private" and "the platform removed it" arrive
+through the same door, and section 8 already says this instrument
+measures unwatchability rather than moderation.
+
+**Counts before 10-14 are low by this amount**, on `douyin` most of
+all. The re-read repairs the current state; the dates of removals
+that happened during the blind period cannot be recovered and are
+reported as intervals.
+
 ### 8b. Eight days of checks under-report removals, and the dates are late
 
 Between **2026-10-06 and 2026-10-14** the takedown pass blocked the

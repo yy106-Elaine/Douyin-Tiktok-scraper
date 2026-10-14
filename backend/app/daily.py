@@ -55,6 +55,7 @@ from .fetch_videos import (
 from .platforms import filter_policy
 from .recheck import (
     ID_CONFIRMED,
+    API_FILTERED,
     NOTHING_READ,
     PAGE_SAYS_GONE,
     SERVED_ANOTHER,
@@ -152,6 +153,27 @@ def one(
         # different video -- and it was being filed as a page that
         # could not be read, which left a whole kind of removal out of
         # the count.
+        # Douyin's third way of saying gone, in the JSON rather than
+        # on the page: a null record beside a `filter_detail` naming
+        # this id. Checked before the wording, because a filtered
+        # page often carries no wording at all -- the notice is
+        # rendered from this very object by the site's own script,
+        # which a check that reads the markup early never sees run.
+        why = None
+        if site.platform.startswith("douyin"):
+            from .douyin_page import filtered_out
+
+            why = filtered_out(page.payloads, video_id)
+        if why is not None:
+            record_check(session, video_id, page, API_FILTERED, url,
+                         site.platform)
+            gone_author = _account(session, video_id)
+            wipe(session, video_id, page, site.platform)
+            said = f"gone -- the site filtered it out ({why})"
+            if author is not None and gone_author:
+                said += f"; {author(gone_author)}"
+            return "gone", said, 0
+
         if getattr(page, "missing", False):
             record_check(session, video_id, page, PAGE_SAYS_GONE, url,
                          site.platform)

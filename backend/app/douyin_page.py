@@ -415,3 +415,73 @@ def image_urls(
             return max(candidates, key=len)
     return []
     return groups
+
+
+#: Douyin's third way of saying a post is gone, and the one this
+#: study missed for its first month.
+#:
+#: The other two are visible: the page carries the words 你要观看的
+#: 视频不存在, or the site hands over a different video's record. This
+#: one is in the JSON. `aweme/detail` answers 200 with
+#: `status_code: 0`, a null `aweme_detail`, and a `filter_detail`
+#: naming the id that was asked for:
+#:
+#:     "filter_detail": {
+#:       "aweme_id": "7686427432119291057",
+#:       "filter_reason": "status_self_see",
+#:       "detail_msg": "因作品权限或已被删除，无法观看，去看看其他作品吧",
+#:       "notice": "抱歉，作品不见了"
+#:     }
+#:
+#: Nothing in the pass looked at it, so the pages were filed as
+#: "read, nothing on the page" -- recorded as *unknown*, which is the
+#: direction that under-states a takedown study's own finding. On the
+#: video platform this was 16% of a pass the morning after the other
+#: two faults were fixed.
+#:
+#: `filter_reason` is sometimes the empty string: filtered, with no
+#: reason given. That is still gone and is recorded as such, under
+#: its own name, because "Douyin would not say" is a finding about
+#: Douyin.
+_UNSTATED = "unstated"
+
+
+def filtered_out(payloads: Sequence[object] | None,
+                 video_id: str) -> str | None:
+    """Why the site filtered this post out, if it said it did.
+
+    Returns the reason, `"unstated"` when it gave none, or None when
+    no payload filtered *this* id.
+
+    Matched on `filter_detail.aweme_id`, never on position: a page
+    carries the records of a dozen posts and a filter notice about
+    one of them is not evidence about the others. And only when the
+    record itself is absent -- a `filter_detail` beside a populated
+    `aweme_detail` is the site annotating a post it is still
+    serving.
+    """
+    for blob in payloads or ():
+        for detail, record in _filter_blocks(blob):
+            if str(detail.get("aweme_id") or "") != str(video_id):
+                continue
+            if record:
+                continue
+            reason = str(detail.get("filter_reason") or "").strip()
+            return reason or _UNSTATED
+    return None
+
+
+def _filter_blocks(blob: object, depth: int = 0):
+    """Every (filter_detail, the record beside it) pair in a body."""
+    if depth > 6:
+        return
+    if isinstance(blob, dict):
+        detail = blob.get("filter_detail")
+        if isinstance(detail, dict):
+            record = blob.get("aweme_detail") or blob.get("aweme_info")
+            yield detail, record
+        for value in blob.values():
+            yield from _filter_blocks(value, depth + 1)
+    elif isinstance(blob, list):
+        for item in blob[:40]:
+            yield from _filter_blocks(item, depth + 1)

@@ -247,11 +247,19 @@ PAGE_SAYS_GONE = "page says the post is gone"
 #: pass simply wrote no check, and the row went on showing yesterday's
 #: time as if the day had been skipped.
 NOTHING_READ = "read, nothing on the page"
+#: Douyin's third way of saying gone, and the one that went unread
+#: for a month: `aweme/detail` answers 200 with a null record and a
+#: `filter_detail` naming the id that was asked for. It is as
+#: explicit as the page's own wording -- the site is stating that it
+#: will not serve this post -- and it was being filed as NOTHING_READ,
+#: which is unknown. See `douyin_page.filtered_out`.
+API_FILTERED = "the site filtered the post out"
 
 _BY_EVIDENCE = {
     SERVED_ANOTHER: GONE,
     ID_CONFIRMED: ALIVE,
     PAGE_SAYS_GONE: GONE,
+    API_FILTERED: GONE,
     # Not ALIVE. A page that said nothing is not a sighting, and
     # counting it as one fabricates survival.
     NOTHING_READ: UNKNOWN,
