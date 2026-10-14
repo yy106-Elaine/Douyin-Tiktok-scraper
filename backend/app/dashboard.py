@@ -623,26 +623,32 @@ _SHARED_CSS = """  :root {
      shape worth seeing, and stacked vertically it runs off the page.
      The browser fills each column top to bottom, so dates read down
      and then across. */
+  /* Five columns at a laptop width rather than three. The
+     collection runs to a month and will run to two: at 300px a
+     column the dates reached the foot of the page and the bars had
+     room they were not using. Narrower columns mean more of the
+     period is on one screen, which is the thing being looked at.
+     `auto` still collapses the count on a narrow window. */
   .days {
     margin-bottom: 26px;
-    columns: 300px auto;
-    column-gap: 28px;
+    columns: 178px auto;
+    column-gap: 18px;
   }
   .day {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
     break-inside: avoid;
   }
   .dlabel {
-    width: 38px; font-size: 11px; color: var(--ink-2);
+    width: 34px; font-size: 11px; color: var(--ink-2);
     font-variant-numeric: tabular-nums; flex: none;
   }
-  .dtrack { flex: 1; height: 11px; }
+  .dtrack { flex: 1; height: 10px; min-width: 40px; }
   .dbar {
-    display: block; height: 11px; border-radius: 3px;
+    display: block; height: 10px; border-radius: 3px;
     background: var(--accent); min-width: 2px;
   }
   .dcount {
-    width: 28px; font-size: 11px; color: var(--ink-2);
+    width: 26px; font-size: 11px; color: var(--ink-2);
     font-variant-numeric: tabular-nums; flex: none; text-align: right;
   }
   td.rank { color: var(--ink-3); font-variant-numeric: tabular-nums; width: 38px; }

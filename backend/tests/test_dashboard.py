@@ -749,3 +749,15 @@ def test_the_table_is_not_cut_short_by_the_day_it_was_seen(client, api_key):
 
     with SessionLocal() as session:
         assert len(video_rows(session, "douyin", 3)) == 2
+
+
+def test_the_day_bars_fit_a_longer_collection() -> None:
+    """A month of collection filled three columns and ran off the
+    page; the window is for two months. Narrower columns put more of
+    the period on one screen, which is the thing being looked at."""
+    from app.dashboard import _SHARED_CSS
+
+    assert "columns: 178px auto" in _SHARED_CSS
+    # `auto` rather than a fixed count, so a narrow window still
+    # collapses to however many fit instead of scrolling sideways.
+    assert "columns: 5" not in _SHARED_CSS

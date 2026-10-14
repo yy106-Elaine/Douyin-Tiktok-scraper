@@ -244,3 +244,30 @@ def test_every_tab_can_actually_be_opened() -> None:
         assert f"#tab-{key}:checked ~ .panel-{key} {{ display: block; }}" \
             in drawn
         assert f'<div class="panel-{key}">' in drawn
+
+
+def test_a_post_that_came_back_leaves_the_chart(db: None) -> None:
+    """The chart is about what is down now, not what was ever down.
+
+    Asking only for API_FILTERED rows finds the last time a post was
+    filtered and never notices it was read alive the next morning.
+    The post then stayed in the denominator and its reason stayed in
+    a wedge -- a reinstatement counted as a removal, on the chart
+    whose whole job is to say why things are down.
+    """
+    from app.recheck import ID_CONFIRMED
+
+    with SessionLocal() as session:
+        record_check(session, "back", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/back", "douyin",
+                     filter_reason="status_deleted")
+        record_check(session, "down", _Page(), API_FILTERED,
+                     "https://www.douyin.com/video/down", "douyin",
+                     filter_reason="status_self_see")
+        record_check(session, "back", _Page(), ID_CONFIRMED,
+                     "https://www.douyin.com/video/back", "douyin")
+        session.commit()
+
+        counted = dict(reasons_seen(session))
+
+    assert counted == {"status_self_see": 1}

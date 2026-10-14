@@ -54,6 +54,10 @@ from .recheck import (
 #: through to a recommendation would also do.
 GONE_EVIDENCE = (SERVED_ANOTHER, PAGE_SAYS_GONE)
 
+#: Every way a check can say gone, including the one that carries a
+#: reason. Used when asking which removals have no reason on file.
+_GONE_EVIDENCE = (SERVED_ANOTHER, PAGE_SAYS_GONE, API_FILTERED)
+
 
 @dataclass
 class Day:
@@ -138,18 +142,22 @@ def still_standing(session: Session, platform: str,
     return sorted(said_gone)
 
 
-def without_reason(session: Session, platform: str) -> list[str]:
-    """Posts last found filtered, whose reason nobody wrote down.
+def without_reason(session: Session, platform: str,
+                   every_removal: bool = False) -> list[str]:
+    """Posts that are down now, with no reason on file.
 
-    The reason column was added on 2026-10-14, after the re-read that
-    first used this evidence, so every post filtered before that
-    afternoon has the fact without the word. They are already known
-    to be gone; re-reading them costs a few minutes and fills in the
-    one thing this collection has that begins to separate the
-    platform acting from the author acting.
+    `every_removal` widens it from the API-filtered ones to **every**
+    post whose latest check says gone, however that was established.
+    That is the useful list: a removal recorded as "the site served
+    another video" or as the page's own wording carries no reason at
+    all, and most of this collection's removals are those -- they
+    predate the day anything looked at `filter_detail`. Re-reading
+    them asks Douyin the question for the first time, and it answers
+    for a good share of them.
 
-    Latest check only. A post filtered on Monday and read alive on
-    Tuesday is not waiting for anything.
+    Latest check only, always. A post filtered on Monday and read
+    alive on Tuesday is not waiting for anything, and re-reading it
+    would spend a check to learn what the record already says.
     """
     rows = list(session.execute(
         select(LinkCheck.video_id, LinkCheck.checked_at,
@@ -161,9 +169,10 @@ def without_reason(session: Session, platform: str) -> list[str]:
     latest: dict[str, tuple[str | None, str | None]] = {}
     for video_id, _, evidence, reason in rows:
         latest[video_id] = (evidence, reason)
+    wanted = _GONE_EVIDENCE if every_removal else (API_FILTERED,)
     return sorted(
         video_id for video_id, (evidence, reason) in latest.items()
-        if evidence == API_FILTERED and not reason
+        if evidence in wanted and not reason
     )
 
 
@@ -186,10 +195,20 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument(
         "--ids-without-reason", action="store_true",
         help=(
-            "print the ids of posts last found filtered whose reason "
-            "was never stored. Re-reading them fills in the word "
-            "Douyin used, which is the one thing here that begins to "
-            "separate the platform acting from the author acting"
+            "print the ids of posts that are down now with no reason "
+            "on file. Re-reading them fills in the word Douyin used, "
+            "which is the one thing here that begins to separate the "
+            "platform acting from the author acting"
+        ),
+    )
+    parser.add_argument(
+        "--every-removal", action="store_true",
+        help=(
+            "with --ids-without-reason: not only the API-filtered "
+            "ones, but every post whose latest check says gone. Most "
+            "of this collection's removals were established the other "
+            "two ways, which carry no reason at all, so this is the "
+            "list that actually fills the chart"
         ),
     )
     args = parser.parse_args()
@@ -197,7 +216,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     init_db()
     if args.ids_without_reason:
         with SessionLocal() as session:
-            for video_id in without_reason(session, args.platform):
+            for video_id in without_reason(session, args.platform,
+                                           args.every_removal):
                 print(video_id)
         return
 

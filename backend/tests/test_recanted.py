@@ -190,3 +190,31 @@ def test_the_filtered_posts_whose_reason_nobody_wrote_down(db: None) -> None:
         session.commit()
 
         assert without_reason(session, "douyin") == ["no-word"]
+
+
+def test_every_removal_without_a_reason_not_only_the_filtered_ones(
+        db: None) -> None:
+    """Most of this collection's removals carry no reason at all.
+
+    They were established before anything looked at `filter_detail`
+    -- as "the site served another video", or by the page's own
+    wording -- and neither carries a word. Re-reading them asks
+    Douyin the question for the first time.
+    """
+    from app.recanted import without_reason
+    from app.recheck import API_FILTERED
+
+    with SessionLocal() as session:
+        session.add_all([
+            _check("served", SERVED_ANOTHER, 0),
+            _check("worded", PAGE_SAYS_GONE, 0),
+            _check("filtered-no-word", API_FILTERED, 0),
+            _check("alive", ID_CONFIRMED, 0),
+        ])
+        session.commit()
+
+        narrow = without_reason(session, "douyin")
+        wide = without_reason(session, "douyin", every_removal=True)
+
+    assert narrow == ["filtered-no-word"]
+    assert wide == ["filtered-no-word", "served", "worded"]

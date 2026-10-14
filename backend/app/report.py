@@ -1540,21 +1540,29 @@ def reasons_seen(session: Session) -> list[tuple[str, int]]:
     from .models import LinkCheck
     from .recheck import API_FILTERED
 
-    latest: dict[str, tuple[datetime, str]] = {}
+    # Every check, not only the filtered ones. Asking only for
+    # API_FILTERED rows finds the last time a post was filtered and
+    # never notices it was read alive the next morning -- so a post
+    # that came back stayed in the denominator and its reason stayed
+    # in a wedge. The chart is about what is down *now*, and a
+    # reinstatement has to leave it.
+    latest: dict[str, tuple[datetime, str | None, str | None]] = {}
     rows = session.execute(
         select(LinkCheck.video_id, LinkCheck.checked_at,
-               LinkCheck.filter_reason)
-        .where(LinkCheck.evidence == API_FILTERED,
-               LinkCheck.video_id.isnot(None))
+               LinkCheck.evidence, LinkCheck.filter_reason)
+        .where(LinkCheck.video_id.isnot(None))
     )
-    for video_id, when, reason in rows:
+    for video_id, when, evidence, reason in rows:
         seen = latest.get(video_id)
         if seen is None or when >= seen[0]:
-            latest[video_id] = (when, reason or NOT_RECORDED)
+            latest[video_id] = (when, evidence, reason)
 
     counted: dict[str, int] = {}
-    for _, reason in latest.values():
-        counted[reason] = counted.get(reason, 0) + 1
+    for _, evidence, reason in latest.values():
+        if evidence != API_FILTERED:
+            continue
+        key = reason or NOT_RECORDED
+        counted[key] = counted.get(key, 0) + 1
     return sorted(counted.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
