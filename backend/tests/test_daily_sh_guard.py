@@ -331,3 +331,37 @@ def test_shard_stays_in_app_daily_for_separate_machines() -> None:
 
     assert sorted(sum(halves, [])) == sorted(whole)
     assert not set(halves[0]) & set(halves[1])
+
+
+def test_the_nightly_job_regenerates_the_page() -> None:
+    """"Everything is refreshed when I get up" is what a 03:00 job is
+    for. Until this, the HTML was whatever a person last wrote by
+    hand -- which on one morning was six days old and read as
+    current, because the page says the time it was generated and
+    nothing says the time it was opened."""
+    text = (Path(__file__).resolve().parents[1] / "daily.sh").read_text(
+        encoding="utf-8")
+
+    assert "app.report" in text
+    # With the contact list, since that is the list she works from.
+    assert "--outreach" in text
+    # And an off switch, because the file names real people.
+    assert "REPORT_OUTREACH" in text
+
+
+def test_a_rehearsal_does_not_overwrite_the_real_page() -> None:
+    """A dry run's numbers landing on the page she reads is the kind
+    of thing only noticed a week later."""
+    text = (Path(__file__).resolve().parents[1] / "daily.sh").read_text(
+        encoding="utf-8")
+
+    assert "takedowns-rehearsal.html" in text
+
+
+def test_the_page_is_never_committed() -> None:
+    """It carries whole captions, and with the contact list the
+    抖音号 and profile link of every account watched losing a post."""
+    root = Path(__file__).resolve().parents[2]
+    ignored = (root / ".gitignore").read_text(encoding="utf-8")
+
+    assert "takedowns*.html" in ignored

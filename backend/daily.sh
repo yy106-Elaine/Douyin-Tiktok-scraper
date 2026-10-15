@@ -439,6 +439,29 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
   fi
 fi
 
+# The page she reads. Regenerated here rather than by hand, because
+# "everything is refreshed when I get up" was the whole point of a
+# job that runs at three -- and until tonight the HTML was whatever
+# was last written by a person, which on one morning was six days
+# old and read as current.
+#
+# Written with the contact list. That names real people and links to
+# their profiles, so: it lives outside the repository's tracked
+# files, it is not copied to iCloud with the phone status, and
+# REPORT_OUTREACH=0 leaves it out for a machine that is not hers.
+#
+# A rehearsal writes its own file. Overwriting the real page with a
+# dry run's numbers is the kind of thing that is only noticed a week
+# later.
+REPORT_OUT="${REPORT_OUT:-takedowns.html}"
+[[ "$REHEARSE" == "1" ]] && REPORT_OUT="takedowns-rehearsal.html"
+REPORT_OUTREACH="${REPORT_OUTREACH:-1}"
+if [[ "$REPORT_OUTREACH" == "1" ]]; then
+  run "takedown page" "$PY" -m app.report --out "$REPORT_OUT" --outreach
+else
+  run "takedown page" "$PY" -m app.report --out "$REPORT_OUT"
+fi
+
 # Not a step: the log's own answer to "did this morning's run cover
 # everything?".
 say "-- freshness"

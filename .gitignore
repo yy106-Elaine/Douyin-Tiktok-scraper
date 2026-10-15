@@ -39,3 +39,11 @@ local.properties
 # Video copies never belong in the repository.
 douyin-videos/
 *.mp4
+
+# The takedown page. It carries whole captions, and with --outreach
+# the 抖音号 and profile link of every account this study watched
+# lose a post. It is regenerated from the database on every run, so
+# nothing is lost by never tracking it.
+backend/takedowns*.html
+takedowns*.html
+backend/peeked/
