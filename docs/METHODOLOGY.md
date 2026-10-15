@@ -1616,6 +1616,43 @@ The one that held was found by asking *when* it started rather than
 *why*, and the answer was in logs that had been on disk the whole
 time.
 
+### 14f. What the recruiting message says, and what it refuses to say
+
+The wording is in `docs/OUTREACH.md`, under version control with the
+rest of the instruments: it is what was actually said, it will be
+quoted in the methods, and the IRB approved a description of it.
+
+Three properties of it are methodological rather than editorial.
+
+**It never tells anyone that a particular post of theirs came down.**
+Two of the three instrument faults found in the week of 10-08
+produced false removals — on 10-09 to 10-13 roughly two thirds of one
+evidence type was the instrument rather than the platform (8b) — and
+a false accusation of that shape cannot be withdrawn. It also tells
+the person they are being watched individually, which is a different
+relationship from being asked about their experience, and it changes
+the answer: somebody told a post was removed will talk about that
+post, while the question is larger. If an interviewee raises a
+specific post, that is theirs to raise.
+
+**The first message is the only one that arrives.** On Douyin a DM to
+a non-follower queues behind a reply that may never come, so the
+approach is split: a short first message carrying only what a yes/no
+needs, and the full consent information second, after they answer.
+The split is also the better ethics — consent is informed by the long
+description, and nobody reads a long description from a stranger.
+
+**Question 3 is open on purpose.** "有没有遇到过内容发不出去、或者发
+出去之后没了的情况" is asked without naming a post, and a *no* from an
+account the corpus recorded losing one is data, not a failed
+question: it measures how invisible a removal is to the person it
+happened to, which is the one thing this instrument cannot see from
+outside.
+
+The compensation (¥50), the length (15 minutes), the formats (text or
+voice), the anonymity and the right to stop and still be paid are all
+stated in the second message, before anything is asked.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school
