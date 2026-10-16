@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Takedown study — researcher page</title>
+<meta name="description" content="Undergraduate thesis research on content moderation and Chinese-language queer women's content.">
+<style>
+  :root {
+    --ink: #1a1a19; --muted: #5b5b57; --rule: #e3e2dd;
+    --accent: #7a4fa3; --soft: #f4eefa;
+    --bg: #fcfcfb; --card: #f7f6f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #ececea; --muted: #a9a8a3; --rule: #333231;
+      --accent: #c3a0e0; --soft: #241c2c;
+      --bg: #1a1a19; --card: #232322;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ececea; --muted: #a9a8a3; --rule: #333231;
+    --accent: #c3a0e0; --soft: #241c2c;
+    --bg: #1a1a19; --card: #232322;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  header { border-bottom: 1px solid var(--rule); padding: 44px 0 22px; }
+  h1 { font-size: 29px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+  .role { color: var(--muted); margin: 6px 0 0; font-size: 16px; }
+  nav { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  nav a { color: var(--ink); text-decoration: none; font-size: 15px;
+          border-bottom: 1px solid transparent; padding-bottom: 2px; }
+  nav a:hover { border-bottom-color: var(--accent); }
+  .lang { margin-left: auto; display: inline-flex; border: 1px solid var(--rule);
+          border-radius: 999px; overflow: hidden; }
+  .lang button { font: inherit; font-size: 14px; padding: 4px 14px; border: 0;
+                 background: transparent; color: var(--muted); cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: var(--soft); color: var(--accent); font-weight: 600; }
+  main { padding: 34px 0 20px; }
+  section { margin-bottom: 42px; scroll-margin-top: 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em;
+       color: var(--muted); font-weight: 650; margin: 0 0 14px; }
+  p { margin: 0 0 15px; }
+  a { color: var(--accent); }
+  .lede { font-size: 19px; line-height: 1.6; }
+  .item { padding: 15px 0; border-top: 1px solid var(--rule); }
+  .item:first-of-type { border-top: 0; padding-top: 0; }
+  .item h3 { margin: 0 0 3px; font-size: 17px; font-weight: 600; }
+  .item .meta { color: var(--muted); font-size: 15px; margin: 0; }
+  .card { background: var(--card); border: 1px solid var(--rule);
+          border-left: 3px solid var(--accent); border-radius: 8px; padding: 22px 24px; }
+  .card h3 { margin: 0 0 12px; font-size: 19px; }
+  .card dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 9px 18px; }
+  @media (max-width: 420px) { .card dl { grid-template-columns: 1fr; gap: 2px 0; }
+                              .card dd { margin-bottom: 8px; } }
+  .card dt { color: var(--muted); font-size: 15px; }
+  .card dd { margin: 0; }
+  .contact { display: grid; gap: 7px; }
+  footer { border-top: 1px solid var(--rule); padding: 20px 0 48px;
+           color: var(--muted); font-size: 14px; }
+  [data-lang] { display: none; }
+  :root[data-show="en"] [data-lang="en"] { display: block; }
+  :root[data-show="zh"] [data-lang="zh"] { display: block; }
+  :root[data-show="en"] span[data-lang="en"],
+  :root[data-show="zh"] span[data-lang="zh"] { display: inline; }
+  .todo { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c;
+          border-radius: 8px; padding: 14px 16px; margin: 0 0 24px; font-size: 15px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .todo {
+      background: #332b00; color: #ffe08a; border-color: #665600; }
+  }
+</style>
+</head>
+<body>
+
+<!--
+  ============================================================
+  FILL IN THESE FIVE THINGS AND NOTHING ELSE.
+  改这五行就够了，别的不用动。
+  ============================================================
+-->
+<script>
+  const ME = {
+    name_en: "YOUR NAME",            // 1. 英文名，e.g. "Elaine Yang"
+    name_zh: "你的中文名",             // 1b. 中文名；不想放就填 ""
+    major:   "YOUR MAJOR",           // 2. 专业，e.g. "Computer Science"
+    year:    "senior",               // 2b. 年级: first-year / sophomore / junior / senior
+    email:   "you@wellesley.edu",    // 3. 邮箱
+    irb:     "IRB-XXXX-XXXX",        // 4. IRB 编号
+    github:  "yourusername",         // 5. GitHub 用户名
+  };
+</script>
+
+<header>
+  <div class="wrap">
+    <h1 id="name">—</h1>
+    <p class="role">
+      <span data-lang="en" id="role-en"></span>
+      <span data-lang="zh" id="role-zh"></span>
+    </p>
+    <nav>
+      <a href="#about" data-lang="en">About</a><a href="#about" data-lang="zh">关于我</a>
+      <a href="#study" data-lang="en">Current study</a><a href="#study" data-lang="zh">当前研究</a>
+      <a href="#contact" data-lang="en">Contact</a><a href="#contact" data-lang="zh">联系</a>
+      <span class="lang">
+        <button type="button" data-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-set="zh" aria-pressed="false">中文</button>
+      </span>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <p class="todo" id="todo" hidden></p>
+
+  <section id="about">
+    <h2><span data-lang="en">About</span><span data-lang="zh">关于我</span></h2>
+
+    <div data-lang="en">
+      <p class="lede">
+        I am a <span class="f-year"></span> at Wellesley College studying
+        <span class="f-major"></span>. My thesis looks at what happens to
+        Chinese-language queer women's content on short-video platforms —
+        how long posts stay up, what comes down, and what that is like for
+        the people who made them.
+      </p>
+      <p>
+        <!-- 可选：一两句你自己的话，为什么做这个题目。删掉也没关系。 -->
+      </p>
+    </div>
+
+    <div data-lang="zh">
+      <p class="lede">
+        我是美国韦尔斯利学院（Wellesley College）<span class="f-major-zh"></span>专业的学生，
+        正在做毕业论文。我的研究关注中文短视频平台上的拉拉（女性同性恋）内容：
+        一条内容能留多久、什么样的内容会消失，以及这件事对发布它的人意味着什么。
+      </p>
+      <p>
+        <!-- 可选：一两句你自己的话。 -->
+      </p>
+    </div>
+  </section>
+
+  <section id="study">
+    <h2><span data-lang="en">Current study — looking for interviewees</span><span data-lang="zh">当前研究 · 访谈招募</span></h2>
+
+    <div class="card" data-lang="en">
+      <h3>Creators' own accounts of posting this content</h3>
+      <p>
+        I am interviewing people who post Chinese-language queer women's
+        content on short-video platforms, about what posting is like:
+        whether you think about what might not be allowed, what has
+        happened to things you posted, and whether any of it changed how
+        you post.
+      </p>
+      <dl>
+        <dt>Length</dt><dd>About 15 minutes</dd>
+        <dt>Format</dt><dd>Text chat or a voice call — whichever you prefer</dd>
+        <dt>Compensation</dt><dd>¥50, sent as soon as we finish</dd>
+        <dt>Anonymity</dt><dd>No real name, no account name, no screenshot of your account, anywhere</dd>
+        <dt>Voluntary</dt><dd>Skip any question, stop at any point — you are still paid</dd>
+      </dl>
+      <p style="margin:16px 0 0">
+        Approved by the Wellesley College IRB, protocol <span class="f-irb"></span>.
+        Questions, or just want to know more before deciding?
+        <a class="f-mail" href="#">Email me</a>.
+      </p>
+    </div>
+
+    <div class="card" data-lang="zh">
+      <h3>想听创作者自己讲讲发这些内容的经历</h3>
+      <p>
+        我在做毕业论文，想和在短视频平台上发中文拉拉内容的创作者聊一聊：
+        发东西的时候会不会想「这条可能不太行」、发过的东西后来怎么样了、
+        这些有没有改变你发东西的方式。没有标准答案，想到哪说到哪都可以。
+      </p>
+      <dl>
+        <dt>时长</dt><dd>大约 15 分钟</dd>
+        <dt>形式</dt><dd>文字聊天或语音通话，你选，时间你定</dd>
+        <dt>感谢费</dt><dd>50 元，聊完就发（微信或支付宝）</dd>
+        <dt>匿名</dt><dd>不会出现你的真名、账号名，也不会用你账号的任何截图</dd>
+        <dt>自愿</dt><dd>任何问题都可以跳过，随时可以停，停了感谢费照付</dd>
+      </dl>
+      <p style="margin:16px 0 0">
+        本研究已通过韦尔斯利学院伦理审查委员会（IRB）审批，编号
+        <span class="f-irb"></span>。
+        有意参加，或者只是想先问清楚，都可以
+        <a class="f-mail" href="#">发邮件给我</a>，或者直接在抖音私信我。
+      </p>
+    </div>
+  </section>
+
+  <section id="contact">
+    <h2><span data-lang="en">Contact</span><span data-lang="zh">联系</span></h2>
+    <div class="contact" data-lang="en">
+      <a class="f-mail" href="#"></a>
+      <a class="f-gh" href="#">GitHub</a>
+    </div>
+    <div class="contact" data-lang="zh">
+      <a class="f-mail" href="#"></a>
+      <a class="f-gh" href="#">GitHub</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span data-lang="en">Wellesley College</span>
+    <span data-lang="zh">韦尔斯利学院</span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+
+    function fill(selector, text) {
+      document.querySelectorAll(selector).forEach(function (el) {
+        el.textContent = text;
+      });
+    }
+    document.getElementById('name').textContent =
+      ME.name_zh ? ME.name_en + ' · ' + ME.name_zh : ME.name_en;
+    document.getElementById('role-en').textContent =
+      ME.major + ', Wellesley College';
+    document.getElementById('role-zh').textContent =
+      '韦尔斯利学院（Wellesley College）' + ME.major;
+    fill('.f-year', ME.year);
+    fill('.f-major', ME.major);
+    fill('.f-major-zh', ME.major);
+    fill('.f-irb', ME.irb);
+    document.querySelectorAll('.f-mail').forEach(function (a) {
+      a.href = 'mailto:' + ME.email;
+      if (!a.textContent.trim()) { a.textContent = ME.email; }
+    });
+    document.querySelectorAll('.f-gh').forEach(function (a) {
+      a.href = 'https://github.com/' + ME.github;
+    });
+
+    // A page still carrying its placeholders is worse than no page: it
+    // is the thing the recruiting message points at for credibility.
+    // So it says so, loudly, until they are filled in.
+    var left = Object.keys(ME).filter(function (k) {
+      return /YOUR|XXXX|yourusername|你的中文名|you@wellesley/.test(ME[k]);
+    });
+    if (left.length) {
+      var box = document.getElementById('todo');
+      box.hidden = false;
+      box.textContent =
+        '⚠ 还没填完：' + left.join('、') +
+        ' —— 在 index.html 顶部的 ME = { } 里改。填完这行会自己消失。' +
+        '（别在填完之前把链接发给任何人。）';
+    }
+
+    function show(which) {
+      root.setAttribute('data-show', which);
+      root.setAttribute('lang', which === 'zh' ? 'zh-CN' : 'en');
+      document.querySelectorAll('.lang button').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.set === which));
+      });
+      try { localStorage.setItem('lang', which); } catch (e) {}
+    }
+    var saved = null;
+    try { saved = localStorage.getItem('lang'); } catch (e) {}
+    var guess = (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    show(saved === 'zh' || saved === 'en' ? saved : guess);
+    document.querySelectorAll('.lang button').forEach(function (b) {
+      b.addEventListener('click', function () { show(b.dataset.set); });
+    });
+  })();
+</script>
+</body>
+</html>
