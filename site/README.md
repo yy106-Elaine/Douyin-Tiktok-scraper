@@ -30,18 +30,18 @@ GitHub Pages, from a repository of its own so this study's code
 stays private:
 
 ```bash
-# 1. Make an empty public repo on github.com named  <username>.github.io
+# 1. Make an empty public repo on github.com named  yy106-Elaine.github.io
 # 2. Then, from this folder:
 cd site
 git init
-git add index.html
+git add index.html elaine.jpg
 git commit -m "Researcher page"
 git branch -M main
-git remote add origin https://github.com/<username>/<username>.github.io.git
+git remote add origin https://github.com/yy106-Elaine/yy106-Elaine.github.io.git
 git push -u origin main
 ```
 
-Live at `https://<username>.github.io` within a minute or two. Check
+Live at `https://yy106-elaine.github.io` within a minute or two. Check
 it on a phone before sending anything — that is where it will be
 read.
 
@@ -69,9 +69,13 @@ it is read as research. The English title on LinkedIn stays as it is.
 
 ## What is deliberately not on it
 
-- **No photo.** Optional, and a judgement only she can make: it adds
-  credibility and it attaches a face to a public page about queer
-  research.
+- **The photo is hers to keep or remove.** It is the commencement
+  one, cropped square: cap and stole in frame, so it reads as a
+  graduation photo rather than a cropped selfie. It does more for
+  "this is a real student" than any sentence on the page — and it
+  attaches her face to a public page about queer research in China,
+  which is a cost she is the only one who can weigh. Deleting
+  `elaine.jpg` and the `<img>` in the header is all it takes.
 - **No claim about what this study has found.** The page is read by
   people who have not consented to anything yet, and some of them may
   be in the corpus.

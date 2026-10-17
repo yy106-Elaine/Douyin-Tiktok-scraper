@@ -32,6 +32,19 @@
   }
   .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
   header { border-bottom: 1px solid var(--rule); padding: 44px 0 22px; }
+  /* Photo beside the name, stacking on a phone. The page's whole
+     job is being checkable by somebody deciding whether to answer a
+     stranger, and a face does more of that than any sentence on it. */
+  .me { display: flex; gap: 20px; align-items: center; }
+  .me img {
+    width: 104px; height: 104px; flex: none;
+    border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--rule);
+  }
+  @media (max-width: 480px) {
+    .me { gap: 14px; }
+    .me img { width: 76px; height: 76px; }
+  }
   h1 { font-size: 29px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
   .role { color: var(--muted); margin: 6px 0 0; font-size: 16px; }
   .pron { font-size: 15px; font-weight: 400; color: var(--muted);
@@ -105,11 +118,17 @@
 
 <header>
   <div class="wrap">
+    <div class="me">
+      <img src="elaine.jpg" width="104" height="104"
+           alt="Elaine Yang at Wellesley College commencement">
+      <div>
     <h1>Elaine Yang <span class="pron">she/they</span></h1>
     <p class="role">
       <span data-lang="en">Mathematics · Women's and Gender Studies, Wellesley College</span>
       <span data-lang="zh">韦尔斯利学院（Wellesley College）｜数学、妇女与性别研究</span>
     </p>
+      </div>
+    </div>
     <nav>
       <a href="#about" data-lang="en">About</a><a href="#about" data-lang="zh">关于我</a>
       <a href="#study" data-lang="en">The study</a><a href="#study" data-lang="zh">这项研究</a>
