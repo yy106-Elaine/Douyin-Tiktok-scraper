@@ -3,10 +3,12 @@
 Without it, the first DM is an anonymous stranger asking a queer
 creator to talk about censorship. The link is what makes it a study.
 
-## Fill in five things
+## Fill in three things
 
 Open `index.html`, find the `ME = { … }` block near the top, replace
-the five values. Nothing else needs touching.
+the three `FILL_IN` values: the email that will receive replies, the
+IRB protocol number, and the GitHub username. Everything else is
+already written.
 
 Until they are replaced the page shows a yellow warning naming what
 is still missing — **do not send the link to anyone while that
@@ -33,6 +35,28 @@ git push -u origin main
 Live at `https://<username>.github.io` within a minute or two. Check
 it on a phone before sending anything — that is where it will be
 read.
+
+## What is deliberately left off, and why
+
+The CV has more on it than this page does. What is here was chosen
+for one reader: somebody in a queer community in China deciding
+whether a stranger asking about their posts is safe to answer.
+
+**Left off: the Citi sales-and-trading internship, the fintech data
+analyst role, "open to work".** They are real and they are good, and
+to this reader they say *corporate person collecting data*, which is
+the exact doubt the page exists to answer. The research roles do the
+opposite: a named college, named advisors, a named thesis, and prior
+interview work with Chinese respondents.
+
+**Kept, deliberately: the Yale interview work.** "Has done this kind
+of interview before, with people like me" is the single most
+reassuring fact available.
+
+**The thesis is described without leading on 审查.** Not to soften it
+— the study is about posts coming down and the page says so — but
+because a page that opens with the word is read as political before
+it is read as research. The English title on LinkedIn stays as it is.
 
 ## What is deliberately not on it
 
