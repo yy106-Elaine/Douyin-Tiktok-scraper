@@ -1,193 +1,173 @@
-# 访谈招募：实际发出去的文字
+# 访谈招募：批准过的文本，以及怎么用
 
-The study's instruments are code; this one is a sentence somebody
-reads on their phone. It belongs under version control for the same
-reason the rest does — it is what was actually said, it will be
-quoted in the methods section, and the IRB approved a description of
-it rather than a vibe.
+**The wording below is not drafted here. It is Attachment 1 of
+protocol #27037R, as approved.** This file exists to keep the
+approved text where the rest of the instruments live, and to record
+the operational choices around it.
 
-Everything here is Douyin 私信 (DM). The same text adapts for email
-where a profile carries one.
-
----
-
-## The constraint that shapes it
-
-**On Douyin, the first message to a non-follower is usually the only
-one that arrives.** Later messages queue behind a reply that may
-never come. So the first message has to be complete enough to decide
-on and short enough to read on a notification screen — and the full
-consent information goes in the *second* message, after they answer.
-
-That split is also the right research ethics: consent is informed by
-the full description, and the full description is long. Nobody reads
-a wall of text from a stranger.
+A recruitment message is approved as a text. Rewriting it — even to
+improve it — is a change to study materials, and a change to study
+materials goes to the HRPP before it goes to a participant.
 
 ---
 
-## What the message must never say
+## The thing to get right first: Version A, not Version B
 
-**It does not tell anyone a particular post of theirs came down.**
+The protocol is a **two-stage** design:
 
-Not "我看到你有条视频被下架了", not "我注意到你 10 月 3 日那条没有了".
+> Version A is used **initially** and offers **no compensation**. If
+> recruitment proves insufficient, the researcher switches to Version
+> B, which offers ¥50 RMB per interview. Any participant recruited
+> and interviewed under Version A is then offered the same amount
+> retroactively, so that all participants are treated equally.
 
-Three reasons, in order of weight:
+So the first messages go out with **no payment offered**. The ¥50 is
+not a sweetener to open with; it is a fallback with a fairness rule
+attached, and using it first is not the approved protocol.
 
-1. **It may be wrong.** Two of the three instrument faults found in
-   the week of 10-08 produced *false* removals — on 10-09 to 10-13,
-   about two thirds of one evidence type was the instrument, not the
-   platform (METHODOLOGY 8b). Telling somebody their post was removed
-   when it was a bug is not a correction you can make afterwards.
-2. **It tells them they are being watched**, individually, by name,
-   by a stranger. That is a different relationship from "I study this
-   topic and would like to hear about your experience."
-3. **It changes the answer.** A person told their post was removed
-   will talk about that post. The interview is about what the
-   experience is like, which is a larger thing.
-
-If an interviewee raises a specific post themselves, that is theirs
-to raise.
+"Recruitment proves insufficient" is a judgement that should be
+written down when it is made — how many messages went out, over what
+period, how many replied — because the thesis will have to say when
+and why the switch happened.
 
 ---
 
-## Message 1 — the first DM
-
-Short. Everything that matters for a yes/no, nothing else.
+## Version A — the first message (send this, verbatim)
 
 ```
-你好！我是美国 Wellesley College 的本科生 Elaine，在做毕业论文，
-研究中文平台上拉拉内容创作者的经历。
+你好！我叫杨依霖，在美国 Wellesley College 做研究，现在在做一个关于
+中文拉拉相关短视频内容的项目。
 
-想请你聊 15 分钟：文字或语音都行，时间你定，有 50 元感谢费。
-不会用到你的账号名、真名或任何截图。
+我在做的研究是长期追踪一批公开发布的视频，看它们随着时间过去还在不在。
+你的账号出现在我追踪的这批数据里，所以想来问问你有没有兴趣聊一聊。
 
-我的个人主页：yy106-elaine.github.io
-有兴趣或者想先问清楚，回我一句就行，谢谢！
+我自己也是拉拉社群的一员，做这个研究一部分也是因为想把大家的经历
+记录下来。
+
+想聊的是：你在平台上发内容的经历、遇到过的审核情况，以及你自己决定
+删掉某些内容时是怎么想的。大概 20 到 30 分钟，可以用腾讯会议、微信、
+Zoom，或者就在这里打字聊，你选。
+
+参与完全自愿，没有报酬。你可以随时不回、中途退出，或者跳过任何问题。
+我不会问也不会记录你的真名，写出来的时候会用化名。
+
+如果有兴趣，或者想先了解更多，回复我就好。如果不方便，也完全没关系，
+我不会再打扰你。
+
+杨依霖
+Wellesley College
+yy106@wellesley.edu
 ```
 
-Why each line is there:
+### What this already does, that an improvised version would not
 
-- **学校和身份在第一句。** A stranger asking about queer content
-  needs to be placeable in the first line or the message reads as
-  something else entirely.
-- **"15 分钟" and "50 元" early.** They are the two facts that decide
-  it. Burying compensation at the bottom reads as a catch.
-- **"时间你定"** — the asymmetry is the whole problem with cold
-  outreach; this is the cheapest thing that reduces it.
-- **匿名 before the link**, because that is the fear.
-- **The link does the credibility work** the message cannot. Without
-  a page to point at, this is an anonymous stranger asking a queer
-  creator to talk about censorship. **Do not start sending before the
-  page is up.**
-- **No mention of removal, takedown, 下架, or 审核.** See above.
+- **It discloses how they were found.** "你的账号出现在我追踪的这批
+  数据里" — selection on a sensitive attribute, stated up front. This
+  is the part of recruitment most easily got wrong, and it is already
+  right.
+- **It does not claim anything about a specific post.** It says a set
+  of videos is being tracked, not "I saw yours come down" — which
+  matters because this instrument has been wrong about exactly that:
+  between 10-09 and 10-13 roughly two thirds of one removal evidence
+  was a fault of ours, not the platform (METHODOLOGY 8b).
+- **It names a real person, institution and email**, and it closes
+  the door politely: "如果不方便…我不会再打扰你."
+
+### What must not be added to it
+
+**No link to the personal page, for now.** The approved message ends
+at "回复我就好"; adding a URL changes the recruitment material. Either
+send it as approved, or email hrpp@brandeis.edu first and add the
+link once it is covered. The account bio below is the approved place
+for an address, and it carries the email.
 
 ---
 
-## Message 2 — after they reply
+## The account bio (also approved, Attachment 1)
 
-Sent once they answer. This is the consent information.
+Exactly this, in the Douyin profile:
 
 ```
-太好了，谢谢你！说几句具体的，你看了觉得可以我们再约时间：
+杨依霖 | Wellesley College 研究项目账号
 
-· 内容：聊聊你发这类内容的经历——平台上发东西的感受、有没有遇到
-  过什么情况、后来有没有改变发东西的方式。没有标准答案，想到哪说
-  到哪都行。
-· 时长：15 分钟左右，你想多聊也可以。
-· 形式：抖音私信文字、微信文字或语音，你方便哪种都行。
-· 感谢费：50 元，微信或支付宝，聊完就发。中途不想聊了也照发。
-· 匿名：不会出现你的真名、账号名、任何截图。引用的话会去掉能认出
-  你的细节。录音只在你同意的情况下做，论文写完就删。
-· 自愿：任何问题都可以跳过，随时可以停。
-
-本研究已通过美国布兰迪斯大学（Brandeis University）伦理审查委员会
-（IRB）审批，编号 27037R，项目负责人是韦尔斯利学院的 Eni Mustafaraj
-教授。有任何问题都可以问我，或者发邮件到 yy106@wellesley.edu。
-
-方便的话告诉我你哪天哪个时间段有空？
+这是一个学术研究账号，用于一项关于中文短视频内容与平台审核的研究。
+指导教授：Eni Mustafaraj（Wellesley College 计算机科学系）。
+联系：yy106@wellesley.edu
 ```
 
-Note what is *not* promised: no confidentiality guarantee beyond what
-a researcher can actually keep, and nothing about the platform
-noticing. Do not add either.
+This is the credibility anchor the protocol itself designed: a named
+researcher, a named faculty supervisor, an institutional email. It
+does the job a personal site was being built to do, and it is already
+approved.
 
 ---
 
-## The IRB line, and the thing to check
+## After they reply: the consent script, not a second pitch
 
-The approval letter is from the **Brandeis University** Human
-Research Protection Program, not Wellesley's: the PI, Prof. Eni
-Mustafaraj, submitted it there. Protocol **#27037R**, "Content
-Moderation, Removal, and Self-Censorship Among Chinese-Language
-Lesbian Video Creators", determined 2026-09-30. Naming the wrong
-institution on the one line a cautious reader would actually go and
-check is the error this message can least afford, so every template
-here names Brandeis and the PI.
+Attachment 2 is a **verbal consent script**, read (or typed) at the
+start of the interview — not a second recruitment message. It covers
+recording, pseudonyms, where data is stored, the PIPL cross-border
+transfer notice, the right to withdraw, and three closing
+confirmations:
 
-**One thing to ask the HRPP about.** The letter's header says
-*Expedited — Category 7, 45 CFR 46.110*, and its body says the study
-*"meets the criteria for Exempt Human Subjects Research under 45 CFR
-46.104(d)"*. Those are two different determinations. It changes
-nothing about whether the interviews can start — both say yes, today
-— but the thesis will state which one this was, and it is a one-line
-email to hrpp@brandeis.edu now rather than a correction in April.
+1. 你已经满 18 岁了吗？
+2. 上面说的这些，你有没有想问的？愿意参加吗？
+3. 录音可以吗？不录也可以。
 
-## Message 3 — the questions
-
-Not a script. Fifteen minutes of a semi-structured interview, in the
-order that lets a person warm up:
-
-1. 你一般都发什么样的内容？发多久了？
-2. 发这些东西的时候，有没有想过「这条可能不太行」？是什么让你这么
-   想的？
-3. 有没有遇到过内容发不出去、或者发出去之后没了的情况？（**等她
-   自己说**，不要替她断定）
-4. 那次发生的时候，你知道是为什么吗？平台有没有说明？
-5. 你当时做了什么？
-6. 之后发东西的方式有变化吗？（标签、文案、画面、发布时间……）
-7. 你身边发类似内容的人，会聊这些吗？
-8. 还有什么是我没问到、但你觉得我应该知道的？
-
-Question 3 is the hinge, and it is deliberately open. If she says no,
-that is data: an account in the corpus that lost a post and did not
-notice is a finding about how invisible this is.
+It is long because it has to be. Do not summarise it from memory in
+the chat — read it from Attachment 2.
 
 ---
 
-## Where it is recorded
-
-One command per message sent, so the queue never offers the same
-person twice:
+## Recording the contacts
 
 ```bash
 ./.venv/bin/python -m app.outreach --mark <抖音号> sent
-./.venv/bin/python -m app.outreach --mark <抖音号> replied --note "10-16 回了，周四晚"
+./.venv/bin/python -m app.outreach --mark <抖音号> replied --note "10-17 回了"
 ./.venv/bin/python -m app.outreach --mark <抖音号> scheduled
 ./.venv/bin/python -m app.outreach --mark <抖音号> interviewed
-./.venv/bin/python -m app.outreach --mark <抖音号> paid
+./.venv/bin/python -m app.outreach --mark <抖音号> paid        # Version B only
 ./.venv/bin/python -m app.outreach --mark <抖音号> declined
-```
-
-`declined` and `no_reply` are permanent. On Douyin the one message
-that gets through is spent; writing again to somebody who said no is
-not a second attempt, it is a different act.
-
-Progress, including how many of each cell have been approached:
-
-```bash
 ./.venv/bin/python -m app.outreach --status
 ```
+
+`declined` and `no_reply` are permanent, and the approved message
+promises it: "如果不方便，也完全没关系，我不会再打扰你." That is a
+commitment made to the person, not a workflow preference.
+
+Anyone who arrives on their own — from the account bio, or a post —
+is **outside the sampling frame** and must be marked so:
+
+```bash
+--note "自愿来的，不在抽样框内"
+```
+
+They can still be interviewed. They cannot be counted as part of the
+stratified sample, because people who volunteer to talk about this
+are not like people who were asked.
 
 ---
 
 ## The order to work in
 
-From the 访谈名单 tab of `takedowns.html`, top down. It is not a
-ranking — it is four cells (still down / came back × one post /
-several) shuffled on a fixed seed and read round-robin, so stopping
-at any point leaves the four roughly balanced (`app.outreach`).
+From the 访谈名单 tab of `takedowns.html`, top down. Four cells
+(still down / came back × one post / several), seeded shuffle, read
+round-robin, so stopping at any point leaves the four roughly
+balanced. **Take the next one. Do not pick.** The tags column is for
+noticing when everybody who has said yes is posting about one thing —
+and then saying so in the methods, not hand-picking to fix it.
 
-**Take the next person in the order.** Use the tags column only to
-notice when everybody who has said yes so far is posting about one
-thing — and then say so in the methods section rather than
-hand-picking to fix it.
+---
+
+## Two things in the approval letter to resolve
+
+1. **Expedited or Exempt?** The letter's header says *Expedited —
+   Category 7, 45 CFR 46.110*; its body says the study *"meets the
+   criteria for Exempt Human Subjects Research under 45 CFR
+   46.104(d)"*. Two different determinations. Neither holds up
+   starting; the thesis has to state which one it was. One line to
+   hrpp@brandeis.edu.
+2. **The end-of-analysis date on the application is 2026-10-20.**
+   The collection window runs to 10-27 and the interviews are only
+   starting now. If that date is binding rather than an estimate, it
+   needs extending before it passes — which is this week.

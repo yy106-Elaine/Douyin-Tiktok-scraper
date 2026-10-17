@@ -1616,42 +1616,54 @@ The one that held was found by asking *when* it started rather than
 *why*, and the answer was in logs that had been on disk the whole
 time.
 
-### 14f. What the recruiting message says, and what it refuses to say
+### 14f. The recruiting message is approved text, and I had rewritten it
 
-The wording is in `docs/OUTREACH.md`, under version control with the
-rest of the instruments: it is what was actually said, it will be
-quoted in the methods, and the IRB approved a description of it.
+Attachment 1 of protocol #27037R is the recruitment message, as a
+text. For nine days this repository carried a different one, drafted
+here from a description of what it should say. The drafted version
+differed from the approved one in three ways that matter:
 
-Three properties of it are methodological rather than editorial.
+- **It offered ¥50 in the first message.** The protocol is a
+  two-stage design: Version A offers *no compensation* and is used
+  initially; Version B introduces ¥50 only if recruitment proves
+  insufficient, and then pays Version A participants retroactively so
+  everyone is treated the same. Opening with payment is not a kinder
+  version of that design, it is a different one.
+- **It said 15 minutes.** The protocol says 20–30.
+- **It deliberately withheld how the person was selected**, on the
+  reasoning that naming a removal could be wrong and that being told
+  you are individually watched changes the answer. The approved text
+  discloses it in its second line — "你的账号出现在我追踪的这批数据
+  里" — without claiming anything about any particular post. It
+  solves the same problem and respects the participant's right to
+  know how they were found, which the drafted version did not.
 
-**It never tells anyone that a particular post of theirs came down.**
-Two of the three instrument faults found in the week of 10-08
-produced false removals — on 10-09 to 10-13 roughly two thirds of one
-evidence type was the instrument rather than the platform (8b) — and
-a false accusation of that shape cannot be withdrawn. It also tells
-the person they are being watched individually, which is a different
-relationship from being asked about their experience, and it changes
-the answer: somebody told a post was removed will talk about that
-post, while the question is larger. If an interviewee raises a
-specific post, that is theirs to raise.
+All three are now the approved wording, verbatim, and
+`docs/OUTREACH.md` says plainly that rewriting it is a change to
+study materials and goes to the HRPP first.
 
-**The first message is the only one that arrives.** On Douyin a DM to
-a non-follower queues behind a reply that may never come, so the
-approach is split: a short first message carrying only what a yes/no
-needs, and the full consent information second, after they answer.
-The split is also the better ethics — consent is informed by the long
-description, and nobody reads a long description from a stranger.
+The same applies to the researcher page. It had grown a recruitment
+card — ¥50, interview length, "looking for interviewees" — none of
+which is in the protocol, and the first-stage protocol specifically
+offers no compensation. Offering it on a web page is a deviation
+written in HTML. The page is now a description of the study and the
+researcher; recruiting is done only by the approved message. The
+approved message does not link to the page, so it does not link to
+the page.
 
-**Question 3 is open on purpose.** "有没有遇到过内容发不出去、或者发
-出去之后没了的情况" is asked without naming a post, and a *no* from an
-account the corpus recorded losing one is data, not a failed
-question: it measures how invisible a removal is to the person it
-happened to, which is the one thing this instrument cannot see from
-outside.
+The account bio was also already written in Attachment 1 and did not
+need inventing.
 
-The compensation (¥50), the length (15 minutes), the formats (text or
-voice), the anonymity and the right to stop and still be paid are all
-stated in the second message, before anything is asked.
+**Two items in the approval letter remain open**, recorded here so
+they are not discovered in April:
+
+1. The header says *Expedited — Category 7, 45 CFR 46.110* and the
+   body says the study *meets the criteria for Exempt research under
+   45 CFR 46.104(d)*. Different determinations; the methods section
+   has to name one.
+2. The application gives an anticipated end-of-analysis date of
+   2026-10-20, while the collection window runs to 10-27 and the
+   interviews begin after it.
 
 ### 15. Some of the collected posts are by minors
 
