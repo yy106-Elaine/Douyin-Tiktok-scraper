@@ -34,6 +34,8 @@ file is an old draft; the text below is current.
 不会问也不会记录你的真名，写出来时用化名；任何问题都可以跳过，随时
 可以停。如果不方便，完全没关系，我不会再打扰你。
 
+关于我和这个研究：yy106-elaine.github.io
+
 杨依霖 · Wellesley College · yy106@wellesley.edu
 ```
 
@@ -54,24 +56,36 @@ file is an old draft; the text below is current.
   that is a promise to a person, which is why `declined` and
   `no_reply` are permanent in the record.
 
-### One thing not to add
+### The link
 
-**No link to the personal page in the DM**, unless the HRPP has it.
-The message, as approved and amended, ends at "回复我就好". The
-account bio is the approved place for an address and it carries the
-email.
+The page is live at `yy106-elaine.github.io` and the message points
+at it. That is what it was built for: without it this is an
+anonymous stranger asking a queer creator about her posts.
+
+Worth one line to hrpp@brandeis.edu saying the recruitment message
+now carries a URL and what is on the page — recruitment materials
+are what an IRB approves. Not a blocker: the page says nothing the
+message does not, and it names the PI and the HRPP's own contact
+details. It is cheap to mention now and awkward to mention later.
+
+---
 
 ## The account bio (also approved, Attachment 1)
 
 Exactly this, in the Douyin profile:
 
 ```
-杨依霖 | Wellesley College 研究项目账号
+杨依霖｜Wellesley College 毕业论文研究
 
-这是一个学术研究账号，用于一项关于中文短视频内容与平台审核的研究。
-指导教授：Eni Mustafaraj（Wellesley College 计算机科学系）。
-联系：yy106@wellesley.edu
+关于中文短视频内容与平台审核的学术研究。在找创作者聊 15–20 分钟，
+有 50 元感谢费，匿名，随时可停。
+指导教授：Eni Mustafaraj（Wellesley College 计算机科学系）
+yy106-elaine.github.io ｜ yy106@wellesley.edu
 ```
+
+Nickname: **`杨依霖｜Wellesley 毕业论文研究`**. It is the first and
+sometimes only thing seen in a message list, and it has to do "a
+person, with a reason" in a few characters.
 
 This is the credibility anchor the protocol itself designed: a named
 researcher, a named faculty supervisor, an institutional email. It
