@@ -60,24 +60,67 @@
   .lang button[aria-pressed="true"] { background: var(--soft); color: var(--accent); font-weight: 600; }
   main { padding: 34px 0 20px; }
   section { margin-bottom: 42px; scroll-margin-top: 20px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em;
-       color: var(--muted); font-weight: 650; margin: 0 0 14px; }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--muted); font-weight: 650; margin: 0 0 16px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+  }
   p { margin: 0 0 15px; }
   a { color: var(--accent); }
   .lede { font-size: 19px; line-height: 1.6; }
-  .item { padding: 15px 0; border-top: 1px solid var(--rule); }
+  /* Institution marks are drawn here, as lettermarks, rather than
+     hotlinked from each university: a real logo means four images
+     from four servers that can move or vanish, and marks this page
+     has no licence to use. A monogram is honest, weighs nothing,
+     and survives dark mode. */
+  .item {
+    padding: 16px 0; border-top: 1px solid var(--rule);
+    display: grid; grid-template-columns: 42px 1fr; gap: 14px;
+    align-items: start;
+  }
   .item:first-of-type { border-top: 0; padding-top: 0; }
   .item h3 { margin: 0 0 3px; font-size: 17px; font-weight: 600; }
   .item .meta { color: var(--muted); font-size: 15px; margin: 0; }
+  .mark {
+    width: 42px; height: 42px; border-radius: 10px;
+    display: grid; place-items: center; line-height: 1;
+    font-weight: 700; letter-spacing: -0.02em;
+    border: 1px solid var(--rule);
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  .mark.w   { background: #efe9f6; color: #4b2d6b; font-size: 20px; }
+  .mark.y   { background: #e8edf7; color: #17356b; font-size: 20px; }
+  .mark.mit { background: #f7eaea; color: #7c1c1c; font-size: 11px;
+              font-family: inherit; letter-spacing: 0; }
+  .mark.a   { background: #e7f2ee; color: #14543f; font-size: 20px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .mark.w   { background: #2a2036; color: #cdb4e6; }
+    :root:not([data-theme="light"]) .mark.y   { background: #1c2434; color: #a8c0e8; }
+    :root:not([data-theme="light"]) .mark.mit { background: #2e1d1d; color: #e2a3a3; }
+    :root:not([data-theme="light"]) .mark.a   { background: #1a2b25; color: #92ccb6; }
+  }
+  @media (max-width: 480px) {
+    .item { grid-template-columns: 34px 1fr; gap: 11px; }
+    .mark { width: 34px; height: 34px; border-radius: 8px; font-size: 17px; }
+    .mark.mit { font-size: 9px; }
+  }
   .card { background: var(--card); border: 1px solid var(--rule);
-          border-left: 3px solid var(--accent); border-radius: 8px; padding: 22px 24px; }
+          border-left: 3px solid var(--accent); border-radius: 10px;
+          padding: 24px 26px; }
+  @media (max-width: 480px) { .card { padding: 18px 18px; } }
   .card h3 { margin: 0 0 12px; font-size: 19px; }
   .card dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 9px 18px; }
   @media (max-width: 420px) { .card dl { grid-template-columns: 1fr; gap: 2px 0; }
                               .card dd { margin-bottom: 8px; } }
   .card dt { color: var(--muted); font-size: 15px; }
   .card dd { margin: 0; }
-  .contact { display: grid; gap: 7px; }
+  .contact { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+  .contact a {
+    text-decoration: none; font-size: 15px; font-weight: 500;
+    border: 1px solid var(--rule); border-radius: 999px;
+    padding: 6px 15px; background: var(--card);
+  }
+  .contact a:hover { border-color: var(--accent); }
   footer { border-top: 1px solid var(--rule); padding: 20px 0 48px;
            color: var(--muted); font-size: 14px; }
   [data-lang] { display: none; }
@@ -233,39 +276,77 @@
 
     <div data-lang="zh">
       <div class="item">
-        <h3>毕业论文 · 中文社交媒体平台上的拉拉内容审核与自我审查</h3>
-        <p class="meta">韦尔斯利学院，2025–2026 · 指导教授：Elena Creef、Eni Mustafaraj</p>
+        <span class="mark w" aria-hidden="true">W</span>
+        <div>
+          <h3>毕业论文 · 中文社交媒体平台上的拉拉内容审核与自我审查</h3>
+          <p class="meta">韦尔斯利学院，2025–2026 · 指导教授：Elena Creef、Eni Mustafaraj</p>
+        </div>
       </div>
       <div class="item">
-        <h3>抖音 T/P/H 标签文化研究</h3>
-        <p class="meta">韦尔斯利学院 · 研究中文社交媒体中的拉拉身份标签与表达方式，手工标注、分析 600 余条视频及文案</p>
+        <span class="mark w" aria-hidden="true">W</span>
+        <div>
+          <h3>抖音 T/P/H 标签文化研究</h3>
+          <p class="meta">韦尔斯利学院 · 研究中文社交媒体中的拉拉身份标签与表达方式，手工标注、分析 600 余条视频及文案</p>
+        </div>
       </div>
       <div class="item">
-        <h3>研究助理 · 中国人口与家庭研究</h3>
-        <p class="meta">耶鲁大学 · Emma Zang 教授 · 半结构式访谈、调查数据分析及书稿研究</p>
+        <span class="mark y" aria-hidden="true">Y</span>
+        <div>
+          <h3>研究助理 · 中国人口与家庭研究</h3>
+          <p class="meta">耶鲁大学 · Emma Zang 教授 · 半结构式访谈、调查数据分析及书稿研究</p>
+        </div>
       </div>
       <div class="item">
-        <h3>研究助理 · 人与 AI 的协作审阅</h3>
-        <p class="meta">MIT Sloan · Superminds 实验室 · Thomas Malone 教授 · 成果发表于 CI/HCOMP 2026 海报展示</p>
+        <span class="mark mit" aria-hidden="true">MIT</span>
+        <div>
+          <h3>研究助理 · 人与 AI 的协作审阅</h3>
+          <p class="meta">MIT Sloan · Superminds 实验室 · Thomas Malone 教授 · 成果发表于 CI/HCOMP 2026 海报展示</p>
+        </div>
+      </div>
+      <div class="item">
+        <span class="mark a" aria-hidden="true">A</span>
+        <div>
+          <h3>数据分析师 · Aligre（现职）</h3>
+          <p class="meta">房地产金融科技初创公司 · 负责数据架构与分析规范、产品策略与财务模型</p>
+        </div>
       </div>
     </div>
 
     <div data-lang="en">
       <div class="item">
-        <h3>Honors thesis — moderation and self-censorship of queer women's content</h3>
-        <p class="meta">Wellesley College, 2025–2026 · with Elena Creef and Eni Mustafaraj</p>
+        <span class="mark w" aria-hidden="true">W</span>
+        <div>
+          <h3>Honors thesis — moderation and self-censorship of queer women's content</h3>
+          <p class="meta">Wellesley College, 2025–2026 · with Elena Creef and Eni Mustafaraj</p>
+        </div>
       </div>
       <div class="item">
-        <h3>T/P/H labelling culture on Douyin</h3>
-        <p class="meta">Wellesley College · identity labels and self-presentation; 600+ videos and captions hand-coded</p>
+        <span class="mark w" aria-hidden="true">W</span>
+        <div>
+          <h3>T/P/H labelling culture on Douyin</h3>
+          <p class="meta">Wellesley College · identity labels and self-presentation; 600+ videos and captions hand-coded</p>
+        </div>
       </div>
       <div class="item">
-        <h3>Research assistant — demography and family formation in China</h3>
-        <p class="meta">Yale University, Prof. Emma Zang · interviews, survey data, book manuscript</p>
+        <span class="mark y" aria-hidden="true">Y</span>
+        <div>
+          <h3>Research assistant — demography and family formation in China</h3>
+          <p class="meta">Yale University, Prof. Emma Zang · interviews, survey data, book manuscript</p>
+        </div>
       </div>
       <div class="item">
-        <h3>Research assistant — human–AI collaborative review</h3>
-        <p class="meta">MIT Sloan, Superminds Lab, Prof. Thomas Malone · poster, CI/HCOMP 2026</p>
+        <span class="mark mit" aria-hidden="true">MIT</span>
+        <div>
+          <h3>Research assistant — human–AI collaborative review</h3>
+          <p class="meta">MIT Sloan, Superminds Lab, Prof. Thomas Malone · poster, CI/HCOMP 2026</p>
+        </div>
+      </div>
+      <div class="item">
+        <span class="mark a" aria-hidden="true">A</span>
+        <div>
+          <h3>Data Analyst — Aligre (current)</h3>
+          <p class="meta">Real-estate fintech · data architecture and analytics spec, product strategy, financial model</p>
+        </div>
       </div>
     </div>
   </section>
@@ -395,6 +476,8 @@
       </p>
       <div class="contact">
         <a class="f-mail" href="#"></a>
+        <a href="https://www.linkedin.com/in/elaine-yang-736682254/"
+           rel="noreferrer">LinkedIn</a>
         <a class="f-gh" href="#">GitHub</a>
       </div>
     </div>
@@ -415,6 +498,8 @@
       </p>
       <div class="contact">
         <a class="f-mail" href="#"></a>
+        <a href="https://www.linkedin.com/in/elaine-yang-736682254/"
+           rel="noreferrer">LinkedIn</a>
         <a class="f-gh" href="#">GitHub</a>
       </div>
     </div>
