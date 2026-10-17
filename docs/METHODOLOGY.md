@@ -1616,54 +1616,56 @@ The one that held was found by asking *when* it started rather than
 *why*, and the answer was in logs that had been on disk the whole
 time.
 
-### 14f. The recruiting message is approved text, and I had rewritten it
+### 14f. The recruiting message, and which version of it is current
 
-Attachment 1 of protocol #27037R is the recruitment message, as a
-text. For nine days this repository carried a different one, drafted
-here from a description of what it should say. The drafted version
-differed from the approved one in three ways that matter:
+The wording lives in `docs/OUTREACH.md` rather than being improvised
+per message: it is a study instrument, the thesis quotes it, and the
+IRB approved a text rather than a description.
 
-- **It offered ¥50 in the first message.** The protocol is a
-  two-stage design: Version A offers *no compensation* and is used
-  initially; Version B introduces ¥50 only if recruitment proves
-  insufficient, and then pays Version A participants retroactively so
-  everyone is treated the same. Opening with payment is not a kinder
-  version of that design, it is a different one.
-- **It said 15 minutes.** The protocol says 20–30.
-- **It deliberately withheld how the person was selected**, on the
-  reasoning that naming a removal could be wrong and that being told
-  you are individually watched changes the answer. The approved text
-  discloses it in its second line — "你的账号出现在我追踪的这批数据
-  里" — without claiming anything about any particular post. It
-  solves the same problem and respects the participant's right to
-  know how they were found, which the drafted version did not.
+**Current terms**: ¥50 offered in the first message, interview
+15–20 minutes, Tencent Meeting / WeChat / Zoom / text at the
+participant's choice, pseudonyms, stop at any point.
 
-All three are now the approved wording, verbatim, and
-`docs/OUTREACH.md` says plainly that rewriting it is a change to
-study materials and goes to the HRPP first.
+A note on how this file got them wrong twice, because the second way
+is the more instructive.
 
-The same applies to the researcher page. It had grown a recruitment
-card — ¥50, interview length, "looking for interviewees" — none of
-which is in the protocol, and the first-stage protocol specifically
-offers no compensation. Offering it on a web page is a deviation
-written in HTML. The page is now a description of the study and the
-researcher; recruiting is done only by the approved message. The
-approved message does not link to the page, so it does not link to
-the page.
+First it carried a message drafted here from a description — ¥50, 15
+minutes, and a deliberate decision *not* to say how the person had
+been selected, on the reasoning that naming a removal could be wrong
+and that being told you are watched changes the answer. The first
+half of that reasoning still holds and the message still claims
+nothing about any specific post. The second half was wrong: the real
+text discloses the selection in its second line — "你的账号出现在我
+追踪的这批数据里" — which solves the same problem and respects the
+participant's right to know how they were found.
 
-The account bio was also already written in Attachment 1 and did not
-need inventing.
+Then, handed the protocol attachments, this file replaced that with
+their text verbatim and recorded the differences as deviations:
+no compensation in the first stage, 20–30 minutes. **Those
+attachments were a superseded draft.** The amended protocol offers
+¥50 from the first message and runs 15–20 minutes, and the
+end-of-analysis date of 2026-10-20 in the uploaded application was
+extended to around March 2027.
 
-**Two items in the approval letter remain open**, recorded here so
-they are not discovered in April:
+The lesson is not "check the date on the file". It is that
+*deferring* to a document is not the same as verifying it, and the
+confident tone of the correction came from the deference rather
+than from anything checked. A superseded attachment and an authority
+look identical from inside.
 
-1. The header says *Expedited — Category 7, 45 CFR 46.110* and the
-   body says the study *meets the criteria for Exempt research under
-   45 CFR 46.104(d)*. Different determinations; the methods section
-   has to name one.
-2. The application gives an anticipated end-of-analysis date of
-   2026-10-20, while the collection window runs to 10-27 and the
-   interviews begin after it.
+**Review type.** The approval letter's subject, title block and
+Review Type field say *Expedited — Category 7, 45 CFR 46.110*; one
+sentence in its body says *Exempt, 45 CFR 46.104(d)*. Three to one,
+and the one reads as template text left in, so the methods section
+says Expedited, Category 7 — worth one line to the HRPP to have in
+writing, and nothing waits on it.
+
+**The researcher page** states the terms, because somebody deciding
+whether to reply deserves to see them, and does not ask: recruiting
+is done by the approved message, to people chosen by the sampling
+order. A page that recruited would add a second, self-selected
+channel alongside a stratified sample. Anyone who arrives via the
+page or the account bio is recorded as outside the sampling frame.
 
 ### 15. Some of the collected posts are by minors
 

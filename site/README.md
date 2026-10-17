@@ -7,16 +7,18 @@ sent as written (`docs/OUTREACH.md`). This page is background for
 somebody who wants to know who is asking before they answer: who she
 is, what the study is, who supervises it, where to complain.
 
-That distinction is why the ¥50, the interview length and the
-"looking for interviewees" card came off this page. Offering
-compensation in an unapproved place, in a protocol whose first stage
-deliberately offers none, is a protocol deviation written in HTML.
+The page states the study's terms — 15–20 minutes, ¥50, pseudonyms,
+stop whenever — because somebody deciding whether to reply deserves
+to see them. What it does not do is ask: no "looking for
+interviewees", no call to action. Recruiting is the approved
+message's job, sent to people chosen by the sampling order, and a
+page that recruits would quietly add a second, self-selected
+channel.
 
-**The approved recruitment message does not link here**, and adding
-a URL to it would be a change to study materials. Until the HRPP has
-been asked, the page stands on its own — reachable from the account
-bio, which is itself approved text — and the DM goes out exactly as
-written.
+**The approved message does not link here**, and adding a URL to it
+is a change to study materials. Until the HRPP has it, the page
+stands on its own — reachable from the account bio, which is itself
+approved text — and the DM goes out as written.
 
 ## Fill in
 
