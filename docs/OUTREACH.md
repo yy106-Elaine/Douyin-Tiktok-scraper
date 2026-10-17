@@ -55,13 +55,13 @@ to raise.
 Short. Everything that matters for a yes/no, nothing else.
 
 ```
-你好！我是美国 Wellesley College 的本科生【名字】，在做毕业论文，
+你好！我是美国 Wellesley College 的本科生 Elaine，在做毕业论文，
 研究中文平台上拉拉内容创作者的经历。
 
 想请你聊 15 分钟：文字或语音都行，时间你定，有 50 元感谢费。
 不会用到你的账号名、真名或任何截图。
 
-我的个人主页：【链接】
+我的个人主页：yy106-elaine.github.io
 有兴趣或者想先问清楚，回我一句就行，谢谢！
 ```
 
@@ -100,8 +100,9 @@ Sent once they answer. This is the consent information.
   你的细节。录音只在你同意的情况下做，论文写完就删。
 · 自愿：任何问题都可以跳过，随时可以停。
 
-本研究已通过 Wellesley College 伦理审查委员会（IRB）审批，编号
-【填写】。有任何问题都可以问我，或者发邮件到【邮箱】。
+本研究已通过美国布兰迪斯大学（Brandeis University）伦理审查委员会
+（IRB）审批，编号 27037R，项目负责人是韦尔斯利学院的 Eni Mustafaraj
+教授。有任何问题都可以问我，或者发邮件到 yy106@wellesley.edu。
 
 方便的话告诉我你哪天哪个时间段有空？
 ```
@@ -111,6 +112,25 @@ a researcher can actually keep, and nothing about the platform
 noticing. Do not add either.
 
 ---
+
+## The IRB line, and the thing to check
+
+The approval letter is from the **Brandeis University** Human
+Research Protection Program, not Wellesley's: the PI, Prof. Eni
+Mustafaraj, submitted it there. Protocol **#27037R**, "Content
+Moderation, Removal, and Self-Censorship Among Chinese-Language
+Lesbian Video Creators", determined 2026-09-30. Naming the wrong
+institution on the one line a cautious reader would actually go and
+check is the error this message can least afford, so every template
+here names Brandeis and the PI.
+
+**One thing to ask the HRPP about.** The letter's header says
+*Expedited — Category 7, 45 CFR 46.110*, and its body says the study
+*"meets the criteria for Exempt Human Subjects Research under 45 CFR
+46.104(d)"*. Those are two different determinations. It changes
+nothing about whether the interviews can start — both say yes, today
+— but the thesis will state which one this was, and it is a one-line
+email to hrpp@brandeis.edu now rather than a correction in April.
 
 ## Message 3 — the questions
 

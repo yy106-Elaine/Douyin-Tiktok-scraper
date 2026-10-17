@@ -89,11 +89,17 @@
   ============================================================
 -->
 <script>
-  // Three things still to fill in. Everything else is from her CV.
   const ME = {
-    email:  "FILL_IN@wellesley.edu",   // 用哪个邮箱收回信
-    irb:    "FILL_IN",                 // IRB 编号
-    github: "FILL_IN",                 // GitHub 用户名（决定网址）
+    email:  "yy106@wellesley.edu",
+    // The approval letter is from Brandeis, not Wellesley: the PI,
+    // Prof. Eni Mustafaraj, submitted it through Brandeis's Human
+    // Research Protection Program. Naming the wrong institution on
+    // a page whose whole job is being checkable would be the one
+    // kind of error it cannot afford.
+    irb:    "#27037R",
+    irb_body_en: "the Brandeis University IRB",
+    irb_body_zh: "美国布兰迪斯大学（Brandeis University）伦理审查委员会（IRB）",
+    github: "yy106-Elaine",
   };
 </script>
 
@@ -230,7 +236,9 @@
         <dt>Voluntary</dt><dd>Skip any question, stop at any point — you are still paid</dd>
       </dl>
       <p style="margin:16px 0 0">
-        Approved by the Wellesley College IRB, protocol <span class="f-irb"></span>.
+        Approved by <span class="f-irb-body"></span>, protocol
+        <span class="f-irb"></span>. Principal investigator:
+        Prof. Eni Mustafaraj, Wellesley College.
         Questions, or just want to know more before deciding?
         <a class="f-mail" href="#">Email me</a>.
       </p>
@@ -251,8 +259,9 @@
         <dt>自愿</dt><dd>任何问题都可以跳过，随时可以停，停了感谢费照付</dd>
       </dl>
       <p style="margin:16px 0 0">
-        本研究已通过韦尔斯利学院伦理审查委员会（IRB）审批，编号
-        <span class="f-irb"></span>。
+        本研究已通过<span class="f-irb-body"></span>审批，编号
+        <span class="f-irb"></span>，项目负责人为韦尔斯利学院
+        Eni Mustafaraj 教授。
         有意参加，或者只是想先问清楚，都可以
         <a class="f-mail" href="#">发邮件给我</a>，或者直接在抖音私信我。
       </p>
@@ -290,6 +299,10 @@
       });
     }
     fill('.f-irb', ME.irb);
+    document.querySelectorAll('.f-irb-body').forEach(function (el) {
+      var zh = el.closest('[data-lang="zh"]');
+      el.textContent = zh ? ME.irb_body_zh : ME.irb_body_en;
+    });
     document.querySelectorAll('.f-mail').forEach(function (a) {
       a.href = 'mailto:' + ME.email;
       if (!a.textContent.trim()) { a.textContent = ME.email; }
