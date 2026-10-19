@@ -1667,6 +1667,45 @@ order. A page that recruited would add a second, self-selected
 channel alongside a stratified sample. Anyone who arrives via the
 page or the account bio is recorded as outside the sampling frame.
 
+### 14g. Recruiting was narrowed to posts that are still down
+
+From 10-19 the messages go only to accounts with at least one post
+down *at the latest check* (`app.outreach --still-gone`). The
+came-back cells are held back.
+
+The reason is that this study cannot currently tell three things
+apart, and one interviewee has already made the third worth taking
+seriously:
+
+1. **Douyin put the post back.** A real reinstatement, which section
+   14e says this instrument can see and cannot explain.
+2. **The instrument was wrong.** Between 10-09 and 10-13 roughly two
+   thirds of one removal evidence was our own fault (8b).
+3. **The post was throttled, not removed.** An interviewee on 10-19
+   said anything about couples gets 限流. A post that is still there
+   but stops being served would look, from a daily link check,
+   exactly like a short removal.
+
+Asking somebody about a removal that did not happen is the one
+approach that cannot be taken back, so while this is unresolved the
+approaches go where the evidence is a page or an API saying the post
+is gone today.
+
+**This narrows the frame and the narrowing is a result, not an
+omission.** The interviews will over-represent people whose posts
+stayed down and say nothing from people whose posts came back —
+which is the group that could speak to reinstatement, the part of
+this subject almost nothing in the literature follows. The four
+cells remain in `app.outreach`; the held-back two are recorded as
+held back rather than as not yet reached.
+
+`app.account <抖音号>` prints one account's whole record — every
+post, the sequence of states with the evidence behind each, and the
+path to the downloaded file — which is what makes an interviewee's
+account of their own posts checkable against ours. The first use of
+it was a participant who said nothing of hers had ever been removed
+while the corpus said otherwise.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school

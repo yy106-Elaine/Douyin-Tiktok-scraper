@@ -260,3 +260,31 @@ def test_the_table_holds_one_row_per_account(db: None) -> None:
 
     assert len(rows) == 1
     assert rows[0].status == "interviewed"
+
+
+def test_the_came_back_cells_can_be_held_back(db: None) -> None:
+    """A post that went and came back has at least three possible
+    causes and this study can tell none of them apart: the platform
+    put it back, this instrument was wrong, or it was throttled
+    rather than removed. Asking somebody about a removal that did not
+    happen is the one approach that cannot be taken back.
+    """
+    people = [
+        _person("down1", handle="a", gone=1),
+        _person("down2", handle="b", gone=2, back=1),
+        _person("back1", handle="c", back=1),
+        _person("back2", handle="d", back=3),
+    ]
+
+    with SessionLocal() as session:
+        everyone = next_to_contact(session, people, 10)
+        narrowed = next_to_contact(session, people, 10, still_gone_only=True)
+
+    assert {i.person.sec_uid for i in everyone} == {
+        "down1", "down2", "back1", "back2"}
+    # An account with one post still down stays, even if others of
+    # its posts came back: the evidence for *that* post is current.
+    assert {i.person.sec_uid for i in narrowed} == {"down1", "down2"}
+    # And the order within what is left is the same order.
+    assert [i.person.sec_uid for i in narrowed] == [
+        i.person.sec_uid for i in everyone if i.person.still_gone]

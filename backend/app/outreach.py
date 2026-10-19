@@ -162,11 +162,33 @@ def already(session: Session, platform: str = "douyin") -> dict[str, Outreach]:
 
 def next_to_contact(session: Session, people: list[Candidate], count: int,
                     seed: int = 20261007,
-                    platform: str = "douyin") -> list[Queued]:
-    """The next `count` accounts not yet written to, in contact order."""
+                    platform: str = "douyin",
+                    still_gone_only: bool = False) -> list[Queued]:
+    """The next `count` accounts not yet written to, in contact order.
+
+    `still_gone_only` drops the came-back cells. A post that failed
+    on one day and worked on another has at least three possible
+    causes and this study can currently tell none of them apart: the
+    platform put it back, *this instrument was wrong* (between 10-09
+    and 10-13 about two thirds of one evidence type was our own
+    fault, METHODOLOGY 8b), or the post was throttled rather than
+    removed — which is what an interviewee said happens to anything
+    about couples.
+
+    Asking somebody about a removal that may not have happened is
+    the one approach that cannot be taken back, so while that is
+    unresolved the messages go to accounts whose posts are still
+    down, where the evidence is a page or an API saying so today.
+
+    It narrows the frame and the narrowing has to be reported: the
+    came-back cells are not "not yet contacted", they are a group
+    this study chose to hold back, and that choice is part of who
+    ends up being quoted.
+    """
     seen = already(session, platform)
     waiting = [item for item in order(people, seed)
-               if item.person.sec_uid not in seen]
+               if item.person.sec_uid not in seen
+               and (not still_gone_only or item.person.still_gone > 0)]
     return waiting[:count]
 
 
@@ -298,6 +320,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                         help="where recruitment has got to")
     parser.add_argument("--csv", default=None, metavar="PATH",
                         help="write the whole remaining queue to a file")
+    parser.add_argument(
+        "--still-gone", action="store_true",
+        help=(
+            "only accounts with a post down right now. A post that "
+            "went and came back may be a reinstatement, a throttle, "
+            "or a fault of ours, and asking somebody about a removal "
+            "that did not happen cannot be taken back"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
@@ -330,11 +361,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             return
 
         queue = next_to_contact(session, people, args.count, args.seed,
-                                args.platform)
+                                args.platform, args.still_gone)
 
         if args.csv:
             whole = next_to_contact(session, people, len(people), args.seed,
-                                    args.platform)
+                                    args.platform, args.still_gone)
             path = Path(args.csv)
             write_csv(path, whole)
             print(f"{len(whole)} account(s) written to {path}")
