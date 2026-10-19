@@ -1373,6 +1373,9 @@ table.contacts td { vertical-align: top; }
 table.contacts .muted { color: var(--muted, #666); font-size: .85em;
   max-width: 28ch; }
 table.contacts a { font-weight: 600; }
+/* The two groups in the contact list are different claims,
+   so they get headings rather than a column to sort by. */
+.panel-reach h3 { font-size: 16px; margin: 30px 0 6px; }
 .twin summary {
   cursor: pointer; font-size: 12.5px; color: var(--text-secondary);
   padding: 4px 0;
@@ -1709,14 +1712,30 @@ def contact_table(headers: list[str], rows: list[list[str]],
 
 
 def _reach_out(session: Session, page: Page) -> str:
-    """Who to write to, in the order the sampling decision says.
+    """Who to write to, split by what the record actually shows.
 
-    The order is `app.outreach`: four cells -- still-gone or
-    came-back, one post or several -- shuffled on a fixed seed and
-    read round-robin, so stopping at any point leaves the four
-    roughly balanced. Worked from the top of `interviews.candidates`
-    instead, every quotation in the thesis would come from the most
-    heavily removed accounts, which is a sample of nothing.
+    Two groups, because they are two different approaches and two
+    different claims.
+
+    **Still down.** The latest check says gone, on a page or an API
+    that said so. The evidence is current.
+
+    **Went and came back.** At least three possible causes and this
+    study can separate none of them: Douyin put it back, the
+    instrument was wrong (two thirds of one evidence type between
+    10-09 and 10-13, METHODOLOGY 8b), or the post was throttled
+    rather than removed — which is what an interviewee said happens
+    to anything about couples. On 10-19 an account in this group was
+    read against its own record and the participant turned out to be
+    right: her only flagged post had one `served-another` inside the
+    two-browser window, two unreadables inside the image-blocking
+    window, and six straight days alive since.
+
+    Both get written to. The split is so that a reply can be read
+    knowing which one it answers, and so the thesis can say how many
+    approaches rested on evidence that is still standing.
+
+    The order inside each group is `app.outreach`'s, unchanged.
     """
     from .interviews import candidates
     from .outreach import already, next_to_contact
@@ -1724,67 +1743,83 @@ def _reach_out(session: Session, page: Page) -> str:
     people = candidates(session, "douyin")
     if not people:
         return ""
-    queue = next_to_contact(session, people, count=400)
+    queue = next_to_contact(session, people, count=600)
     written = already(session, "douyin")
 
-    rows = []
-    for index, item in enumerate(queue, start=1):
-        person = item.person
-        example = _an_example(person)
-        link = (f'<a href="{_e(example[0])}" rel="noreferrer">这条</a>'
-                if example else "—")
-        caption = _e(example[1]) if example else ""
-        tags = " ".join(f"#{_e(t)}" for t in _tags_of(person)) or "—"
-        rows.append([
-            _e(str(index)),
-            f'<a href="{_e(person.profile_url)}" rel="noreferrer">'
-            f'{_e(person.handle or person.sec_uid[:10])}</a>',
-            _e(item.stratum),
-            _e(WHY_CONTACT.get(item.stratum, "")),
-            _e(f"{person.removed} / {person.still_gone} / "
-               f"{person.came_back}"),
-            tags,
-            f"{link}<div class=\"muted\">{caption}</div>",
-        ])
+    def rows_for(items):
+        rows = []
+        for index, item in enumerate(items, start=1):
+            person = item.person
+            example = _an_example(person)
+            link = (f'<a href="{_e(example[0])}" rel="noreferrer">这条</a>'
+                    if example else "—")
+            caption = _e(example[1]) if example else ""
+            tags = " ".join(f"#{_e(t)}" for t in _tags_of(person)) or "—"
+            rows.append([
+                _e(str(index)),
+                f'<a href="{_e(person.profile_url)}" rel="noreferrer">'
+                f'{_e(person.handle or person.sec_uid[:10])}</a>',
+                _e(item.stratum),
+                f"{person.removed} / {person.still_gone} / {person.came_back}",
+                tags,
+                f'{link}<div class="muted">{caption}</div>',
+            ])
+        return rows
 
+    down = [i for i in queue if i.person.still_gone > 0]
+    back = [i for i in queue if i.person.still_gone == 0]
+    headers = ["#", "抖音号 / profile", "Cell", "gone / still / back",
+               "Tags on their removed posts", "One removed post"]
     unreachable = [p for p in people if not p.reachable]
+
     return (
         '<section><h2>可联系的作者 (who to write to)</h2>'
         '<p class="note"><strong>This page names real people who post '
         'queer content.</strong> It is written only when '
-        '<code>--outreach</code> is passed, it is ignored by the '
-        'repository, and it does not belong in a shared folder, an '
-        'email, or a chat.</p>'
-        '<p class="note">The order is the sampling decision, not a '
-        'ranking: four cells — still down or came back, one post or '
-        'several — shuffled on a fixed seed and read round-robin, so '
-        'stopping at any point leaves the four roughly balanced. '
-        'Worked from the top of the removals list instead, every '
-        'quotation would come from the worst-hit accounts.</p>'
-        '<p class="note"><strong>The tags column is for spreading the '
-        'sample, not for choosing it.</strong> Take the next person in '
-        'the order; use the tags only to notice when the people said '
-        'yes so far are all posting about one thing.</p>'
-        '<p class="note"><strong>What the message does not say.</strong> '
-        'It does not tell anyone that a particular post of theirs was '
-        'taken down. Two of this week\'s three instrument faults '
-        'produced wrong removals, and telling somebody their post was '
-        'removed when it was a bug is not a correction that can be '
-        'made afterwards. The approach describes the study and asks '
-        'about their experience; the "why" column below is for '
-        'deciding who to write to and stays in your notes.</p>'
+        '<code>--outreach</code> is passed, the repository ignores '
+        'it, and it does not belong in a shared folder, an email, or '
+        'a chat.</p>'
+        '<p class="note">The order inside each group is the sampling '
+        'decision, not a ranking: four cells — still down or came '
+        'back, one post or several — shuffled on a fixed seed and '
+        'read round-robin, so stopping at any point leaves them '
+        'roughly balanced. <strong>Take the next one; do not '
+        'pick.</strong> The tags column is for noticing when everyone '
+        'who has said yes is posting about one thing, and then saying '
+        'so in the methods — not for hand-picking to fix it.</p>'
+        '<p class="note"><strong>The message never tells anyone that a '
+        'particular post of theirs came down.</strong> On 10-19 an '
+        'account in the second group below was read against its own '
+        'record: the participant said nothing of hers had been '
+        'removed, and she was right — the one flagged post had a '
+        'single removal reading inside the two-browser window, two '
+        'unreadable days inside the image-blocking window, and six '
+        'straight days alive since. That is the error this rule '
+        'exists for, and it cannot be taken back once sent.</p>'
         f'<p class="note">{len(queue)} not yet written to; '
         f'{len(written)} already contacted; {len(unreachable)} '
         'unreachable — no 抖音号 on file, which usually means the '
-        'account itself is gone. That last number is a finding, not a '
-        'shortfall.</p>'
-        + contact_table(
-            ["#", "抖音号 / profile", "Cell", "Why (your notes only)",
-             "gone / still / back", "Tags on their removed posts",
-             "One removed post"],
-            rows,
-            "Contact order. Record each with: "
-            "./.venv/bin/python -m app.outreach --mark <抖音号> sent")
+        'account itself is gone. That last number is a finding, not '
+        'a shortfall.</p>'
+
+        f'<h3>① 现在还下着 — still down ({len(down)})</h3>'
+        '<p class="note">The latest check says gone, on a page or an '
+        'API that said so. The evidence is current.</p>'
+        + contact_table(headers, rows_for(down),
+                        "Record each with: ./.venv/bin/python -m "
+                        "app.outreach --mark <抖音号> sent")
+
+        + f'<h3>② 下架后又恢复 — went and came back ({len(back)})</h3>'
+        '<p class="note">A post that failed on one day and worked on '
+        'another. Three possible causes and this study can separate '
+        'none of them: Douyin put it back, the instrument was wrong, '
+        'or the post was throttled rather than removed — which is '
+        'what an interviewee said happens to anything about couples. '
+        'Worth writing to, and worth reading any reply knowing '
+        'which group it came from.</p>'
+        + contact_table(headers, rows_for(back),
+                        "Same command; the note is where to record "
+                        "which group this was")
         + "</section>"
     )
 

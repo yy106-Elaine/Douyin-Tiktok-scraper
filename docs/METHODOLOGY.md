@@ -1667,44 +1667,51 @@ order. A page that recruited would add a second, self-selected
 channel alongside a stratified sample. Anyone who arrives via the
 page or the account bio is recorded as outside the sampling frame.
 
-### 14g. Recruiting was narrowed to posts that are still down
+### 14g. An interviewee corrected the instrument, and what followed
 
-From 10-19 the messages go only to accounts with at least one post
-down *at the latest check* (`app.outreach --still-gone`). The
-came-back cells are held back.
+On 10-19 a participant said that nothing of hers had ever been
+removed. The corpus disagreed. Read against her own record
+(`app.account 981373074`), the corpus was wrong and she was right.
 
-The reason is that this study cannot currently tell three things
-apart, and one interviewee has already made the third worth taking
-seriously:
+Her one flagged post, a 图文 posted 10-07:
 
-1. **Douyin put the post back.** A real reinstatement, which section
-   14e says this instrument can see and cannot explain.
-2. **The instrument was wrong.** Between 10-09 and 10-13 roughly two
-   thirds of one removal evidence was our own fault (8b).
-3. **The post was throttled, not removed.** An interviewee on 10-19
-   said anything about couples gets 限流. A post that is still there
-   but stops being served would look, from a daily link check,
-   exactly like a short removal.
+| when | what the check said |
+| --- | --- |
+| 10-08 07:01 | unreadable — inside the image-blocking window (8b) |
+| **10-09 03:37** | **served another video** — the 03:00 pass on the first night the two-browser fault was live (8b) |
+| 10-09 16:49 | unreadable — same window |
+| 10-13 → 10-18 | alive, six days running |
 
-Asking somebody about a removal that did not happen is the one
-approach that cannot be taken back, so while this is unresolved the
-approaches go where the evidence is a page or an API saying the post
-is gone today.
+Both faults, one post, three days. This is the first time an
+interview has been used to check the instrument rather than the
+other way round, and it is worth reporting as such: the cost of
+those windows was not only a distorted rate, it was very nearly
+asking somebody to explain a removal that never happened.
 
-**This narrows the frame and the narrowing is a result, not an
-omission.** The interviews will over-represent people whose posts
-stayed down and say nothing from people whose posts came back —
-which is the group that could speak to reinstatement, the part of
-this subject almost nothing in the literature follows. The four
-cells remain in `app.outreach`; the held-back two are recorded as
-held back rather than as not yet reached.
+**The recruiting list is now split rather than filtered.** Both
+groups are written to — holding back the came-back cells would mean
+hearing nothing from the only people who could speak to
+reinstatement — but the split means a reply can be read knowing
+which claim it answers:
 
-`app.account <抖音号>` prints one account's whole record — every
-post, the sequence of states with the evidence behind each, and the
-path to the downloaded file — which is what makes an interviewee's
-account of their own posts checkable against ours. The first use of
-it was a participant who said nothing of hers had ever been removed
-while the corpus said otherwise.
+1. **Still down.** The latest check says gone, on a page or an API
+   that said so. Current evidence.
+2. **Went and came back.** Three possible causes, none separable
+   here: a reinstatement; a fault of ours; or **throttling** — an
+   interviewee the same day said anything about couples gets 限流,
+   and a post that is still there but stops being served looks,
+   from a daily link check, exactly like a short removal.
+
+The message never tells anyone a particular post of theirs came
+down, which is the rule this case exists to justify. The interview
+asks openly instead, and the participant's answer is allowed to
+disagree with ours.
+
+`app.account <抖音号>` prints one account's whole record — each
+post, the sequence of states, the evidence and filter reason behind
+every check, and the path to the downloaded file. An unreadable
+check never enters the sequence: letting it in would invent a state
+change out of a day the instrument could not see.
 
 ### 15. Some of the collected posts are by minors
 

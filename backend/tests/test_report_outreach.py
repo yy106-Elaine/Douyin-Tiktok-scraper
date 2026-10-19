@@ -271,3 +271,46 @@ def test_a_post_that_came_back_leaves_the_chart(db: None) -> None:
         counted = dict(reasons_seen(session))
 
     assert counted == {"status_self_see": 1}
+
+
+def test_the_contact_list_splits_by_what_the_record_shows(db: None) -> None:
+    """Still down and came back are two different claims.
+
+    The first rests on evidence that is current. The second has
+    three possible causes this study cannot separate — a
+    reinstatement, a fault of ours, or throttling. Both get written
+    to; a reply has to be readable knowing which it answers.
+    """
+    from datetime import datetime
+
+    from app.models import AuthorPost, SharedLink, WebAuthor, WebVideo
+    from app.recheck import ID_CONFIRMED, PAGE_SAYS_GONE
+    from app.report import build
+
+    with SessionLocal() as session:
+        for who, evidence in (("down", PAGE_SAYS_GONE), ("back", ID_CONFIRMED)):
+            session.add(SharedLink(
+                participant_id="p", platform="douyin", video_id=who,
+                raw_text=f"https://www.douyin.com/video/{who}",
+                canonical_url=f"https://www.douyin.com/video/{who}",
+                shared_at=datetime(2026, 10, 1)))
+            session.add(WebVideo(
+                platform="douyin", video_id=who, sec_uid=who,
+                caption="#wlw", posted_on=datetime(2026, 10, 1)))
+            session.add(AuthorPost(sec_uid=who, video_id=who,
+                                   platform="douyin"))
+            session.add(WebAuthor(sec_uid=who, author_handle=f"h-{who}"))
+            # Both were found gone once; only one still is.
+            record_check(session, who, _Page(), PAGE_SAYS_GONE,
+                         f"https://www.douyin.com/video/{who}", "douyin")
+            if evidence == ID_CONFIRMED:
+                record_check(session, who, _Page(), ID_CONFIRMED,
+                             f"https://www.douyin.com/video/{who}", "douyin")
+        session.commit()
+
+        drawn = build(session, outreach=True)
+
+    assert "现在还下着" in drawn
+    assert "下架后又恢复" in drawn
+    # The one still down is listed above the one that came back.
+    assert drawn.index("现在还下着") < drawn.index("下架后又恢复")
