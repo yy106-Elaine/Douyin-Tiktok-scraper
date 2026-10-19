@@ -83,8 +83,12 @@ for platform in douyin douyin_note tiktok; do
   count=$($PY -m app.unreadable --platform "$platform" --hours 24 2>/dev/null | wc -l | tr -d ' ')
   printf '  %-14s %s\n' "$platform" "$count"
 done
-echo "  (these are ids whose LATEST check read nothing; re-read with"
-echo "   --only-from after ./.venv/bin/python -m app.unreadable > file)"
+echo "  (these are ids whose LATEST check read nothing. To get the same"
+echo "   ids back, pass the same arguments this section used -- the"
+echo "   defaults are douyin_note and 12h, which will not reproduce a"
+echo "   24h count and will silently print an empty list:"
+echo "     \$PY -m app.unreadable --platform <platform> --hours 24 > /tmp/left.txt"
+echo "     \$PY -m app.daily --platform <platform> --only-from /tmp/left.txt --minimise)"
 
 rule "5b. removals a later check undid"
 # The other half of the 10-05 regression, if there is one. A
