@@ -329,3 +329,21 @@ def test_the_audit_reports_the_fault_size_without_any_record(db: None) -> None:
     dropped = len(wide) - len(narrow)
     assert dropped == 4
     assert f"{dropped / len(wide):.0%}" == "40%"
+
+
+def test_many_contacts_can_be_recorded_at_once(db: None) -> None:
+    """Marking happens on a laptop and sending happens on a phone,
+    so the record is usually behind. Thirty unrecorded contacts mean
+    thirty people the queue will offer again -- and on Douyin the
+    first message to a non-follower is the one that arrives, so
+    offering again spends it."""
+    people = [_person(f"acct{i}", handle=f"h{i}", gone=1) for i in range(5)]
+
+    with SessionLocal() as session:
+        for handle in ("h0", "h2", "h4"):
+            mark(session, find(people, handle), "sent")
+        session.commit()
+
+        left = {i.person.sec_uid for i in next_to_contact(session, people, 10)}
+
+    assert left == {"acct1", "acct3"}

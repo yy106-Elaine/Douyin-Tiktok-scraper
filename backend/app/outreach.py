@@ -316,6 +316,17 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                              f"of {', '.join(STATUSES)}")
     parser.add_argument("--note", default=None,
                         help="with --mark: a line to append")
+    parser.add_argument(
+        "--mark-from", metavar="FILE",
+        help=(
+            "mark many at once: one 抖音号 per line. For catching the "
+            "record up with messages already sent by hand"
+        ),
+    )
+    parser.add_argument(
+        "--mark-from-status", default="sent", choices=STATUSES,
+        help="with --mark-from: which status (default sent)",
+    )
     parser.add_argument("--status", action="store_true",
                         help="where recruitment has got to")
     parser.add_argument(
@@ -343,6 +354,45 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     init_db()
     with SessionLocal() as session:
         people = candidates(session, args.platform)
+
+        if args.mark_from:
+            # One handle per line, blank lines and # comments
+            # ignored. For catching the record up with messages
+            # already sent by hand -- which is the state it is
+            # usually in, because marking happens on a laptop and
+            # sending happens on a phone.
+            from pathlib import Path as _Path
+
+            wanted = []
+            for line in _Path(args.mark_from).read_text(
+                    encoding="utf-8").splitlines():
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    wanted.append(line)
+
+            done, missing = 0, []
+            for who in wanted:
+                found = find(people, who)
+                if found is None:
+                    missing.append(who)
+                    continue
+                mark(session, found, args.mark_from_status, args.note,
+                     args.platform)
+                done += 1
+            session.commit()
+            print(f"{done} marked {args.mark_from_status}")
+            if missing:
+                # Not an error. An account that has since dropped out
+                # of scope, or whose 抖音号 was never read, is still
+                # somebody who was written to -- and the queue cannot
+                # offer them again either way, because it only offers
+                # accounts it can see.
+                print(f"\n{len(missing)} not found in the current list:")
+                for who in missing:
+                    print(f"  {who}")
+                print("Either the handle is off by a character, or the "
+                      "account is no longer in scope.")
+            return
 
         if args.mark:
             who, status = args.mark
