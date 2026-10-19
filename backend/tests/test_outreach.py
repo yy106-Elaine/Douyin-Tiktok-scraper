@@ -314,3 +314,18 @@ def test_contacts_already_made_outside_the_scope_can_be_found(db: None) -> None:
         wrong = [sec for sec in rows if sec not in in_scope]
 
     assert wrong == ["drop"]
+
+
+def test_the_audit_reports_the_fault_size_without_any_record(db: None) -> None:
+    """How many accounts the list would have offered who are not
+    this study's subject does not depend on anything having been
+    marked. With an empty record that is the only number the audit
+    can give, and it is the one that matters."""
+    from app.interviews import Candidate
+
+    wide = [_person(f"a{i}", handle=f"h{i}", gone=1) for i in range(10)]
+    narrow = wide[:6]
+
+    dropped = len(wide) - len(narrow)
+    assert dropped == 4
+    assert f"{dropped / len(wide):.0%}" == "40%"

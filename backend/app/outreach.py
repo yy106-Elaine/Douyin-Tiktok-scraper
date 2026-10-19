@@ -365,8 +365,31 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             narrow = {c.sec_uid for c in people}
             rows = already(session, args.platform)
             wrong = [sec for sec in rows if sec not in narrow]
-            print(f"{len(rows)} account(s) written to; "
-                  f"{len(wrong)} of them are not in the study's scope\n")
+
+            # The size of the fault, which does not depend on
+            # anything having been recorded. Until 10-19 this list
+            # had no topic filter on it, so this is how many people
+            # it would have offered who are not this study's
+            # subject.
+            dropped = len(wide) - len(narrow)
+            print(f"{len(wide)} account(s) had a post found gone.")
+            print(f"{len(narrow)} of them had an in-scope post go; "
+                  f"{dropped} did not and are no longer offered.")
+            if wide:
+                print(f"That is {dropped / len(wide):.0%} of the list "
+                      "before 10-19.\n")
+
+            print(f"{len(rows)} account(s) recorded as written to; "
+                  f"{len(wrong)} of them are not in the study's scope.")
+            if not rows:
+                print(
+                    "\nNothing is recorded, so this cannot tell you whether\n"
+                    "a message has already gone to one of them. On Douyin\n"
+                    "the first message to a non-follower is the one that\n"
+                    "arrives, so an unrecorded contact is one this list will\n"
+                    "offer again and spend twice. Check the 私信 list and\n"
+                    "mark them:  --mark <抖音号> sent")
+            print()
             for sec in wrong:
                 row = rows[sec]
                 person = wide.get(sec)
