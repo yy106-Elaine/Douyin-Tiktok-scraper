@@ -182,3 +182,74 @@ def test_the_tab_is_on_every_page(client):
     body = client.get("/dashboard/overview?key=test-admin-key").text
 
     assert "/dashboard/interviews" in body
+
+
+def test_an_off_topic_account_is_not_asked_for_an_interview(db: None) -> None:
+    """A restaurant-skit account with three million followers was in
+    the recruiting list under "still-gone/several".
+
+    Two of its posts had gone and neither had anything to do with
+    this study. The topic filter marks rows out of scope rather than
+    deleting them -- correct, a removal is still a removal -- but
+    nothing between the corpus and the message asked whether the
+    post was this study's subject. Approaching somebody outside the
+    study population is not a wasted message, it is the wrong
+    person being asked to talk about something that is not about
+    them.
+    """
+    from datetime import datetime
+
+    from app.interviews import candidates
+    from app.models import AuthorPost, LinkCheck, SharedLink, WebAuthor, WebVideo
+    from app.recheck import PAGE_SAYS_GONE
+
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        for who, caption in (("wlw", "好久不见 #wlw #拉拉"),
+                             ("skit", "后厨忘记做菜！#餐厅 #段子")):
+            session.add(SharedLink(
+                participant_id="p", platform="douyin", video_id=who,
+                raw_text=f"https://www.douyin.com/video/{who}",
+                canonical_url=f"https://www.douyin.com/video/{who}",
+                shared_at=datetime(2026, 10, 1)))
+            session.add(WebVideo(
+                platform="douyin", video_id=who, sec_uid=f"acct-{who}",
+                caption=caption, posted_on=datetime(2026, 10, 1)))
+            session.add(AuthorPost(sec_uid=f"acct-{who}", video_id=who,
+                                   platform="douyin"))
+            session.add(WebAuthor(sec_uid=f"acct-{who}",
+                                  author_handle=f"h-{who}"))
+            session.add(LinkCheck(
+                video_id=who, platform="douyin",
+                url=f"https://www.douyin.com/video/{who}",
+                checked_at=datetime(2026, 10, 5), evidence=PAGE_SAYS_GONE))
+        session.commit()
+
+        kept = {c.sec_uid for c in candidates(session, "douyin")}
+        everything = {c.sec_uid
+                      for c in candidates(session, "douyin",
+                                          on_topic_only=False)}
+
+    assert kept == {"acct-wlw"}
+    # The old behaviour is still reachable, so the difference can be
+    # measured and reported rather than silently applied.
+    assert everything == {"acct-wlw", "acct-skit"}
+
+
+def test_a_caption_nobody_has_read_yet_is_not_called_off_topic(db: None) -> None:
+    """No caption is a row nothing can judge. Dropping it would
+    shrink the frame by however many pages failed to parse."""
+    from datetime import datetime
+
+    from app.interviews import in_scope
+
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        kept = in_scope(session, "douyin",
+                        {"unread": None, "empty": "", "wlw": "#wlw",
+                         "skit": "后厨忘记做菜！"})
+
+    assert "unread" in kept and "empty" in kept and "wlw" in kept
+    assert "skit" not in kept

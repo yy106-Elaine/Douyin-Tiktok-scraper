@@ -288,3 +288,29 @@ def test_the_came_back_cells_can_be_held_back(db: None) -> None:
     # And the order within what is left is the same order.
     assert [i.person.sec_uid for i in narrowed] == [
         i.person.sec_uid for i in everyone if i.person.still_gone]
+
+
+def test_contacts_already_made_outside_the_scope_can_be_found(db: None) -> None:
+    """The topic filter did not reach this list until 10-19.
+
+    Anything sent before then may have gone to an account whose
+    removed posts were off topic — somebody outside the study being
+    asked to talk about it. That is not a wasted message to write
+    off quietly; it has to be findable.
+    """
+    from app.outreach import already
+
+    on_topic = _person("keep", handle="a", gone=1)
+    off_topic = _person("drop", handle="b", gone=2)
+
+    with SessionLocal() as session:
+        mark(session, on_topic, "sent")
+        mark(session, off_topic, "sent")
+        session.commit()
+
+        rows = already(session)
+        # `candidates` now returns only the in-scope one.
+        in_scope = {on_topic.sec_uid}
+        wrong = [sec for sec in rows if sec not in in_scope]
+
+    assert wrong == ["drop"]

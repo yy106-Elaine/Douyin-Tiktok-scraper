@@ -172,12 +172,61 @@ def _post(finding: Finding, row: WebVideo | None) -> Post:
     )
 
 
-def candidates(session: Session, platform: str = "douyin") -> list[Candidate]:
-    """Accounts with at least one post of theirs found gone.
+def in_scope(session: Session, platform: str,
+             captions: dict[str, str | None]) -> set[str]:
+    """Video ids this study is actually about.
+
+    Two layers, because one is not enough and was not enough here.
+
+    The topic filter marks rows out of scope rather than deleting
+    them (`analyse.excluded`), which is right: a removal is still a
+    removal and the row is evidence of what the search returned. But
+    *this* list is who to write to, and an account that got into the
+    corpus on a false positive is a person outside the study being
+    asked to talk about it.
+
+    The second layer re-reads the caption, because a link pasted by
+    hand has no capture row and so was never marked at all. That is
+    how a restaurant-skit account with three million followers came
+    to sit in the recruiting list under "still-gone/several": two of
+    its posts went, neither had anything to do with this study, and
+    nothing between the corpus and the message asked whether they
+    did.
+    """
+    from .analyse import excluded
+    from .platforms import filter_policy
+    from .relevance import classify
+
+    out_of_scope = set()
+    for member in family_members(platform):
+        out_of_scope |= excluded(session, member)
+
+    policy = filter_policy(platform)
+    kept: set[str] = set()
+    for video_id, text in captions.items():
+        if video_id in out_of_scope:
+            continue
+        # No caption read yet is not the same as off topic: it is a
+        # row nothing can judge, and dropping it would quietly
+        # shrink the frame by however many pages failed to parse.
+        if text and classify(text, policy=policy):
+            continue
+        kept.add(video_id)
+    return kept
+
+
+def candidates(session: Session, platform: str = "douyin",
+               on_topic_only: bool = True) -> list[Candidate]:
+    """Accounts with at least one **in-scope** post of theirs found gone.
 
     Sorted by how much of their work went: most removals first, then
     the ones still gone, then by account id so the order is stable
     between runs of the page.
+
+    `on_topic_only=False` restores the old behaviour, which counted
+    every removal in the tables regardless of whether the post was
+    this study's subject. Kept only so the difference can be
+    measured and reported.
     """
     links = _links(session, platform)
     by_video = {f.video_id: f for f in findings(session, platform)}
@@ -194,13 +243,26 @@ def candidates(session: Session, platform: str = "douyin") -> list[Candidate]:
         for author in session.scalars(select(WebAuthor))
     }
 
+    keep = None
+    if on_topic_only:
+        keep = in_scope(
+            session, platform,
+            {video_id: (row.caption if row else None)
+             for video_id, row in rows.items()},
+        )
+
     out: list[Candidate] = []
     for sec_uid, video_ids in links.items():
         posts = [
             _post(by_video[video_id], rows.get(video_id))
             for video_id in sorted(video_ids)
             if video_id in by_video
+            and (keep is None or video_id in keep)
         ]
+        # An account is on this list because an in-scope post of
+        # theirs went. Off-topic posts are not counted towards the
+        # "several" that decides which cell they land in either --
+        # that number is in the message's own framing.
         if not any(p.ever_gone for p in posts):
             continue
         author = authors.get(sec_uid)

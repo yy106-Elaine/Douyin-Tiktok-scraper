@@ -1713,6 +1713,50 @@ every check, and the path to the downloaded file. An unreadable
 check never enters the sequence: letting it in would invent a state
 change out of a day the instrument could not see.
 
+### 14h. The interview list had no topic filter on it
+
+Found on 10-19, from a screenshot: a restaurant-skit account with
+3.2 million followers, in the recruiting list under
+`still-gone/several`. Two of its posts had been found gone. Neither
+had anything to do with this study.
+
+`interviews.candidates` asked one question — *has an account had a
+post found gone* — and never asked whether the post was this
+study's subject. The topic filter marks rows out of scope rather
+than deleting them (`analyse.excluded`), which is right for the
+corpus: a removal is a removal, and the row is evidence of what the
+search returned. But nothing stood between that corpus and the
+recruiting list, so every off-topic false positive brought its
+author along.
+
+This is not a wasted message. It is somebody outside the study
+population being asked to talk about something that is not about
+them — under a protocol whose population is Chinese-language
+lesbian video creators.
+
+**Fixed in two layers**, because one was already known not to be
+enough:
+
+1. rows the topic filter marked out of scope are dropped;
+2. the caption is re-read, because a link pasted by hand has no
+   capture row and was never marked at all. That second layer is
+   what the restaurant account needed.
+
+A post with **no caption read yet** is kept. No caption is a row
+nothing can judge, and dropping it would shrink the frame by
+however many pages failed to parse.
+
+Off-topic posts no longer count toward the "several" that decides
+which cell an account lands in, either — that number is in the
+message's own framing.
+
+`candidates(..., on_topic_only=False)` restores the old behaviour so
+the size of the difference can be measured and reported rather than
+silently applied, and `app.outreach --audit` lists contacts already
+made to accounts now out of scope. Any such contact is an error
+made by this study: no follow-up, and if one replies, say so
+plainly rather than interviewing them.
+
 ### 15. Some of the collected posts are by minors
 
 The first four posts put through visual coding included two school

@@ -318,6 +318,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                         help="with --mark: a line to append")
     parser.add_argument("--status", action="store_true",
                         help="where recruitment has got to")
+    parser.add_argument(
+        "--audit", action="store_true",
+        help=(
+            "list contacts already made to accounts outside the "
+            "study's scope. The topic filter did not reach this list "
+            "until 10-19, so anything sent before then may include "
+            "accounts whose removed posts were off topic"
+        ),
+    )
     parser.add_argument("--csv", default=None, metavar="PATH",
                         help="write the whole remaining queue to a file")
     parser.add_argument(
@@ -344,6 +353,33 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             session.commit()
             print(f"{person.handle or person.sec_uid}: {row.status}"
                   f"  [{row.stratum}]")
+            return
+
+        if args.audit:
+            # Who was written to before the topic filter reached this
+            # list. An account with no in-scope removed post should
+            # never have been approached: it is somebody outside the
+            # study being asked about it.
+            wide = {c.sec_uid: c for c in candidates(
+                session, args.platform, on_topic_only=False)}
+            narrow = {c.sec_uid for c in people}
+            rows = already(session, args.platform)
+            wrong = [sec for sec in rows if sec not in narrow]
+            print(f"{len(rows)} account(s) written to; "
+                  f"{len(wrong)} of them are not in the study's scope\n")
+            for sec in wrong:
+                row = rows[sec]
+                person = wide.get(sec)
+                removed = person.removed if person else "?"
+                print(f"  {row.handle or sec:<24} {row.status:<12} "
+                      f"{removed} removed post(s), none on topic")
+                print(f"    https://www.douyin.com/user/{sec}")
+            if wrong:
+                print("\nThese were approached in error. Do not follow up; "
+                      "if one replies, say so plainly and do not "
+                      "interview them.\n"
+                      "Mark each:  --mark <抖音号> skip --note "
+                      '"off topic, approached in error"')
             return
 
         if args.status:
