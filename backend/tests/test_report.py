@@ -280,3 +280,34 @@ def test_the_speed_pie_reads_only_the_removals() -> None:
     assert [s.count for s in slices] == [1, 1, 1, 1]
     # The post still up is in none of them: this pie is the removals.
     assert sum(s.count for s in slices) == 4
+
+
+def test_the_contact_table_carries_a_mark_per_account() -> None:
+    """The handled-marker, which is the only way the page can know.
+
+    A profile link she has opened is purple, and no page can read
+    that: `:visited` is unreadable from script in every browser. So
+    the mark has to be explicit, and it has to be keyed to the
+    account -- the queue is rebuilt nightly and row 14 is not the
+    same person two days running.
+    """
+    from app.report import contact_table
+
+    html = contact_table(
+        ["抖音号"], [['<a href="#">someone</a>']], "cap",
+        ids=["SEC-UID-1"], table_id="reach-down")
+
+    assert 'data-id="SEC-UID-1"' in html
+    assert 'type="checkbox"' in html
+    assert 'id="reach-down"' in html
+    # The tools have to name the table they drive, or they drive none.
+    assert 'data-for="reach-down"' in html
+
+
+def test_the_contact_table_without_ids_is_unchanged() -> None:
+    """No marker column where no ids were given."""
+    from app.report import contact_table
+
+    html = contact_table(["抖音号"], [["someone"]], "cap")
+    assert "checkbox" not in html
+    assert "data-id" not in html

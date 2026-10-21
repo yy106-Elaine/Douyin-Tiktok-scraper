@@ -1373,6 +1373,28 @@ table.contacts td { vertical-align: top; }
 table.contacts .muted { color: var(--muted, #666); font-size: .85em;
   max-width: 28ch; }
 table.contacts a { font-weight: 600; }
+/* Handled rows. A row is "handled" once she has written to the
+   account or looked at the profile and decided not to -- the two
+   are the same for this list's purpose, which is only ever "do I
+   still have to open this one". Greyed rather than deleted,
+   because a list that silently shrinks is a list whose count
+   cannot be checked against anything. */
+table.contacts tr.done td { opacity: .4; }
+table.contacts tr.done a { font-weight: 400; }
+table.contacts.hide-done tr.done { display: none; }
+table.contacts th.mark, table.contacts td.mark {
+  width: 1.5em; text-align: center; padding-right: 0; }
+table.contacts td.mark input { cursor: pointer; }
+.reach-tools { display: flex; flex-wrap: wrap; gap: 10px 16px;
+  align-items: center; margin: 8px 0 4px; font-size: 13px; }
+.reach-tools button, .reach-tools input[type=number] {
+  font: inherit; padding: 3px 8px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-primary);
+  border-radius: 5px; cursor: pointer; }
+.reach-tools input[type=number] { width: 5em; cursor: text; }
+.reach-tools label { cursor: pointer; }
+.reach-count { color: var(--text-secondary); }
+.reach-warn { color: #b3261e; font-weight: 600; }
 /* The two groups in the contact list are different claims,
    so they get headings rather than a column to sort by. */
 .panel-reach h3 { font-size: 16px; margin: 30px 0 6px; }
@@ -1690,7 +1712,8 @@ def _an_example(person) -> tuple[str, str] | None:
 
 
 def contact_table(headers: list[str], rows: list[list[str]],
-                  caption: str) -> str:
+                  caption: str, *, ids: list[str] | None = None,
+                  table_id: str = "") -> str:
     """The contact list, open and with its links live.
 
     `table()` escapes every cell and hides the whole thing behind a
@@ -1699,16 +1722,159 @@ def contact_table(headers: list[str], rows: list[list[str]],
     nobody can see without clicking is a list nobody works.
 
     So cells arrive already escaped, field by field, by the caller.
+
+    `ids` adds the handled-marker column, one stable id per row. The
+    id is what the mark is stored against, so it has to be the
+    account rather than the row number: the queue is regenerated
+    every night and a row that was 14th yesterday is not 14th today.
     """
-    head = "".join(f"<th>{_e(h)}</th>" for h in headers)
+    if ids is None:
+        head = "".join(f"<th>{_e(h)}</th>" for h in headers)
+        body = "".join(
+            "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+            for row in rows
+        )
+        return (f'<p class="note">{_e(caption)}</p>'
+                f'<div class="scroll"><table class="contacts">'
+                f"<thead><tr>{head}</tr></thead>"
+                f"<tbody>{body}</tbody></table></div>")
+
+    head = ('<th class="mark" title="看过了 / 已私信">✓</th>'
+            + "".join(f"<th>{_e(h)}</th>" for h in headers))
     body = "".join(
-        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
-        for row in rows
+        f'<tr data-id="{_e(who)}">'
+        f'<td class="mark"><input type="checkbox" aria-label="已处理"></td>'
+        + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+        for who, row in zip(ids, rows)
     )
     return (f'<p class="note">{_e(caption)}</p>'
-            f'<div class="scroll"><table class="contacts">'
+            f'<div class="reach-tools" data-for="{_e(table_id)}">'
+            '<label><input type="checkbox" class="hide-done" checked> '
+            '隐藏已处理</label>'
+            '<span>前 <input type="number" class="bulk-n" min="1" '
+            'value="20"> 行标为已处理 '
+            '<button type="button" class="bulk-go">标记</button></span>'
+            '<button type="button" class="copy-done">复制已处理名单</button>'
+            '<button type="button" class="clear-done">全部取消</button>'
+            '<span class="reach-count"></span></div>'
+            f'<div class="scroll"><table class="contacts hide-done" '
+            f'id="{_e(table_id)}">'
             f"<thead><tr>{head}</tr></thead>"
             f"<tbody>{body}</tbody></table></div>")
+
+
+#: Remembering which accounts have been dealt with, in the browser.
+#:
+#: The page already carried this information and could not use it.
+#: A profile link she has opened goes purple, because that is what
+#: `:visited` does -- but a page cannot read `:visited`, by design:
+#: every browser blocks it, through `getComputedStyle` and through
+#: every timing trick found since, because a page that could read it
+#: could read your whole history. So the purple is for her eyes and
+#: nothing here can act on it.
+#:
+#: Hence an explicit mark. It is stored against the account's
+#: sec_uid rather than the row number, because the queue is rebuilt
+#: every night and today's 14th row is not yesterday's.
+#:
+#: Not in the database, and that is a choice. `app.outreach --mark`
+#: records *contact*, which is study data: who was written to, when,
+#: what they said. This is a reading aid -- "I have looked at this
+#: one" covers both a message sent and a profile opened and passed
+#: over, and the two must not become indistinguishable in the record
+#: the methods section rests on. So it lives in the browser, and the
+#: copy button is there for the day something from it does belong in
+#: the record.
+#:
+#: localStorage on a file:// page is allowed by Chrome and Firefox
+#: and refused by Safari, so every access is guarded and a refusal
+#: says so on the page rather than failing silently -- a marking
+#: tool that quietly forgets is worse than none.
+_HANDLED_SCRIPT = """<script>
+(function () {
+  var KEY = 'reach-handled-v1';
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch (e) { return null; }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
+    catch (e) { return false; }
+  }
+  var state = load();
+  var stored = state !== null;
+  if (!stored) { state = {}; }
+
+  document.querySelectorAll('.reach-tools').forEach(function (tools) {
+    var table = document.getElementById(tools.dataset.for);
+    if (!table) { return; }
+    var rows = Array.prototype.slice.call(
+      table.querySelectorAll('tbody tr'));
+    var count = tools.querySelector('.reach-count');
+
+    function paint() {
+      var done = 0;
+      rows.forEach(function (row) {
+        var on = !!state[row.dataset.id];
+        row.classList.toggle('done', on);
+        row.querySelector('input[type=checkbox]').checked = on;
+        if (on) { done++; }
+      });
+      count.textContent = done + ' / ' + rows.length + ' 已处理，剩 ' +
+        (rows.length - done);
+      if (!stored) {
+        count.textContent += ' — 这个浏览器不让网页保存状态，' +
+          '刷新后会丢失（Safari 会这样，换 Chrome）';
+        count.className = 'reach-warn';
+      }
+    }
+
+    table.addEventListener('change', function (event) {
+      var box = event.target;
+      if (box.type !== 'checkbox') { return; }
+      var row = box.closest('tr');
+      if (box.checked) { state[row.dataset.id] = 1; }
+      else { delete state[row.dataset.id]; }
+      save(state);
+      paint();
+    });
+
+    tools.querySelector('.hide-done').addEventListener('change', function (e) {
+      table.classList.toggle('hide-done', e.target.checked);
+    });
+
+    tools.querySelector('.bulk-go').addEventListener('click', function () {
+      var n = parseInt(tools.querySelector('.bulk-n').value, 10);
+      if (!(n > 0)) { return; }
+      // The visible rows, so this means the same thing before and
+      // after anything is hidden: "the next n I have worked".
+      rows.filter(function (row) { return row.offsetParent !== null; })
+        .slice(0, n)
+        .forEach(function (row) { state[row.dataset.id] = 1; });
+      save(state);
+      paint();
+    });
+
+    tools.querySelector('.clear-done').addEventListener('click', function () {
+      rows.forEach(function (row) { delete state[row.dataset.id]; });
+      save(state);
+      paint();
+    });
+
+    tools.querySelector('.copy-done').addEventListener('click', function () {
+      var text = rows.filter(function (row) { return state[row.dataset.id]; })
+        .map(function (row) {
+          var link = row.querySelector('a');
+          return link ? link.textContent : row.dataset.id;
+        }).join('\n');
+      if (navigator.clipboard) { navigator.clipboard.writeText(text); }
+      window.prompt('已处理的账号（可直接复制）', text);
+    });
+
+    paint();
+  });
+})();
+</script>"""
 
 
 def _reach_out(session: Session, page: Page) -> str:
@@ -1807,7 +1973,9 @@ def _reach_out(session: Session, page: Page) -> str:
         'API that said so. The evidence is current.</p>'
         + contact_table(headers, rows_for(down),
                         "Record each with: ./.venv/bin/python -m "
-                        "app.outreach --mark <抖音号> sent")
+                        "app.outreach --mark <抖音号> sent",
+                        ids=[i.person.sec_uid for i in down],
+                        table_id="reach-down")
 
         + f'<h3>② 下架后又恢复 — went and came back ({len(back)})</h3>'
         '<p class="note">A post that failed on one day and worked on '
@@ -1819,7 +1987,10 @@ def _reach_out(session: Session, page: Page) -> str:
         'which group it came from.</p>'
         + contact_table(headers, rows_for(back),
                         "Same command; the note is where to record "
-                        "which group this was")
+                        "which group this was",
+                        ids=[i.person.sec_uid for i in back],
+                        table_id="reach-back")
+        + _HANDLED_SCRIPT
         + "</section>"
     )
 
