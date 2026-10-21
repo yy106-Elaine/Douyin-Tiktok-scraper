@@ -1713,7 +1713,8 @@ def _an_example(person) -> tuple[str, str] | None:
 
 def contact_table(headers: list[str], rows: list[list[str]],
                   caption: str, *, ids: list[str] | None = None,
-                  table_id: str = "") -> str:
+                  table_id: str = "",
+                  seen: set[str] | None = None) -> str:
     """The contact list, open and with its links live.
 
     `table()` escapes every cell and hides the whole thing behind a
@@ -1741,12 +1742,17 @@ def contact_table(headers: list[str], rows: list[list[str]],
 
     head = ('<th class="mark" title="看过了 / 已私信">✓</th>'
             + "".join(f"<th>{_e(h)}</th>" for h in headers))
-    body = "".join(
-        f'<tr data-id="{_e(who)}">'
-        f'<td class="mark"><input type="checkbox" aria-label="已处理"></td>'
-        + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
-        for who, row in zip(ids, rows)
-    )
+    archived = seen or set()
+
+    def _row(who: str, row: list[str]) -> str:
+        mark = ' class="done"' if who in archived else ""
+        cells = "".join(f"<td>{cell}</td>" for cell in row)
+        return (f'<tr data-id="{_e(who)}"{mark}>'
+                '<td class="mark"><input type="checkbox" '
+                'aria-label="已处理"></td>'
+                f"{cells}</tr>")
+
+    body = "".join(_row(who, row) for who, row in zip(ids, rows))
     return (f'<p class="note">{_e(caption)}</p>'
             f'<div class="reach-tools" data-for="{_e(table_id)}">'
             '<label><input type="checkbox" class="hide-done" checked> '
@@ -1811,6 +1817,20 @@ _HANDLED_SCRIPT = """<script>
     var rows = Array.prototype.slice.call(
       table.querySelectorAll('tbody tr'));
     var count = tools.querySelector('.reach-count');
+
+    // Rows the generator already marked, from the browser history
+    // via --seen-from. Adopted into the stored state rather than
+    // read fresh each time, so unticking one sticks: the next
+    // report would otherwise mark it again and the undo would look
+    // like it had not worked.
+    var adopted = false;
+    rows.forEach(function (row) {
+      if (row.classList.contains('done') && !state[row.dataset.id]) {
+        state[row.dataset.id] = 1;
+        adopted = true;
+      }
+    });
+    if (adopted) { save(state); }
 
     function paint() {
       var done = 0;
@@ -1877,7 +1897,8 @@ _HANDLED_SCRIPT = """<script>
 </script>"""
 
 
-def _reach_out(session: Session, page: Page) -> str:
+def _reach_out(session: Session, page: Page,
+               seen: set[str] | None = None) -> str:
     """Who to write to, split by what the record actually shows.
 
     Two groups, because they are two different approaches and two
@@ -1975,7 +1996,7 @@ def _reach_out(session: Session, page: Page) -> str:
                         "Record each with: ./.venv/bin/python -m "
                         "app.outreach --mark <抖音号> sent",
                         ids=[i.person.sec_uid for i in down],
-                        table_id="reach-down")
+                        table_id="reach-down", seen=seen)
 
         + f'<h3>② 下架后又恢复 — went and came back ({len(back)})</h3>'
         '<p class="note">A post that failed on one day and worked on '
@@ -1989,7 +2010,7 @@ def _reach_out(session: Session, page: Page) -> str:
                         "Same command; the note is where to record "
                         "which group this was",
                         ids=[i.person.sec_uid for i in back],
-                        table_id="reach-back")
+                        table_id="reach-back", seen=seen)
         + _HANDLED_SCRIPT
         + "</section>"
     )
@@ -1997,12 +2018,18 @@ def _reach_out(session: Session, page: Page) -> str:
 
 def build(session: Session, *, reveal: bool = False,
           generated: datetime | None = None,
-          outreach: bool = False) -> str:
+          outreach: bool = False,
+          seen: set[str] | None = None) -> str:
     """The whole page, as one string.
 
     `outreach` adds the contact list, which names real people and
     links to their profiles. Off by default and off in every
     scheduled run: the page is otherwise safe to leave on a desk.
+
+    `seen` is the accounts whose profile has already been opened,
+    from `app.visited` -- their rows arrive archived, which is what
+    the purple link meant and what the page could not read for
+    itself.
     """
     page = Page(
         held={p: own(session, p) for p in PLATFORMS},
@@ -2018,7 +2045,7 @@ def build(session: Session, *, reveal: bool = False,
         _context(page),
     ])
     analysis = _content(session, page)
-    contacts = _reach_out(session, page) if outreach else ""
+    contacts = _reach_out(session, page, seen) if outreach else ""
     body = "".join([
         "<header><h1>Takedown observatory</h1>",
         '<p class="sub">Chinese-language WLW posts, watched daily for '
@@ -2062,15 +2089,37 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             "off shared drives"
         ),
     )
+    parser.add_argument(
+        "--seen-from", default="", metavar="FILE",
+        help=(
+            "a file of sec_uids, one per line, whose rows arrive "
+            "already archived -- write it with app.visited, which "
+            "reads them out of the browser's own history"
+        ),
+    )
     args = parser.parse_args()
+
+    seen: set[str] = set()
+    if args.seen_from:
+        from pathlib import Path as _Path
+
+        for line in _Path(args.seen_from).read_text(
+                encoding="utf-8").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line:
+                seen.add(line)
+        if not seen:
+            raise SystemExit(f"{args.seen_from} named no accounts")
 
     init_db()
     with SessionLocal() as session:
         html = build(session, reveal=args.identifiers,
-                     outreach=args.outreach)
+                     outreach=args.outreach, seen=seen)
     with open(args.out, "w", encoding="utf-8") as handle:
         handle.write(html)
     print(f"{len(html) / 1024:.0f} KB written to {args.out}")
+    if seen:
+        print(f"{len(seen)} account(s) marked as already looked at.")
     if args.identifiers:
         print("Whole video ids are in this file. Do not post it anywhere.")
     if args.outreach:

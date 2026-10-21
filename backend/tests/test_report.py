@@ -311,3 +311,38 @@ def test_the_contact_table_without_ids_is_unchanged() -> None:
     html = contact_table(["抖音号"], [["someone"]], "cap")
     assert "checkbox" not in html
     assert "data-id" not in html
+
+
+def test_rows_already_looked_at_arrive_archived() -> None:
+    """What the purple link meant, carried in from the history.
+
+    `:visited` is unreadable from script, so the page cannot see
+    which profiles have been opened. `app.visited` reads them out of
+    the browser's own history file and they arrive marked.
+    """
+    from app.report import contact_table
+
+    html = contact_table(
+        ["抖音号"], [["a"], ["b"]], "cap",
+        ids=["SEEN", "FRESH"], table_id="reach-down", seen={"SEEN"})
+
+    assert '<tr data-id="SEEN" class="done">' in html
+    assert '<tr data-id="FRESH">' in html
+
+
+def test_a_profile_address_yields_its_account_id() -> None:
+    """Query strings come attached to these links in practice.
+
+    Douyin appends `?from_tab_name=` and more, and an id with a
+    query stuck to it matches nothing in the report -- so every row
+    would read as fresh and the archive would look broken rather
+    than wrong.
+    """
+    from app.visited import sec_uid_of
+
+    assert sec_uid_of(
+        "https://www.douyin.com/user/MS4wLjAB?from_tab_name=main"
+    ) == "MS4wLjAB"
+    assert sec_uid_of("https://www.douyin.com/user/MS4wLjAB") == "MS4wLjAB"
+    assert sec_uid_of("https://www.douyin.com/video/7123") is None
+    assert sec_uid_of("https://mail.google.com/") is None
