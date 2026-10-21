@@ -411,6 +411,30 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
       LIMIT=(--limit 2)
       say "-- REHEARSAL: two pages each, today's check is left alone"
     fi
+    # New phone captures, stitched and read before anything is
+    # checked. Until now these lived only in the other half of the
+    # job (`resolve`) or nowhere at all (`fetch_videos`, which was
+    # always run by hand) -- so a morning's new posts were tracked
+    # but had no caption, author or publication time until somebody
+    # remembered. The browser pass below then checks them the same
+    # night, which is the point: a post collected at 22:00 and first
+    # read at 03:00 has a five-hour window on its removal, not a day.
+    #
+    # `resolve` needs no browser and is safe to repeat: both halves
+    # of the job may run it, and the second finds nothing to do.
+    # `fetch_videos` does use the signed-in browser, so it goes
+    # here, in sequence with the passes that share that profile --
+    # never beside them.
+    run "resolve links (douyin)" "$PY" -m app.resolve
+    # Both platforms. Without --refresh each reads only videos never
+    # read before, so this is the night's new posts and not the
+    # corpus -- 图文 outnumber video five to one and a pass over all
+    # of them does not belong in front of the measurement.
+    run_limited "douyin new captions" "$DOUYIN_BUDGET" \
+      "$PY" -m app.fetch_videos --platform douyin --apply "${LIMIT[@]}"
+    run_limited "douyin 图文 new captions" "$DOUYIN_BUDGET" \
+      "$PY" -m app.fetch_videos --platform douyin_note --apply "${LIMIT[@]}"
+
     if [[ "$DOUYIN_PARALLEL" == "1" ]] && ensure_note_profile; then
       run_together "douyin video check" "douyin 图文 check"
     else
