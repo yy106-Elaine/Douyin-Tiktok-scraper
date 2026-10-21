@@ -426,15 +426,6 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # here, in sequence with the passes that share that profile --
     # never beside them.
     run "resolve links (douyin)" "$PY" -m app.resolve
-    # Both platforms. Without --refresh each reads only videos never
-    # read before, so this is the night's new posts and not the
-    # corpus -- 图文 outnumber video five to one and a pass over all
-    # of them does not belong in front of the measurement.
-    run_limited "douyin new captions" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_videos --platform douyin --apply "${LIMIT[@]}"
-    run_limited "douyin 图文 new captions" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_videos --platform douyin_note --apply "${LIMIT[@]}"
-
     if [[ "$DOUYIN_PARALLEL" == "1" ]] && ensure_note_profile; then
       run_together "douyin video check" "douyin 图文 check"
     else
@@ -456,6 +447,25 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # profiles that do not exist. The new accounts each day are read
     # by the pass above, and the second round is for the handful the
     # site declines to answer for the first time.
+    # After the checks, not before them.
+    #
+    # These two ran before the checks for one night, 10-21, and that
+    # night the video pass read 181 unreadable where the two before
+    # it read none, and the 图文 pass recorded 684 removals against a
+    # previous high of 113. Both numbers on the one night this
+    # ordering was live. That is not proof -- nothing here isolates
+    # it -- but it is the only thing that changed, so it moves and
+    # tomorrow says whether that was it.
+    #
+    # The cost of being here instead is small and known: a post
+    # collected at 22:00 is still *checked* at 03:00, because the
+    # check needs the video id and `resolve` above provides it. Only
+    # the caption and the publication time arrive a few hours later.
+    run_limited "douyin new captions" "$DOUYIN_BUDGET" \
+      "$PY" -m app.fetch_videos --platform douyin --apply "${LIMIT[@]}"
+    run_limited "douyin 图文 new captions" "$DOUYIN_BUDGET" \
+      "$PY" -m app.fetch_videos --platform douyin_note --apply "${LIMIT[@]}"
+
     if [[ "$REHEARSE" != "1" ]]; then
       run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
         "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2
