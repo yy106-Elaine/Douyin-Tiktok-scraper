@@ -1785,6 +1785,61 @@ nobody asked about.
 The flag over-reports by design -- uncertain cases are `possible`, not
 `none` -- because the cost of the two errors is not symmetric.
 
+### 14i. `filter_reason` is a state, not an agent — and the two cannot be separated
+
+Douyin, asked for a post it will not serve, sometimes names a reason beside
+the empty record. Across the corpus on 2026-10-21:
+
+| `filter_reason` | 视频 | 图文 | what the name says |
+|---|---|---|---|
+| `status_self_see` | 665 | 3399 | 仅自己可见 |
+| `status_deleted` | 168 | 387 | 已删除 |
+| `unstated` | 58 | 178 | filtered, no reason given |
+| `status_friend_see` | 33 | 38 | 仅好友可见 |
+| `author_secret` | 8 | 38 | 账号设为私密 |
+| `status_audit_self_see` | 7 | 26 | 审核后转为仅自己可见 |
+| `status_part_see` | — | 27 | 部分可见 |
+| `status_audit_not_pass` | — | 8 | 审核未通过 |
+
+(Counts of checks, not of posts; one post checked daily contributes many.)
+
+The obvious reading is that `status_self_see` is the author's own doing and
+therefore not censorship, which would mean four fifths of the 图文 removals
+are not the thing this study is about. **That reading is wrong, and an
+interview on 2026-10-21 is why.**
+
+A creator described the moderation outcome itself arriving as a visibility
+change: a post that fails review is sometimes removed outright and sometimes
+turned to 好友可见 or 仅自己可见. So the self-visible state is produced by
+both the platform and the author, and the field records only where the post
+ended up.
+
+The confound has a second layer, from the same interview. Creators hide
+their own posts when the reach is poor — the post looks like a failure, so
+it comes down. But poor reach is also what throttling produces, and
+throttling is a moderation action the creator is never told about. An author
+acting on low numbers may be acting on a moderation decision that was never
+announced. The two causes are not merely hard to tell apart here; they are
+not independent events.
+
+What follows for the analysis:
+
+- Report the **state**, never the agent. "No longer publicly visible, and in
+  which way" is what the data supports. "Removed by the platform" and
+  "hidden by its author" are not separable with this instrument and must not
+  appear as a split in any table.
+- `status_audit_not_pass` and `status_audit_self_see` are the cases where the
+  platform names its own review. Together 41 checks — that is a **lower
+  bound** on moderation, not a measure of it. The rest of the moderation is
+  inside the states that carry no reason, and this instrument cannot say how
+  much.
+- The headline removal rate pools all of these and should say so. It is a
+  rate of posts becoming unavailable to an ordinary viewer, which is the
+  thing that was actually observed.
+
+This entry exists because the analysis very nearly shipped the split. The
+interview is what stopped it, and the instrument could not have.
+
 ## Ethics and consent
 
 - Collection is limited two ways: the OS delivers events only for the two
