@@ -131,6 +131,26 @@ DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
 #: Two samples against one is not settled, which is why this is a
 #: variable and not a constant.
 FORGET_BY="${FORGET_BY:-tab}"
+#: Send the browser window to the Dock while a pass runs.
+#:
+#: On, now, for the scheduled job as well as for a run by hand. The
+#: reason `tab` was chosen above is that at three in the morning
+#: nobody is typing, and a new tab raising Chromium to the front
+#: therefore costs nothing. That reasoning holds only while the pass
+#: finishes before anyone sits down. On 10-22 the video pass was
+#: still going at 11:00 -- 304 pages at 1.7 minutes each where the
+#: day before they took 2.4 seconds -- and the machine was unusable
+#: for the whole morning.
+#:
+#: The two settings do not fight: `_out_of_the_way()` minimises
+#: again after every new tab, and a minimised window is one macOS
+#: will not raise. Chromium throttles timers in a window it thinks
+#: nobody is watching and the page's own JavaScript is what fetches
+#: the record, so the flags that turn that throttling off are set at
+#: launch whenever this is on.
+MINIMISE="${MINIMISE:-1}"
+MIN_FLAG=()
+[[ "$MINIMISE" == "1" ]] && MIN_FLAG=(--minimise)
 #: How often the parallel passes report into the main log, in
 #: seconds. A multiple of 15, which is how often the wait loop
 #: wakes. Five minutes is often enough to tell a slow run from a
@@ -243,13 +263,13 @@ run_together() {
 
   set -m
   "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
-    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
-    >"$log_a" 2>&1 &
+    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
+    "${LIMIT[@]}" >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
     --forget-by "$FORGET_BY" \
-    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}" \
-    >"$log_b" 2>&1 &
+    --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
+    "${LIMIT[@]}" >"$log_b" 2>&1 &
   local pid_b=$!
   set +m
 
@@ -431,10 +451,12 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     else
       run_limited "douyin video check" "$DOUYIN_BUDGET" \
         "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
-        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
+        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
+        "${LIMIT[@]}"
       run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
         "$PY" -m app.daily --platform douyin_note --forget-by "$FORGET_BY" \
-        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${LIMIT[@]}"
+        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
+        "${LIMIT[@]}"
     fi
     # The handle is what an interview request is addressed to, and an
     # account only answers while it is still there. The pass above
@@ -462,13 +484,16 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # check needs the video id and `resolve` above provides it. Only
     # the caption and the publication time arrive a few hours later.
     run_limited "douyin new captions" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_videos --platform douyin --apply "${LIMIT[@]}"
+      "$PY" -m app.fetch_videos --platform douyin --apply \
+      "${MIN_FLAG[@]}" "${LIMIT[@]}"
     run_limited "douyin 图文 new captions" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_videos --platform douyin_note --apply "${LIMIT[@]}"
+      "$PY" -m app.fetch_videos --platform douyin_note --apply \
+      "${MIN_FLAG[@]}" "${LIMIT[@]}"
 
     if [[ "$REHEARSE" != "1" ]]; then
       run_limited "douyin 抖音号" "$DOUYIN_BUDGET" \
-        "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2
+        "$PY" -m app.fetch_authors --apply --pause 8 --rounds 2 \
+        "${MIN_FLAG[@]}"
     fi
   fi
 fi

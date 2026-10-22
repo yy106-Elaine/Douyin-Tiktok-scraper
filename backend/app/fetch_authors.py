@@ -501,6 +501,14 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         action="store_true",
         help="no window; a verification page then cannot be answered",
     )
+    parser.add_argument(
+        "--minimise", action="store_true",
+        help=(
+            "send the browser window to the Dock while this runs. "
+            "A minimised window cannot be raised to the front, so "
+            "the machine stays usable for the hours a pass takes"
+        ),
+    )
     args = parser.parse_args()
 
     init_db()
@@ -594,6 +602,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 Path(args.profile),
                 headless=args.headless,
                 pause_seconds=args.pause,
+                minimise=args.minimise,
             ) as browser:
                 # Check the session once, here, rather than discovering
                 # it missing on every page. A run that asks to sign in
