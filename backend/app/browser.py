@@ -581,6 +581,50 @@ class Browser:
         except Exception:  # noqa: BLE001 - already gone is the goal
             pass
 
+    def _new_tab(self):
+        """A tab, opened without taking the screen where that is possible.
+
+        `context.new_page()` opens a foreground tab, and on macOS a
+        foreground tab raises Chromium to the front. Minimising right
+        afterwards -- which is what this did -- leaves the window
+        raised for the few frames in between, so a pass over a
+        thousand pages flashes the browser a thousand times. That is
+        not better than staying in front; by 10-23 it was worse.
+
+        The DevTools protocol can open the tab in the background in
+        the first place. Playwright adopts the target as an ordinary
+        page -- verified: the `page` event fires, `context.pages`
+        grows, and the page navigates and evaluates normally -- so
+        nothing downstream knows the difference.
+
+        `background` is documented Chrome-only and best effort, and
+        this runs headful on macOS where a window manager has the
+        final say. So it is an improvement on the odds, not a
+        guarantee, and `_out_of_the_way()` still runs afterwards. Any
+        failure falls back to the ordinary tab rather than ending the
+        pass: a flashing window is a nuisance, a pass that stops is a
+        day of missing measurement.
+        """
+        if not self._minimise:
+            return self._context.new_page()
+        pages = [p for p in self._context.pages if not p.is_closed()]
+        if not pages:
+            # Nothing to open a CDP session against. The persistent
+            # context starts with a tab, so this is the case where
+            # every tab has been discarded.
+            return self._context.new_page()
+        try:
+            cdp = self._context.new_cdp_session(pages[0])
+            try:
+                with self._context.expect_page(timeout=10_000) as caught:
+                    cdp.send("Target.createTarget",
+                             {"url": "about:blank", "background": True})
+                return caught.value
+            finally:
+                cdp.detach()
+        except Exception:  # noqa: BLE001 - a nuisance, never fatal
+            return self._context.new_page()
+
     def _forget(self) -> None:
         """Drop the app's in-memory state, keeping the tab.
 
@@ -663,11 +707,14 @@ class Browser:
 
         try:
             if self._page is None or self._page.is_closed():
-                self._page = self._context.new_page()
+                self._page = self._new_tab()
                 if self._light:
                     self._page.route("**/*", _skip_heavy)
                 # Right after the tab exists, before the page has had
-                # time to be looked at.
+                # time to be looked at. Still here even when the tab
+                # was opened in the background: `background` is
+                # Chrome-only and best effort, so this is what makes
+                # the window's state certain rather than hoped for.
                 self._out_of_the_way(self._page)
         except Exception as problem:  # noqa: BLE001 - recorded, not raised
             return PageRead(Fetched(url=url, error=type(problem).__name__))
