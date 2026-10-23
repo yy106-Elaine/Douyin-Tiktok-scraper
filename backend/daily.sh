@@ -120,17 +120,40 @@ NOTE_PROFILE=.browser-profile-note
 DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
 #: How the passes drop the app's cached state between pages.
 #:
-#: `tab` here, and `blank` for a run by hand, because they differ in
-#: a way that only matters when somebody is at the machine: a new
-#: tab raises Chromium to the front on macOS, which makes the laptop
-#: unusable for the hours a pass takes. At three in the morning
-#: nobody is typing, so the scheduled job gets the arm with the
-#: better reading -- 1 unreadable in 8, and 1 in 18 before that,
-#: against 119 in 150 for `blank` on the same corpus the same day.
+#: `storage` now, and the reasoning that put `tab` here was wrong in
+#: a way worth keeping written down.
 #:
-#: Two samples against one is not settled, which is why this is a
-#: variable and not a constant.
-FORGET_BY="${FORGET_BY:-tab}"
+#: `tab` read better -- 1 unreadable in 8, and 1 in 18 before that,
+#: against 119 in 150 for `blank` on the same corpus the same day --
+#: and the cost was said to be only that a new tab raises Chromium to
+#: the front, which nobody is there to mind at three in the morning.
+#: Both halves of that were wrong. The pass does not reliably finish
+#: before morning (on 10-22 it ran until 11:00), and the interruption
+#: is not a raise but a *restore*: the window is minimised, and
+#: Chromium has to bring it back out of the Dock to put a new tab in
+#: it. So `--minimise` and `--forget-by tab` are in direct conflict,
+#: and no flag reconciles them -- two attempts to make them coexist,
+#: on 10-22 and 10-23, fixed neither.
+#:
+#: Of the three arms only `tab` opens a tab at all, so only `tab`
+#: has this problem. `blank` navigates the one tab to about:blank
+#: and is the arm that loses pages. `storage` clears the tab's
+#: sessionStorage and opens nothing -- and sessionStorage is exactly
+#: where the cache blamed for the empty reads lives (`JX_CACHE`,
+#: `FEED_CACHE_INFO`), which a new tab starts without and an
+#: about:blank navigation leaves intact. That was the stated
+#: hypothesis for why `tab` read better, and it had never been
+#: tested.
+#:
+#: Tested 10-23, 图文, 40 pages: 0 unreadable, median 2.3s. That is
+#: the first arm to read clean without taking the screen.
+#:
+#: Not settled, and for a specific reason: the failure it has to
+#: survive accumulates across a pass -- "by the middle of a run half
+#: of them parsed to nothing" -- and 40 pages may not reach the
+#: point where the cache has filled. A full pass is what settles it,
+#: and FORGET_BY=tab is still one word away.
+FORGET_BY="${FORGET_BY:-storage}"
 #: Send the browser window to the Dock while a pass runs.
 #:
 #: On, now, for the scheduled job as well as for a run by hand. The
