@@ -153,7 +153,25 @@ DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
 #: of them parsed to nothing" -- and 40 pages may not reach the
 #: point where the cache has filled. A full pass is what settles it,
 #: and FORGET_BY=tab is still one word away.
-FORGET_BY="${FORGET_BY:-storage}"
+#: Per platform, because the two read different endpoints and the
+#: arms do not behave the same on them. Measured 10-26, same day,
+#: same machine, same corpus:
+#:
+#:   图文, storage:  2641 pages, 32 unreadable (1.2%), median 2.5s
+#:   视频, storage:  reading nothing from about page 200 onwards
+#:
+#: The 40-page 图文 sample on 10-23 that put `storage` everywhere was
+#: never a test of video, and calling it settled was wrong. The line
+#: above is the full-pass number, and it settles 图文 only.
+#:
+#: So 图文 keeps `storage` -- 2600 pages that never touch the window --
+#: and video goes back to `tab`, which costs a flashing window for 304
+#: pages: ten minutes rather than hours. That is the trade worth
+#: making until video has an arm that reads clean without a new tab.
+#:
+#: FORGET_BY still sets both, for a run that wants one arm everywhere.
+FORGET_BY_NOTE="${FORGET_BY_NOTE:-${FORGET_BY:-storage}}"
+FORGET_BY_VIDEO="${FORGET_BY_VIDEO:-${FORGET_BY:-tab}}"
 #: Send the browser window to the Dock while a pass runs.
 #:
 #: On, now, for the scheduled job as well as for a run by hand. The
@@ -285,12 +303,12 @@ run_together() {
   say "-- $label_a and $label_b, together"
 
   set -m
-  "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
+  "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY_VIDEO" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
     "${LIMIT[@]}" >"$log_a" 2>&1 &
   local pid_a=$!
   "$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \
-    --forget-by "$FORGET_BY" \
+    --forget-by "$FORGET_BY_NOTE" \
     --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
     "${LIMIT[@]}" >"$log_b" 2>&1 &
   local pid_b=$!
@@ -473,11 +491,11 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
       run_together "douyin video check" "douyin 图文 check"
     else
       run_limited "douyin video check" "$DOUYIN_BUDGET" \
-        "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \
+        "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY_VIDEO" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
         "${LIMIT[@]}"
       run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
-        "$PY" -m app.daily --platform douyin_note --forget-by "$FORGET_BY" \
+        "$PY" -m app.daily --platform douyin_note --forget-by "$FORGET_BY_NOTE" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
         "${LIMIT[@]}"
     fi
