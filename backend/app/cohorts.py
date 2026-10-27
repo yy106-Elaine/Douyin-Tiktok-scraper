@@ -154,7 +154,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             print(f"\n--- {args.platform}")
             print(report(session, args.platform, args.by))
             return
-        from .platforms import PLATFORMS
+        from .analyse import PLATFORMS
 
         for platform in PLATFORMS:
             rows = cohorts(session, platform, args.by)

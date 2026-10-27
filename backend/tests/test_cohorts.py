@@ -42,3 +42,27 @@ def test_exposure_is_the_median_not_the_mean() -> None:
 
 def test_exposure_is_none_when_nothing_has_both_dates() -> None:
     assert exposure([_finding(None, None)]) is None
+
+
+def test_the_command_runs(db: None, capsys) -> None:
+    """The CLI path, which the helper tests above do not reach.
+
+    The first version imported PLATFORMS from the wrong module and
+    every test here still passed, because they all called the
+    functions directly. It failed on the first real invocation. A
+    thin wrapper is still a path, and an import error in it is
+    indistinguishable from the tool not working at all.
+    """
+    import sys
+
+    from app.cohorts import main
+
+    argv = sys.argv
+    sys.argv = ["app.cohorts"]
+    try:
+        main()
+    finally:
+        sys.argv = argv
+    # Nothing collected in an empty database, which is a result, not
+    # a crash.
+    capsys.readouterr()
