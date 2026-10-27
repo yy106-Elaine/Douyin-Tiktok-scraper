@@ -305,10 +305,17 @@ def test_the_parallel_pass_runs_one_worker_per_endpoint() -> None:
 
     launched = [line.strip() for line in body.splitlines()
                 if "-m app.daily --platform" in line]
-    assert launched == [
-        '"$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY" \\',
-        '"$PY" -m app.daily --platform douyin_note --profile "$NOTE_PROFILE" \\',
-    ]
+    # The platforms, not the whole line: the forget-by arm is now set
+    # per platform and the variable has been renamed once already,
+    # which broke this assertion without anything being wrong. What
+    # must not change is that there are exactly two workers and they
+    # are on different endpoints.
+    platforms = [re.search(r"--platform (\S+)", line).group(1)
+                 for line in launched]
+    assert platforms == ["douyin", "douyin_note"], launched
+    assert any("$NOTE_PROFILE" in line for line in launched), (
+        "the 图文 worker must have its own profile; two browsers on "
+        "one profile is the fault this test exists for")
     # The halving is gone from the scheduled job entirely.
     assert "--shard" not in text
     assert "note2.log" not in text
