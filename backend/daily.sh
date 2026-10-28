@@ -172,6 +172,32 @@ DOUYIN_PARALLEL="${DOUYIN_PARALLEL:-0}"
 #: FORGET_BY still sets both, for a run that wants one arm everywhere.
 FORGET_BY_NOTE="${FORGET_BY_NOTE:-${FORGET_BY:-storage}}"
 FORGET_BY_VIDEO="${FORGET_BY_VIDEO:-${FORGET_BY:-tab}}"
+#: Check the video platform at all. Off.
+#:
+#: Video has no arm that both reads and leaves the screen alone.
+#: `storage` reads nothing on it -- the full pass of 10-26 came back
+#: empty from about page 200 -- and `tab` has to restore the window
+#: out of the Dock for every page it opens, which took the machine
+#: for the morning on 10-22, 10-23 and 10-27. Three attempts to
+#: reconcile minimising with a new tab all failed, because they are
+#: the same action in opposite directions.
+#:
+#: What is being bought with those mornings, on the 10-27 numbers:
+#: 304 posts against 图文's 2,641; about a third of them carrying a
+#: status from the last day they could be read rather than from
+#: today; and cohort rates of 55%, 37%, 14%, 58% on cohorts of 65,
+#: 176, 14 and 64 -- too few and too unstable to report on their
+#: own, which the analysis already says. The 图文 pass, on
+#: `storage`, reads 2,641 pages at 1.2% unreadable and never touches
+#: the window.
+#:
+#: So the measurement continues where it is sound and stops where it
+#: is not. The 304 posts keep every check already made; they simply
+#: stop gaining new ones, and the cohort table reports them at their
+#: last reading.
+#:
+#: DOUYIN_VIDEO=1 turns it back on for a run.
+DOUYIN_VIDEO="${DOUYIN_VIDEO:-0}"
 #: Send the browser window to the Dock while a pass runs.
 #:
 #: On, now, for the scheduled job as well as for a run by hand. The
@@ -487,13 +513,22 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # here, in sequence with the passes that share that profile --
     # never beside them.
     run "resolve links (douyin)" "$PY" -m app.resolve
-    if [[ "$DOUYIN_PARALLEL" == "1" ]] && ensure_note_profile; then
+    if [[ "$DOUYIN_VIDEO" != "1" ]]; then
+      say "-- douyin video check: OFF (DOUYIN_VIDEO=1 to run it)"
+      say "   no arm reads it without taking the screen; see the note"
+      say "   on DOUYIN_VIDEO. The 304 posts keep the checks already"
+      say "   made and are reported at their last reading."
+    fi
+    if [[ "$DOUYIN_PARALLEL" == "1" && "$DOUYIN_VIDEO" == "1" ]] \
+       && ensure_note_profile; then
       run_together "douyin video check" "douyin 图文 check"
     else
-      run_limited "douyin video check" "$DOUYIN_BUDGET" \
-        "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY_VIDEO" \
-        --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
-        "${LIMIT[@]}"
+      if [[ "$DOUYIN_VIDEO" == "1" ]]; then
+        run_limited "douyin video check" "$DOUYIN_BUDGET" \
+          "$PY" -m app.daily --platform douyin --forget-by "$FORGET_BY_VIDEO" \
+          --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
+          "${LIMIT[@]}"
+      fi
       run_limited "douyin 图文 check" "$DOUYIN_BUDGET" \
         "$PY" -m app.daily --platform douyin_note --forget-by "$FORGET_BY_NOTE" \
         --skip-recent "$DOUYIN_SKIP_RECENT" --apply "${MIN_FLAG[@]}" \
@@ -524,9 +559,11 @@ if [[ "$DOUYIN" == "1" && "$ONLY" != "api" ]]; then
     # collected at 22:00 is still *checked* at 03:00, because the
     # check needs the video id and `resolve` above provides it. Only
     # the caption and the publication time arrive a few hours later.
-    run_limited "douyin new captions" "$DOUYIN_BUDGET" \
-      "$PY" -m app.fetch_videos --platform douyin --apply \
-      "${MIN_FLAG[@]}" "${LIMIT[@]}"
+    if [[ "$DOUYIN_VIDEO" == "1" ]]; then
+      run_limited "douyin new captions" "$DOUYIN_BUDGET" \
+        "$PY" -m app.fetch_videos --platform douyin --apply \
+        "${MIN_FLAG[@]}" "${LIMIT[@]}"
+    fi
     run_limited "douyin 图文 new captions" "$DOUYIN_BUDGET" \
       "$PY" -m app.fetch_videos --platform douyin_note --apply \
       "${MIN_FLAG[@]}" "${LIMIT[@]}"
