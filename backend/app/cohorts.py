@@ -79,9 +79,44 @@ def exposure(items: list[Finding]) -> timedelta | None:
     return (spans[middle - 1] + spans[middle]) / 2
 
 
+def stale_ids(session: Session, platform: str | None = None) -> set[str]:
+    """Posts whose most recent check of any kind read nothing.
+
+    Not the same as `Summary.unmeasured`, which counts posts with no
+    informative check *ever*. A post read fine on the 20th and
+    unreadable every day since has a status, and the status is eight
+    days old -- it is reported here as alive or gone on the strength
+    of a reading that is no longer current.
+
+    On 图文 this is a handful. On video it was 99 of 327 on 10-27,
+    so nearly a third of that platform's column is as-of-last-read
+    rather than as-of-today, and a table that does not say so is
+    claiming more than it knows.
+    """
+    from sqlalchemy import select
+
+    from .models import LinkCheck
+    from .recheck import NOTHING_READ
+
+    latest: dict[str, tuple[datetime, str | None]] = {}
+    query = select(LinkCheck.video_id, LinkCheck.checked_at,
+                   LinkCheck.evidence).where(LinkCheck.video_id.isnot(None))
+    if platform:
+        query = query.where(LinkCheck.platform == platform)
+    for video_id, checked_at, evidence in session.execute(query):
+        seen = latest.get(video_id)
+        if seen is None or checked_at >= seen[0]:
+            latest[video_id] = (checked_at, evidence)
+    return {
+        video_id for video_id, (_, evidence) in latest.items()
+        if evidence == NOTHING_READ
+    }
+
+
 def cohorts(session: Session, platform: str | None = None,
-            by: str = "week") -> list[tuple[str, Summary, timedelta | None]]:
-    """(cohort, summary, median exposure), oldest first."""
+            by: str = "week") -> list[tuple[str, Summary, timedelta | None, int]]:
+    """(cohort, summary, median exposure, stale), oldest first."""
+    stale = stale_ids(session, platform)
     grouped: dict[str, list[Finding]] = {}
     for finding in findings(session, platform):
         label = cohort_of(finding, by)
@@ -89,7 +124,8 @@ def cohorts(session: Session, platform: str | None = None,
             continue
         grouped.setdefault(label, []).append(finding)
     return [
-        (label, summarise(grouped[label]), exposure(grouped[label]))
+        (label, summarise(grouped[label]), exposure(grouped[label]),
+         sum(1 for f in grouped[label] if f.video_id in stale))
         for label in sorted(grouped)
     ]
 
@@ -112,18 +148,24 @@ def report(session: Session, platform: str | None = None,
         "=== Still visible at the last look, by when it was collected ===",
         "",
         f"  {'collected':<12} {'posts':>6} {'gone':>6} {'alive':>6} "
-        f"{'unknown':>8} {'gone rate':>10} {'watched':>9}",
+        f"{'never':>6} {'stale':>6} {'gone rate':>10} {'watched':>9}",
     ]
-    for label, summary, span in rows:
+    for label, summary, span, stale in rows:
         out.append(
             f"  {label:<12} {summary.tracked:6} {summary.gone:6} "
-            f"{summary.alive:6} {summary.unmeasured:8} "
+            f"{summary.alive:6} {summary.unmeasured:6} {stale:6} "
             f"{_pct(summary.rate):>10} {_days(span):>9}"
         )
     out += [
         "",
-        "  'unknown' is a post whose latest check read nothing. It is",
-        "  out of the rate's denominator, not counted as surviving.",
+        "  'never' is a post no check ever read. It is out of the",
+        "  rate's denominator, not counted as surviving.",
+        "",
+        "  'stale' is a post counted in gone or alive on a reading",
+        "  that is no longer the latest: its most recent check read",
+        "  nothing, so the status shown is as of the last day it",
+        "  could be read. On video this is most of the platform and",
+        "  the column should be read before the rate is quoted.",
         "",
         "  'watched' is the median time from collection to the last",
         "  look. Cohorts with different exposure are not comparable as",

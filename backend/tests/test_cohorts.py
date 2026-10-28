@@ -66,3 +66,36 @@ def test_the_command_runs(db: None, capsys) -> None:
     # Nothing collected in an empty database, which is a result, not
     # a crash.
     capsys.readouterr()
+
+
+def test_a_post_read_long_ago_is_marked_stale(db: None) -> None:
+    """Counted in the rate, but on a reading that is not the latest.
+
+    `Summary.unmeasured` misses this: a post read fine on the 20th
+    and unreadable every day since has a status, and the table that
+    shows it as alive is quoting a reading eight days old. On video
+    that was 99 of 327 posts, so the distinction is most of the
+    platform.
+    """
+    from app.cohorts import stale_ids
+    from app.db import SessionLocal
+    from app.models import LinkCheck
+    from app.recheck import ID_CONFIRMED, NOTHING_READ
+
+    with SessionLocal() as session:
+        session.add_all([
+            LinkCheck(video_id="fresh", platform="douyin", target_kind="video",
+                      url="u", checked_at=datetime(2026, 10, 20),
+                      evidence=ID_CONFIRMED),
+            LinkCheck(video_id="fresh", platform="douyin", target_kind="video",
+                      url="u", checked_at=datetime(2026, 10, 27),
+                      evidence=ID_CONFIRMED),
+            LinkCheck(video_id="old", platform="douyin", target_kind="video",
+                      url="u", checked_at=datetime(2026, 10, 20),
+                      evidence=ID_CONFIRMED),
+            LinkCheck(video_id="old", platform="douyin", target_kind="video",
+                      url="u", checked_at=datetime(2026, 10, 27),
+                      evidence=NOTHING_READ),
+        ])
+        session.commit()
+        assert stale_ids(session, "douyin") == {"old"}
