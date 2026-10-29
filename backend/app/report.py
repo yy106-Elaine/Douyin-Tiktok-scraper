@@ -844,6 +844,77 @@ def _each_post(page: Page) -> list[list[str]]:
     return rows
 
 
+def _provenance() -> str:
+    """Which of these figures are sound, and over what period.
+
+    The page used to open with numbers. Three separate instrument
+    faults have since been found and fixed, the video platform has
+    stopped being checked, and TikTok's nil result rests on a
+    mechanism that has not been verified -- none of which a reader
+    could tell from a chart. A figure whose provenance is not stated
+    beside it is a figure that will be quoted without it.
+
+    Deliberately above the tabs, not inside one: it is not a section
+    of the analysis, it is the terms on which the analysis is read.
+    """
+    return (
+        '<section class="provenance">'
+        "<h2>Which figures hold, and over what period</h2>"
+
+        '<p class="note"><strong>Two periods, two kinds of question.</strong> '
+        'Three instrument faults are on the record and all three damage '
+        '<em>timing</em>: the page\u2019s own images were blocked from '
+        '10-06 to 10-14, which made removals look later than they were; a '
+        'second browser ran on the video platform from 10-09 to 10-13, '
+        'which invented removals; and Douyin\u2019s <code>filter_detail</code> '
+        'went unread until 10-14, so removals it stated in words were filed '
+        'as \u201cwe learned nothing\u201d. See METHODOLOGY 8b, 8c.</p>'
+
+        '<ul class="note">'
+        '<li><strong>Anything about <em>when</em></strong> \u2014 daily '
+        'hazard, time to removal, the removed-within-T table, the '
+        'Kaplan\u2013Meier curves \u2014 is sound only from '
+        '<strong>2026-10-15</strong>, the first day clear of all three.</li>'
+        '<li><strong>Anything about <em>whether</em></strong> \u2014 the '
+        'share of a collection cohort still publicly visible at the last '
+        'look \u2014 holds over the <strong>whole corpus from '
+        '2026-09-19</strong>. It needs the collection date and the latest '
+        'check, and the latest check is made by the repaired instrument: a '
+        'post the two-browser pass wrongly called gone has been read alive '
+        'since, so the final state corrects it.</li>'
+        '</ul>'
+
+        '<p class="note"><strong>图文 is the dataset; video is not.</strong> '
+        'The 图文 pass reads 2,641 pages at about 1% unreadable. The video '
+        'pass has no setting that both reads the page and leaves the '
+        'machine usable, so as of 2026-10-28 it is <strong>no longer '
+        'checked</strong>. Its 304 posts keep every check already made and '
+        'are reported at their last reading \u2014 about a third of them on '
+        'a reading that is not current. Video cohort rates run 55%, 37%, '
+        '14%, 58% on cohorts of 65, 176, 14 and 64: too few and too '
+        'unstable to quote on their own.</p>'
+
+        '<p class="note"><strong>TikTok\u2019s nil result is not yet '
+        'evidence of absence.</strong> 373 posts, five weeks, no removal '
+        'observed \u2014 and on 2026-10-20 nine posts previously recorded '
+        'as gone were all read alive again at the same microsecond, which '
+        'is one batched response rewriting nine rows rather than nine '
+        'reinstatements. TikTok and YouTube are checked fifty ids to a '
+        'request. Until it is established what that batch does with an id '
+        'it has no record for, the right sentence is \u201cno removals '
+        'were observed on TikTok\u201d, never \u201cTikTok removed '
+        'nothing\u201d.</p>'
+
+        '<p class="note"><strong>Collection of new posts ended '
+        '2026-10-27.</strong> The corpus is closed; the daily check '
+        'continues on 图文, TikTok and YouTube. Days the job did not run '
+        'are absent from the per-day tables rather than zero \u2014 '
+        '10-24 and 10-26 among them \u2014 and the removals of a missed '
+        'day are dated to the next day that looked.</p>'
+        "</section>"
+    )
+
+
 def _cohorts(page: Page) -> str:
     """What is left of each day's collection."""
     series, flat = [], []
@@ -1373,6 +1444,15 @@ table.contacts td { vertical-align: top; }
 table.contacts .muted { color: var(--muted, #666); font-size: .85em;
   max-width: 28ch; }
 table.contacts a { font-weight: 600; }
+/* The terms the rest of the page is read on. Bordered rather than
+   tucked into a tab, because a provenance note nobody opens is a
+   provenance note nobody has. */
+.provenance { border: 1px solid var(--border); border-left: 4px solid
+  var(--series-1); border-radius: 8px; padding: 14px 18px 4px;
+  margin: 18px 0 26px; background: var(--surface-1); }
+.provenance h2 { font-size: 15px; margin: 0 0 8px; }
+.provenance ul.note { margin: 6px 0 10px; padding-left: 20px; }
+.provenance li { margin-bottom: 5px; }
 /* Handled rows. A row is "handled" once she has written to the
    account or looked at the profile and decided not to -- the two
    are the same for this list's purpose, which is only ever "do I
@@ -2050,6 +2130,7 @@ def build(session: Session, *, reveal: bool = False,
         "<header><h1>Takedown observatory</h1>",
         '<p class="sub">Chinese-language WLW posts, watched daily for '
         f"removal. Read out of the collection at {_e(stamp)}.</p></header>",
+        _provenance(),
         tabs([
             ("overview", "Overview 总览", overview),
             ("analysis", "抖音内容分析 (Douyin content)", analysis),

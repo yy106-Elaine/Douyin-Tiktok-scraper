@@ -346,3 +346,27 @@ def test_a_profile_address_yields_its_account_id() -> None:
     assert sec_uid_of("https://www.douyin.com/user/MS4wLjAB") == "MS4wLjAB"
     assert sec_uid_of("https://www.douyin.com/video/7123") is None
     assert sec_uid_of("https://mail.google.com/") is None
+
+
+def test_the_page_states_its_provenance_above_the_tabs(db: None) -> None:
+    """A figure quoted without its terms is quoted without its terms.
+
+    The page opened with numbers while three instrument faults, a
+    platform that is no longer checked, and an unverified nil result
+    all sat behind them. The note has to be on the page itself, not
+    in a tab: one nobody opens is one nobody has.
+    """
+    from app.report import build
+    from app.db import SessionLocal
+
+    with SessionLocal() as session:
+        html = build(session)
+
+    # Straight after the header, so it is read before any figure and
+    # cannot be navigated past. Not compared against the tab strip:
+    # an empty collection renders no tabs at all, so that assertion
+    # would be about the fixture rather than the layout.
+    assert '</header><section class="provenance"' in html
+    for required in ("2026-10-15", "2026-09-19", "filter_detail",
+                     "no longer", "TikTok"):
+        assert required in html, required
