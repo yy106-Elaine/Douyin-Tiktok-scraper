@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -442,14 +442,28 @@ def daily_counts(
     days: int = 7,
     now: datetime | None = None,
     rows: list[VideoRow] | None = None,
+    until: date | None = None,
 ) -> list[tuple[str, int]]:
-    """Distinct in-scope videos first collected on each of the last `days`."""
+    """Distinct in-scope videos first collected on each of `days`.
+
+    `until` is the last day drawn, defaulting to today. Collection
+    ended on 2026-10-20 and the chart kept running to the current
+    date, so by November a third of it was empty bars saying nothing
+    had been collected on days when nothing was being collected at
+    all. Ending it at the last day that holds anything says the same
+    thing in the space it deserves -- and it keeps the chart from
+    sliding off the data entirely once the 60-day cap is reached.
+
+    Zero days *inside* the range stay: a day in the collection period
+    that collected nothing is a fact about that day. Only the tail
+    after the last collection goes.
+    """
     moment = now or datetime.utcnow()
     # Days are the researcher's, not UTC's. An evening collection run
     # in Eastern time is already tomorrow in UTC, which put a day's
     # work under the next date and left the day it happened on
     # reading zero. See app/clock.py.
-    last = local_date(moment)
+    last = until or local_date(moment)
     first = last - timedelta(days=days - 1)
     start = start_of_local_day(first)
 

@@ -871,32 +871,54 @@ class TestTheDayChartCoversTheRun:
         from datetime import timedelta
 
         from app.clock import now as utc_now
-        from app.dashboard import _days_of_collection
+        from app.dashboard import _collection_span
 
-        rows = [self._row(utc_now() - timedelta(days=20))]
-        assert _days_of_collection(rows) == 21
+        today = utc_now()
+        rows = [self._row(today - timedelta(days=20)), self._row(today)]
+        span, _ = _collection_span(rows)
+        assert span == 21
+
+    def test_it_stops_at_the_last_collection_not_at_today(self):
+        """Collection ended 10-20 and the chart ran on to November.
+
+        A third of it was empty bars reporting that nothing had been
+        collected on days when nothing was being collected at all.
+        """
+        from datetime import datetime, timedelta
+
+        from app.clock import local_date, now as utc_now
+        from app.dashboard import _collection_span
+
+        ended = utc_now() - timedelta(days=15)
+        rows = [self._row(ended - timedelta(days=4)), self._row(ended)]
+        span, until = _collection_span(rows)
+        assert span == 7          # five days of collection, floored at a week
+        assert until == local_date(ended)
 
     def test_a_short_run_still_shows_a_week(self):
         """Fewer bars than a week reads as a broken chart, not a new study."""
         from datetime import timedelta
 
         from app.clock import now as utc_now
-        from app.dashboard import _days_of_collection
+        from app.dashboard import _collection_span
 
-        assert _days_of_collection([self._row(utc_now() - timedelta(days=1))]) == 7
+        span, _ = _collection_span([self._row(utc_now() - timedelta(days=1))])
+        assert span == 7
 
     def test_one_bad_date_cannot_ask_for_a_thousand_bars(self):
         from datetime import datetime
 
-        from app.dashboard import _days_of_collection
+        from app.clock import now as utc_now
+        from app.dashboard import _collection_span
 
-        stray = [self._row(datetime(2001, 1, 1))]
-        assert _days_of_collection(stray) == 60
+        span, _ = _collection_span(
+            [self._row(datetime(2001, 1, 1)), self._row(utc_now())])
+        assert span == 60
 
     def test_no_rows_at_all_is_a_week(self):
-        from app.dashboard import _days_of_collection
+        from app.dashboard import _collection_span
 
-        assert _days_of_collection([]) == 7
+        assert _collection_span([]) == (7, None)
 
 
 class TestARunReportsItsOwnPass:

@@ -198,8 +198,9 @@ def dashboard(
     # old; now the interesting shape is the whole run -- which days
     # yielded nothing, and when the yield changed. The chart flows
     # into columns, so more days cost width, not height.
+    _span, _until = _collection_span(countable)
     per_day = daily_counts(
-        session, platform, days=_days_of_collection(countable), now=now,
+        session, platform, days=_span, now=now, until=_until,
         rows=countable,
     )
 
@@ -413,17 +414,25 @@ def _kind_cell(row) -> str:
     )
 
 
-#: How many days the chart has to cover to show everything, bounded
-#: so a stray row with a bad date cannot ask for a thousand bars.
-def _days_of_collection(rows, cap: int = 60) -> int:
-    from .clock import local_date, now as utc_now
+#: The span the chart covers: first collection to last, bounded so a
+#: stray row with a bad date cannot ask for a thousand bars.
+#:
+#: It used to run to today. Collection ended on 2026-10-20 and the
+#: chart kept going, so by November a third of it was empty bars
+#: reporting that nothing had been collected on days when nothing was
+#: being collected at all -- and once the span passed the 60-day cap
+#: the window would have slid off the data completely.
+def _collection_span(rows, cap: int = 60) -> tuple[int, "date | None"]:
+    """(days to draw, last day to draw). None means today."""
+    from .clock import local_date
 
     when = [row.when for row in rows if row.when]
     if not when:
-        return 7
+        return 7, None
     first = local_date(min(when))
-    span = (local_date(utc_now()) - first).days + 1
-    return max(7, min(span, cap))
+    last = local_date(max(when))
+    span = (last - first).days + 1
+    return max(7, min(span, cap)), last
 
 
 def _video_rows(rows) -> str:
