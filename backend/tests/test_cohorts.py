@@ -99,3 +99,47 @@ def test_a_post_read_long_ago_is_marked_stale(db: None) -> None:
         ])
         session.commit()
         assert stale_ids(session, "douyin") == {"old"}
+
+
+def test_the_digest_counts_reasons_per_post_not_per_check(db: None) -> None:
+    """A post checked for five weeks is one post, not thirty-five rows.
+
+    The per-check count is the one the collection makes naturally and
+    it is the wrong unit for a claim about posts.
+    """
+    from app.db import SessionLocal
+    from app.digest import reasons_by_post
+    from app.models import LinkCheck
+
+    with SessionLocal() as session:
+        session.add_all([
+            LinkCheck(video_id="a", platform="douyin_note",
+                      target_kind="video", url="u",
+                      checked_at=datetime(2026, 10, 20),
+                      filter_reason="status_self_see"),
+            LinkCheck(video_id="a", platform="douyin_note",
+                      target_kind="video", url="u",
+                      checked_at=datetime(2026, 10, 21),
+                      filter_reason="status_self_see"),
+            LinkCheck(video_id="b", platform="douyin_note",
+                      target_kind="video", url="u",
+                      checked_at=datetime(2026, 10, 21),
+                      filter_reason="status_deleted"),
+        ])
+        session.commit()
+        assert reasons_by_post(session, "douyin_note") == [
+            ("status_self_see", 1), ("status_deleted", 1)]
+
+
+def test_the_digest_runs(db: None, capsys) -> None:
+    import sys
+
+    from app.digest import main
+
+    argv = sys.argv
+    sys.argv = ["app.digest"]
+    try:
+        main()
+    finally:
+        sys.argv = argv
+    assert "Figures for the chapter" in capsys.readouterr().out
